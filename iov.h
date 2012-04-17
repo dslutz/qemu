@@ -86,3 +86,11 @@ ssize_t iov_send_recv(int sockfd, struct iovec *iov, unsigned iov_cnt,
  */
 void iov_hexdump(const struct iovec *iov, const unsigned int iov_cnt,
                  FILE *fp, const char *prefix, size_t limit);
+
+size_t iov_rebuild(struct iovec *dest, unsigned int dest_cnt,
+                   const struct iovec *src, const unsigned int src_cnt,
+                   size_t src_off);
+
+uint32_t
+iov_net_csum_add(const struct iovec *iov, const unsigned int iov_cnt,
+                 size_t iov_off, size_t size);

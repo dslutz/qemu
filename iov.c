@@ -228,3 +228,27 @@ void iov_hexdump(const struct iovec *iov, const unsigned int iov_cnt,
         fprintf(fp, "\n");
     }
 }
+
+size_t iov_rebuild(struct iovec *dst, unsigned int dst_cnt,
+                   const struct iovec *src, const unsigned int src_cnt,
+                   size_t src_off)
+{
+    size_t curr_src_off = 0;
+    unsigned int i, j = 0;
+
+    for (i = 0; i < src_cnt; i++) {
+        if (src_off < (curr_src_off + src[i].iov_len)) {
+            if (j == dst_cnt) {
+                return (size_t) -1;
+            }
+
+            dst[j].iov_len = curr_src_off + src[i].iov_len - src_off;
+            dst[j].iov_base = src[i].iov_base + (src_off - curr_src_off);
+
+            src_off += dst[j].iov_len;
+            j++;
+        }
+        curr_src_off += src[i].iov_len;
+    }
+    return j;
+}
