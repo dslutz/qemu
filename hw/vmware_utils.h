@@ -23,21 +23,21 @@
 
 /* Shared memory access functions with byte swap support */
 static inline void
-vmw_shmem_read(target_phys_addr_t addr, void *buf, int len)
+vmw_shmem_read(hwaddr addr, void *buf, int len)
 {
     VMW_SHPRN("SHMEM r: %" PRIx64 ", len: %d to %p", addr, len, buf);
     cpu_physical_memory_read(addr, buf, len);
 }
 
 static inline void
-vmw_shmem_write(target_phys_addr_t addr, void *buf, int len)
+vmw_shmem_write(hwaddr addr, void *buf, int len)
 {
     VMW_SHPRN("SHMEM w: %" PRIx64 ", len: %d to %p", addr, len, buf);
     cpu_physical_memory_write(addr, buf, len);
 }
 
 static inline void
-vmw_shmem_rw(target_phys_addr_t addr, void *buf, int len, int is_write)
+vmw_shmem_rw(hwaddr addr, void *buf, int len, int is_write)
 {
     VMW_SHPRN("SHMEM r/w: %" PRIx64 ", len: %d (to %p), is write: %d",
               addr, len, buf, is_write);
@@ -46,7 +46,7 @@ vmw_shmem_rw(target_phys_addr_t addr, void *buf, int len, int is_write)
 }
 
 static inline void
-vmw_shmem_set(target_phys_addr_t addr, uint8 val, int len)
+vmw_shmem_set(hwaddr addr, uint8 val, int len)
 {
     int i;
     VMW_SHPRN("SHMEM set: %" PRIx64 ", len: %d (value 0x%X)", addr, len, val);
@@ -57,7 +57,7 @@ vmw_shmem_set(target_phys_addr_t addr, uint8 val, int len)
 }
 
 static inline uint32_t
-vmw_shmem_ld8(target_phys_addr_t addr)
+vmw_shmem_ld8(hwaddr addr)
 {
     uint8_t res = ldub_phys(addr);
     VMW_SHPRN("SHMEM load8: %" PRIx64 " (value 0x%X)", addr, res);
@@ -65,14 +65,14 @@ vmw_shmem_ld8(target_phys_addr_t addr)
 }
 
 static inline void
-vmw_shmem_st8(target_phys_addr_t addr, uint8_t value)
+vmw_shmem_st8(hwaddr addr, uint8_t value)
 {
     VMW_SHPRN("SHMEM store8: %" PRIx64 " (value 0x%X)", addr, value);
     stb_phys(addr, value);
 }
 
 static inline uint32_t
-vmw_shmem_ld16(target_phys_addr_t addr)
+vmw_shmem_ld16(hwaddr addr)
 {
     uint16_t res = lduw_le_phys(addr);
     VMW_SHPRN("SHMEM load16: %" PRIx64 " (value 0x%X)", addr, res);
@@ -80,14 +80,14 @@ vmw_shmem_ld16(target_phys_addr_t addr)
 }
 
 static inline void
-vmw_shmem_st16(target_phys_addr_t addr, uint16_t value)
+vmw_shmem_st16(hwaddr addr, uint16_t value)
 {
     VMW_SHPRN("SHMEM store16: %" PRIx64 " (value 0x%X)", addr, value);
     stw_le_phys(addr, value);
 }
 
 static inline uint32_t
-vmw_shmem_ld32(target_phys_addr_t addr)
+vmw_shmem_ld32(hwaddr addr)
 {
     uint32_t res = ldl_le_phys(addr);
     VMW_SHPRN("SHMEM load32: %" PRIx64 " (value 0x%X)", addr, res);
@@ -95,14 +95,14 @@ vmw_shmem_ld32(target_phys_addr_t addr)
 }
 
 static inline void
-vmw_shmem_st32(target_phys_addr_t addr, uint32_t value)
+vmw_shmem_st32(hwaddr addr, uint32_t value)
 {
     VMW_SHPRN("SHMEM store32: %" PRIx64 " (value 0x%X)", addr, value);
     stl_le_phys(addr, value);
 }
 
 static inline uint64_t
-vmw_shmem_ld64(target_phys_addr_t addr)
+vmw_shmem_ld64(hwaddr addr)
 {
     uint64_t res = ldq_le_phys(addr);
     VMW_SHPRN("SHMEM load64: %" PRIx64 " (value %" PRIx64 ")", addr, res);
@@ -110,7 +110,7 @@ vmw_shmem_ld64(target_phys_addr_t addr)
 }
 
 static inline void
-vmw_shmem_st64(target_phys_addr_t addr, uint64_t value)
+vmw_shmem_st64(hwaddr addr, uint64_t value)
 {
     VMW_SHPRN("SHMEM store64: %" PRIx64 " (value %" PRIx64 ")", addr, value);
     stq_le_phys(addr, value);

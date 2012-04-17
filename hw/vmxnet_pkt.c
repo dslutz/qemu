@@ -341,11 +341,11 @@ void vmxnet_tx_pkt_setup_vlan_header(VmxnetTxPktH pkt, uint16_t vlan)
     }
 }
 
-bool vmxnet_tx_pkt_add_raw_fragment(VmxnetTxPktH pkt, target_phys_addr_t pa,
+bool vmxnet_tx_pkt_add_raw_fragment(VmxnetTxPktH pkt, hwaddr pa,
     size_t len)
 {
     VmxnetTxPkt *p = (VmxnetTxPkt *)pkt;
-    target_phys_addr_t mapped_len = 0;
+    hwaddr mapped_len = 0;
     struct iovec *ventry;
     assert(p);
     assert(p->max_raw_frags > p->raw_frags);

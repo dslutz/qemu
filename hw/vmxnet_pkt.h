@@ -91,7 +91,7 @@ void vmxnet_tx_pkt_setup_vlan_header(VmxnetTxPktH pkt, uint16_t vlan);
  * @len:            length of fragment
  *
  */
-bool vmxnet_tx_pkt_add_raw_fragment(VmxnetTxPktH pkt, target_phys_addr_t pa,
+bool vmxnet_tx_pkt_add_raw_fragment(VmxnetTxPktH pkt, hwaddr pa,
     size_t len);
 
 /**

@@ -21,7 +21,6 @@
 #include <sys/types.h>
 #include <bswap.h>
 #include <string.h>
-#include <targphys.h>
 #include <hw/virtio-net.h>
 
 struct eth_header {
