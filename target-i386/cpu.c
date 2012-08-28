@@ -1218,6 +1218,10 @@ int cpu_x86_register(X86CPU *cpu, const char *cpu_model)
     env->cpuid_ext4_features = def->ext4_features;
     env->cpuid_7_0_ebx = def->cpuid_7_0_ebx_features;
     env->cpuid_xlevel2 = def->xlevel2;
+	env->cpuid_plevel = def->cpuid_plevel;
+	env->cpuid_pvendor1 = def->cpuid_pvendor1;
+	env->cpuid_pvendor2 = def->cpuid_pvendor2;
+	env->cpuid_pvendor3 = def->cpuid_pvendor3;
     object_property_set_int(OBJECT(cpu), (int64_t)def->tsc_khz * 1000,
                             "tsc-frequency", &error);
     if (!kvm_enabled()) {
