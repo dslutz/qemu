@@ -388,16 +388,18 @@ int kvm_arch_init_vcpu(CPUX86State *env)
     c = &cpuid_data.entries[cpuid_i++];
     memset(c, 0, sizeof(*c));
     c->function = KVM_CPUID_SIGNATURE;
-    if (!hyperv_enabled()) {
+    if (env->cpuid_plevel == 0) {
         memcpy(signature, "KVMKVMKVM\0\0\0", 12);
         c->eax = 0;
+		c->ebx = signature[0];
+		c->ecx = signature[1];
+		c->edx = signature[2];
     } else {
-        memcpy(signature, "Microsoft Hv", 12);
-        c->eax = HYPERV_CPUID_MIN;
+        c->eax = env->cpuid_plevel;
+		c->ebx = env->cpuid_pvendor1;
+		c->ecx = env->cpuid_pvendor2;
+		c->edx = env->cpuid_pvendor3;
     }
-    c->ebx = signature[0];
-    c->ecx = signature[1];
-    c->edx = signature[2];
 
     c = &cpuid_data.entries[cpuid_i++];
     memset(c, 0, sizeof(*c));
@@ -451,7 +453,18 @@ int kvm_arch_init_vcpu(CPUX86State *env)
         c->ebx = signature[0];
         c->ecx = signature[1];
         c->edx = signature[2];
-    }
+    } else if (env->cpuid_plevel > 0) {
+		for (i = 0x40000001; i < env->cpuid_plevel; i++) {
+			c = &cpuid_data.entries[cpuid_i++];
+			memset(c, 0, sizeof(*c));
+			c->function = i;
+		}
+		c = &cpuid_data.entries[cpuid_i++];
+		memset(c, 0, sizeof(*c));
+		c->function = env->cpuid_plevel;
+		c->eax = 0x001cfdf6;
+		c->ebx = 0x000101d0;
+	}
 
     has_msr_async_pf_en = c->eax & (1 << KVM_FEATURE_ASYNC_PF);
 

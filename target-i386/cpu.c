@@ -243,6 +243,11 @@ typedef struct x86_def_t {
     uint32_t xlevel2;
     /* The feature bits on CPUID[EAX=7,ECX=0].EBX */
     uint32_t cpuid_7_0_ebx_features;
+    /* Paravirtualization CPUIDs */
+    uint32_t cpuid_plevel;
+    uint32_t cpuid_pvendor1;
+    uint32_t cpuid_pvendor2;
+    uint32_t cpuid_pvendor3;
 } x86_def_t;
 
 #define I486_FEATURES (CPUID_FP87 | CPUID_VME | CPUID_PSE)
@@ -859,6 +864,17 @@ static void x86_cpuid_set_tsc_freq(Object *obj, Visitor *v, void *opaque,
     cpu->env.tsc_khz = value / 1000;
 }
 
+static void x86_cpuid_set_paravirtualization(x86_def_t *x86_cpu_def, uint32_t level, const char * who)
+{
+	uint32_t signature[3];
+
+	memcpy(signature, who, 12);
+	x86_cpu_def->cpuid_plevel = level;
+	x86_cpu_def->cpuid_pvendor1 = signature[0];
+	x86_cpu_def->cpuid_pvendor2 = signature[1];
+	x86_cpu_def->cpuid_pvendor3 = signature[2];
+}
+
 static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
 {
     unsigned int i;
@@ -982,6 +998,10 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
                 x86_cpu_def->tsc_khz = tsc_freq / 1000;
             } else if (!strcmp(featurestr, "hv_spinlocks")) {
                 char *err;
+				if (x86_cpu_def->cpuid_plevel > 0) {
+					fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+					goto error;
+				}
                 numvalue = strtoul(val, &err, 0);
                 if (!*val || *err) {
                     fprintf(stderr, "bad numerical value %s\n", val);
@@ -996,9 +1016,23 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
             check_cpuid = 1;
         } else if (!strcmp(featurestr, "enforce")) {
             check_cpuid = enforce_cpuid = 1;
+        } else if (!strcmp(featurestr, "vmware")) {
+			if (hyperv_enabled()) {
+				fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+				goto error;
+			}
+			x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000010, "VMwareVMware");
         } else if (!strcmp(featurestr, "hv_relaxed")) {
+			if (x86_cpu_def->cpuid_plevel > 0) {
+				fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+				goto error;
+			}
             hyperv_enable_relaxed_timing(true);
         } else if (!strcmp(featurestr, "hv_vapic")) {
+			if (x86_cpu_def->cpuid_plevel > 0) {
+				fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+				goto error;
+			}
             hyperv_enable_vapic_recommended(true);
         } else {
             fprintf(stderr, "feature string `%s' not in format (+feature|-feature|feature=xyz)\n", featurestr);
@@ -1006,6 +1040,9 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
         }
         featurestr = strtok(NULL, ",");
     }
+    if (hyperv_enabled()) {
+		x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000005, "Microsoft Hv");
+	}
     x86_cpu_def->features |= plus_features;
     x86_cpu_def->ext_features |= plus_ext_features;
     x86_cpu_def->ext2_features |= plus_ext2_features;
@@ -1379,6 +1416,16 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
                 index =  env->cpuid_xlevel;
             }
         }
+    } else if (index & 0x40000000) {
+		if (env->cpuid_plevel > 0) {
+			/* Handle Paravirtualization CPUIDs */
+			if (index > env->cpuid_plevel) {
+				index = env->cpuid_plevel;
+			}
+		} else {
+			if (index > env->cpuid_level)
+				index = env->cpuid_level;
+		}
     } else {
         if (index > env->cpuid_level)
             index = env->cpuid_level;
@@ -1516,6 +1563,12 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
             *ecx = 0;
             *edx = 0;
         }
+        break;
+    case 0x40000000:
+        *eax = env->cpuid_plevel;
+        *ebx = env->cpuid_pvendor1;
+        *edx = env->cpuid_pvendor2;
+        *ecx = env->cpuid_pvendor3;
         break;
     case 0x80000000:
         *eax = env->cpuid_xlevel;

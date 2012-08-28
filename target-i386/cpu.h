@@ -745,6 +745,11 @@ typedef struct CPUX86State {
     uint32_t cpuid_ext4_features;
     /* Flags from CPUID[EAX=7,ECX=0].EBX */
     uint32_t cpuid_7_0_ebx;
+	/* Paravirtualization CPUIDs */
+    uint32_t cpuid_plevel;
+    uint32_t cpuid_pvendor1;
+    uint32_t cpuid_pvendor2;
+    uint32_t cpuid_pvendor3;
 
     /* MTRRs */
     uint64_t mtrr_fixed[11];
