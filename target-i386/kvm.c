@@ -454,7 +454,9 @@ int kvm_arch_init_vcpu(CPUX86State *env)
         c->ecx = signature[1];
         c->edx = signature[2];
     } else if (env->cpuid_plevel > 0) {
-		for (i = 0x40000001; i < env->cpuid_plevel; i++) {
+		c->eax = 0;
+
+		for (i = KVM_CPUID_FEATURES + 1; i < env->cpuid_plevel; i++) {
 			c = &cpuid_data.entries[cpuid_i++];
 			memset(c, 0, sizeof(*c));
 			c->function = i;
