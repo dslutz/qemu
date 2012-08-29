@@ -1006,7 +1006,7 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
                 char *err;
 
                 if (pv_enabled) {
-                    fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+                    fprintf(stderr, "Only one of pv= or hv_* can be used at one time.\n");
                     goto error;
                 }
                 numvalue = strtoul(val, &err, 0);
@@ -1016,6 +1016,29 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
                 }
                 hv_enabled = true;
                 hyperv_set_spinlock_retries(numvalue);
+            } else if (!strcmp(featurestr, "pv")) {
+                if (hv_enabled) {
+                    fprintf(stderr, "Only one of pv= or hv_* can be used at one time.\n");
+                    goto error;
+                }
+                pv_enabled = true;
+                if (!strcmp(val, "vmware")) {
+                    x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000010, "VMwareVMware");
+                    x86_cpu_def->cpuid_pnext = 0x40000010;
+                    x86_cpu_def->cpuid_pnext_a = 0x001cfdf6;
+                    x86_cpu_def->cpuid_pnext_b = 0x000101d0;
+                    minus_kvm_features = ~0;    /* Expected to be zero... */
+                } else if (!strcmp(val, "vmware3")) {
+                    x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000002, "VMwareVMware");
+                    minus_kvm_features = ~0;    /* Expected to be zero... */
+                } else if (!strcmp(val, "xen")) {
+                    x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000002, "XenVMMXenVMM");
+                } else if (!strcmp(val, "kvm")) {
+                    x86_cpuid_set_paravirtualization(x86_cpu_def, 0, "KVMKVMKVM\0\0\0");
+                } else {
+                    fprintf(stderr, "unknown paravirtualization (pv=%s)\n", val);
+                    goto error;
+                }
             } else {
                 fprintf(stderr, "unrecognized feature %s\n", featurestr);
                 goto error;
@@ -1024,27 +1047,16 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
             check_cpuid = 1;
         } else if (!strcmp(featurestr, "enforce")) {
             check_cpuid = enforce_cpuid = 1;
-        } else if (!strcmp(featurestr, "vmware")) {
-            if (hv_enabled) {
-                fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
-                goto error;
-            }
-            pv_enabled = true;
-            x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000010, "VMwareVMware");
-            x86_cpu_def->cpuid_pnext = 0x40000010;
-            x86_cpu_def->cpuid_pnext_a = 0x001cfdf6;
-            x86_cpu_def->cpuid_pnext_b = 0x000101d0;
-            minus_kvm_features = ~0;    /* Expected to be zero... */
         } else if (!strcmp(featurestr, "hv_relaxed")) {
             if (pv_enabled) {
-                fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+                fprintf(stderr, "Only one of pv= or hv_* can be used at one time.\n");
                 goto error;
             }
             hv_enabled = true;
             hyperv_enable_relaxed_timing(true);
         } else if (!strcmp(featurestr, "hv_vapic")) {
             if (pv_enabled) {
-                fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
+                fprintf(stderr, "Only one of pv= or hv_* can be used at one time.\n");
                 goto error;
             }
             hv_enabled = true;
