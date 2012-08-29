@@ -1571,8 +1571,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
     case 0x40000000:
         *eax = env->cpuid_plevel;
         *ebx = env->cpuid_pvendor1;
-        *edx = env->cpuid_pvendor2;
-        *ecx = env->cpuid_pvendor3;
+        *ecx = env->cpuid_pvendor2;
+        *edx = env->cpuid_pvendor3;
         break;
     case 0x80000000:
         *eax = env->cpuid_xlevel;
