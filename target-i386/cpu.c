@@ -1055,9 +1055,11 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
         }
         featurestr = strtok(NULL, ",");
     }
+#ifdef CONFIG_KVM
     if (hv_enabled) {
-        x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000005, "Microsoft Hv");
+        x86_cpuid_set_paravirtualization(x86_cpu_def, HYPERV_CPUID_MIN, "Microsoft Hv");
     }
+#endif
     x86_cpu_def->features |= plus_features;
     x86_cpu_def->ext_features |= plus_ext_features;
     x86_cpu_def->ext2_features |= plus_ext2_features;
