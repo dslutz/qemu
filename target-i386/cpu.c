@@ -886,6 +886,8 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
 
     char *s = g_strdup(cpu_model);
     char *featurestr, *name = strtok(s, ",");
+    bool hv_enabled = false;
+    bool pv_enabled = false;
     /* Features to be added*/
     uint32_t plus_features = 0, plus_ext_features = 0;
     uint32_t plus_ext2_features = 0, plus_ext3_features = 0;
@@ -1003,7 +1005,7 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
             } else if (!strcmp(featurestr, "hv_spinlocks")) {
                 char *err;
 
-                if (x86_cpu_def->cpuid_plevel > 0) {
+                if (pv_enabled) {
                     fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
                     goto error;
                 }
@@ -1012,6 +1014,7 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
                     fprintf(stderr, "bad numerical value %s\n", val);
                     goto error;
                 }
+                hv_enabled = true;
                 hyperv_set_spinlock_retries(numvalue);
             } else {
                 fprintf(stderr, "unrecognized feature %s\n", featurestr);
@@ -1022,25 +1025,29 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
         } else if (!strcmp(featurestr, "enforce")) {
             check_cpuid = enforce_cpuid = 1;
         } else if (!strcmp(featurestr, "vmware")) {
-            if (hyperv_enabled()) {
+            if (hv_enabled) {
                 fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
                 goto error;
             }
+            pv_enabled = true;
             x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000010, "VMwareVMware");
             x86_cpu_def->cpuid_pnext = 0x40000010;
             x86_cpu_def->cpuid_pnext_a = 0x001cfdf6;
             x86_cpu_def->cpuid_pnext_b = 0x000101d0;
+            minus_kvm_features = ~0;    /* Expected to be zero... */
         } else if (!strcmp(featurestr, "hv_relaxed")) {
-            if (x86_cpu_def->cpuid_plevel > 0) {
+            if (pv_enabled) {
                 fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
                 goto error;
             }
+            hv_enabled = true;
             hyperv_enable_relaxed_timing(true);
         } else if (!strcmp(featurestr, "hv_vapic")) {
-            if (x86_cpu_def->cpuid_plevel > 0) {
+            if (pv_enabled) {
                 fprintf(stderr, "Only one of vmware or hv_* can be used at one time.\n");
                 goto error;
             }
+            hv_enabled = true;
             hyperv_enable_vapic_recommended(true);
         } else {
             fprintf(stderr, "feature string `%s' not in format (+feature|-feature|feature=xyz)\n", featurestr);
@@ -1048,7 +1055,7 @@ static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
         }
         featurestr = strtok(NULL, ",");
     }
-    if (hyperv_enabled()) {
+    if (hv_enabled) {
         x86_cpuid_set_paravirtualization(x86_cpu_def, 0x40000005, "Microsoft Hv");
     }
     x86_cpu_def->features |= plus_features;
