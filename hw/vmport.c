@@ -31,8 +31,9 @@
 
 #define VMPORT_CMD_GETVERSION 0x0a
 #define VMPORT_CMD_GETRAMSIZE 0x14
+#define VMPORT_CMD_GETHZ      0x2d
 
-#define VMPORT_ENTRIES 0x2c
+#define VMPORT_ENTRIES 0x2e
 #define VMPORT_MAGIC   0x564D5868
 
 typedef struct _VMPortState
@@ -102,6 +103,25 @@ static uint32_t vmport_cmd_ram_size(void *opaque, uint32_t addr)
     return ram_size;
 }
 
+static uint32_t vmport_cmd_get_hz(void *opaque, uint32_t addr)
+{
+    CPUX86State *env = cpu_single_env;
+    uint64_t value;
+    const uint32_t apicHz = 1000000000L;
+
+    value = (uint64_t)env->tsc_khz * 1000;
+    if (value) {
+        /* apic-frequency (bus speed) */
+        env->regs[R_ECX] = apicHz;
+        /* High part of tsc-frequency */
+        env->regs[R_EBX] = (uint32_t)(value >> 32);
+        /* Low part of tsc-frequency */
+        return (uint32_t)value;
+    } else {
+        return env->regs[R_EAX];
+    }
+}
+
 /* vmmouse helpers */
 void vmmouse_get_data(uint32_t *data)
 {
@@ -141,6 +161,7 @@ static int vmport_initfn(ISADevice *dev)
     /* Register some generic port commands */
     vmport_register(VMPORT_CMD_GETVERSION, vmport_cmd_get_version, NULL);
     vmport_register(VMPORT_CMD_GETRAMSIZE, vmport_cmd_ram_size, NULL);
+    vmport_register(VMPORT_CMD_GETHZ, vmport_cmd_get_hz, NULL);
     return 0;
 }
 
