@@ -2612,6 +2612,11 @@ int main(int argc, char **argv, char **envp)
                 /* hw initialization will check this */
                 cpu_model = optarg;
                 break;
+            case QEMU_OPTION_hostbridge:
+                if (!i440fx_set_hostbridge_device_id(optarg)) {
+                    exit(1);
+                }
+                break;
             case QEMU_OPTION_hda:
                 {
                     char buf[256];

@@ -33,6 +33,7 @@ void audio_init(ISABus *isa_bus, PCIBus *pci_bus);
 int tcg_available(void);
 int kvm_available(void);
 int xen_available(void);
+int i440fx_set_hostbridge_device_id(const char *optarg);
 
 CpuDefinitionInfoList *arch_query_cpu_definitions(Error **errp);
 
