@@ -85,6 +85,7 @@ struct PCII440FXState {
     uint8_t smm_enabled;
 };
 
+uint16_t hostbridge_device_id = PCI_DEVICE_ID_INTEL_82441; /* Default */
 
 #define I440FX_PAM      0x59
 #define I440FX_PAM_SIZE 7
@@ -578,7 +579,8 @@ static void i440fx_class_init(ObjectClass *klass, void *data)
     k->init = i440fx_initfn;
     k->config_write = i440fx_write_config;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
-    k->device_id = PCI_DEVICE_ID_INTEL_82441;
+    /* Either PCI_DEVICE_ID_INTEL_82441 or PCI_DEVICE_ID_INTEL_82443BX_0 */
+    k->device_id = hostbridge_device_id;
     k->revision = 0x02;
     k->class_id = PCI_CLASS_BRIDGE_HOST;
     dc->desc = "Host bridge";
@@ -617,5 +619,6 @@ static void i440fx_register_types(void)
     type_register_static(&piix3_xen_info);
     type_register_static(&i440fx_pcihost_info);
 }
+
 
 type_init(i440fx_register_types)

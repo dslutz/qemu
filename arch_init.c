@@ -35,6 +35,7 @@
 #include "audio/audio.h"
 #include "hw/pc.h"
 #include "hw/pci.h"
+#include "hw/pci_host.h"
 #include "hw/audiodev.h"
 #include "kvm.h"
 #include "migration.h"
@@ -1045,6 +1046,24 @@ void do_smbios_option(const char *optarg)
         exit(1);
     }
 #endif
+}
+
+/***********************************************************/
+/* PC-only: 440fx/bx hostbridge device ID */
+/***********************************************************/
+int i440fx_set_hostbridge_device_id(const char *optarg)
+{
+#ifdef TARGET_I386
+    if (!strncmp(optarg, "82443", 5)) {
+        hostbridge_device_id = PCI_DEVICE_ID_INTEL_82443BX_0;
+        return 1;
+    }
+    if (!strncmp(optarg, "82441", 5)) {
+        hostbridge_device_id = PCI_DEVICE_ID_INTEL_82441;
+        return 1;
+    }
+#endif
+    return 0;
 }
 
 void cpudef_init(void)

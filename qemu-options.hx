@@ -1261,6 +1261,16 @@ Specify SMBIOS type 0 fields
 Specify SMBIOS type 1 fields
 ETEXI
 
+DEF("hostbridge", HAS_ARG, QEMU_OPTION_hostbridge, \
+    "-hostbridge 82441|82443\n"
+    "                selects emulated hostbridge (default: 82441)\n",
+    QEMU_ARCH_I386)
+STEXI
+@item -hostbridge @option{82441}|@option{82443}
+@findex -hostbridge
+Select the emulated host bridge by Chipset. Supported machine chipsets are: @option{82441}, @option{82443}.
+ETEXI
+
 DEFHEADING()
 STEXI
 @end table
