@@ -68,6 +68,7 @@ static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
  *  Others never tested
  */
 enum { E1000_DEVID = E1000_DEV_ID_82540EM };
+enum { E1000_VMW_DEVID = E1000_DEV_ID_82545EM_COPPER };
 
 /*
  * May need to specify additional MAC-to-PHY entries --
@@ -1187,6 +1188,17 @@ static const uint16_t e1000_eeprom_template[64] = {
     0xffff, 0xffff, 0xffff, 0xffff,      0xffff, 0xffff,      0xffff, 0x0000,
 };
 
+static const uint16_t e1000_vmw_eeprom_template[64] = {
+    0x0000, 0x0000, 0x0000, 0x0000,      0xffff, 0x0000,      0x0000, 0x0000,
+    0x3000, 0x1000, 0x6403, E1000_VMW_DEVID, 0x8086, E1000_VMW_DEVID, 0x8086, 0x3040,
+    0x0008, 0x2000, 0x7e14, 0x0048,      0x1000, 0x00d8,      0x0000, 0x2700,
+    0x6cc9, 0x3150, 0x0722, 0x040b,      0x0984, 0x0000,      0xc000, 0x0706,
+    0x1008, 0x0000, 0x0f04, 0x7fff,      0x4d01, 0xffff,      0xffff, 0xffff,
+    0xffff, 0xffff, 0xffff, 0xffff,      0xffff, 0xffff,      0xffff, 0xffff,
+    0x0100, 0x4000, 0x121c, 0xffff,      0xffff, 0xffff,      0xffff, 0xffff,
+    0xffff, 0xffff, 0xffff, 0xffff,      0xffff, 0xffff,      0xffff, 0x0000,
+};
+
 /* PCI interface */
 
 static void
@@ -1257,8 +1269,14 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
 
-    memmove(d->eeprom_data, e1000_eeprom_template,
-        sizeof e1000_eeprom_template);
+    if (PCI_DEVICE_GET_CLASS(pci_dev)->device_id == E1000_VMW_DEVID) {
+        memmove(d->eeprom_data, e1000_vmw_eeprom_template,
+                sizeof e1000_vmw_eeprom_template);
+    } else {
+        memmove(d->eeprom_data, e1000_eeprom_template,
+                sizeof e1000_eeprom_template);
+    }
+
     qemu_macaddr_default_if_unset(&d->conf.macaddr);
     macaddr = d->conf.macaddr.a;
     for (i = 0; i < 3; i++)
@@ -1322,3 +1340,49 @@ static void e1000_register_types(void)
 }
 
 type_init(e1000_register_types)
+
+/*
+    VMWare support: We introduce a subclass ("e1000_vmw") of e1000
+    whose PCI device ID is 0x100F instead of 0x100E.  The NIC "model"
+    name for this subclass is "e1000_vmw".  Note that not all of the
+    structures, statics and methods in this file have been duplicated
+    for use by the e1000_vmw subclass.  We may, in the future, need to
+    create duplicate structures or other code to handle PHY_ID2_INIT,
+    phy_reg_init, e1000_reset, and set_interrupt_cause.
+*/
+
+#define TYPE_E1000 "e1000" /* Need to declare the parent class */
+
+static void e1000_vmw_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->init = pci_e1000_init;
+    k->exit = pci_e1000_uninit;
+    k->romfile = "pxe-e1000.rom";
+    k->vendor_id = PCI_VENDOR_ID_INTEL;
+    k->device_id = E1000_VMW_DEVID;
+    k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+    k->subsystem_id = PCI_DEVICE_ID_VMWARE_NET2;
+    k->revision = 0x03;
+    k->class_id = PCI_CLASS_NETWORK_ETHERNET;
+    dc->desc = "Intel Gigabit Ethernet";
+    dc->reset = qdev_e1000_reset;
+    dc->vmsd = &vmstate_e1000;
+    dc->props = e1000_properties;
+}
+
+static TypeInfo e1000_vmw_info = {
+    .name          = "e1000_vmw",
+    .parent        = TYPE_E1000,
+    .instance_size = sizeof(E1000State),
+    .class_init    = e1000_vmw_class_init,
+};
+
+static void e1000_vmw_register_types(void)
+{
+    type_register_static(&e1000_vmw_info);
+}
+
+type_init(e1000_vmw_register_types)
