@@ -469,6 +469,11 @@ M: Paul Brook <paul@codesourcery.com>
 S: Odd Fixes
 F: hw/lsi53c895a.c
 
+LSI53C1030, SAS1068, SAS1068e
+M: Don Slutz <Don@CloudSwitch.com>
+S: Supported
+F: hw/lsisas1068.c
+
 USB
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
