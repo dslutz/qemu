@@ -50,6 +50,10 @@
 
 #define PCI_VENDOR_ID_LSI_LOGIC          0x1000
 #define PCI_DEVICE_ID_LSI_53C895A        0x0012
+#define PCI_DEVICE_ID_LSI_53C1030        0x0030
+#define PCI_DEVICE_ID_LSI_SAS1064        0x0050
+#define PCI_DEVICE_ID_LSI_SAS1068        0x0054
+#define PCI_DEVICE_ID_LSI_SAS1068E       0x0058
 #define PCI_DEVICE_ID_LSI_SAS1078        0x0060
 
 #define PCI_VENDOR_ID_DEC                0x1011

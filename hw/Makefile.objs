@@ -117,6 +117,7 @@ common-obj-$(CONFIG_OPENCORES_ETH) += opencores_eth.o
 # SCSI layer
 common-obj-$(CONFIG_LSI_SCSI_PCI) += lsi53c895a.o
 common-obj-$(CONFIG_MEGASAS_SCSI_PCI) += megasas.o
+common-obj-$(CONFIG_LSISAS1068_SCSI_PCI) += lsisas1068.o
 common-obj-$(CONFIG_ESP) += esp.o
 common-obj-$(CONFIG_ESP_PCI) += esp-pci.o
 

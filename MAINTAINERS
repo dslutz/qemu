@@ -524,6 +524,11 @@ S: Maintained
 F: hw/ssi.*
 F: hw/m25p80.c
 
+LSI53C1030, SAS1068, SAS1068e
+M: Don Slutz <Don@CloudSwitch.com>
+S: Supported
+F: hw/lsisas1068.c
+
 USB
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
