@@ -393,13 +393,15 @@ int kvm_arch_init_vcpu(CPUX86State *env)
     if (env->cpuid_hv_level == 0) {
         memcpy(signature, "KVMKVMKVM\0\0\0", 12);
         c->eax = 0;
+        c->ebx = signature[0];
+        c->ecx = signature[1];
+        c->edx = signature[2];
     } else {
-        memcpy(signature, "Microsoft Hv", 12);
         c->eax = env->cpuid_hv_level;
+        c->ebx = env->cpuid_hv_vendor1;
+        c->ecx = env->cpuid_hv_vendor2;
+        c->edx = env->cpuid_hv_vendor3;
     }
-    c->ebx = signature[0];
-    c->ecx = signature[1];
-    c->edx = signature[2];
 
     c = &cpuid_data.entries[cpuid_i++];
     memset(c, 0, sizeof(*c));
