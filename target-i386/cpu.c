@@ -1248,7 +1248,12 @@ static char *x86_cpuid_get_hv_vendor(Object *obj, Error **errp)
                env->cpuid_hv_level == CPUID_HV_LEVEL_XEN) {
         pstrcpy(value, sizeof(value), "xen");
     } else if (!strcmp(value, CPUID_HV_VENDOR_KVM) &&
-               env->cpuid_hv_level == 0) {
+#if defined(CONFIG_KVM)
+               env->cpuid_hv_level == KVM_CPUID_FEATURES
+#else
+               env->cpuid_hv_level == 0
+#endif
+	    ) {
         pstrcpy(value, sizeof(value), "kvm");
     }
     return value;
@@ -1281,6 +1286,11 @@ static void x86_cpuid_set_hv_vendor(Object *obj, const char *value,
         }
         pstrcpy(adj_value, sizeof(adj_value), CPUID_HV_VENDOR_XEN);
     } else if (!strcmp(value, "kvm")) {
+#if defined(CONFIG_KVM)
+        if (env->cpuid_hv_level == 0) {
+            env->cpuid_hv_level = KVM_CPUID_FEATURES;
+        }
+#endif
         pstrcpy(adj_value, sizeof(adj_value), CPUID_HV_VENDOR_KVM);
     } else {
         pstrcpy(adj_value, sizeof(adj_value), value);
