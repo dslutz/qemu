@@ -392,7 +392,7 @@ int kvm_arch_init_vcpu(CPUX86State *env)
     c->function = KVM_CPUID_SIGNATURE;
     if (env->cpuid_hv_level == 0) {
         memcpy(signature, "KVMKVMKVM\0\0\0", 12);
-        c->eax = 0;
+        c->eax = KVM_CPUID_FEATURES;
         c->ebx = signature[0];
         c->ecx = signature[1];
         c->edx = signature[2];
