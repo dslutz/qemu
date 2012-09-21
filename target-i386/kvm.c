@@ -392,10 +392,18 @@ int kvm_arch_init_vcpu(CPUX86State *env)
     c->function = KVM_CPUID_SIGNATURE;
     if (!hyperv_enabled()) {
         memcpy(signature, "KVMKVMKVM\0\0\0", 12);
-        c->eax = 0;
+        if (!env->cpuid_hv_level_set) {
+            c->eax = 0;
+        } else {
+            c->eax = env->cpuid_hv_level;
+        }
     } else {
         memcpy(signature, "Microsoft Hv", 12);
-        c->eax = HYPERV_CPUID_MIN;
+        if (!env->cpuid_hv_level_set) {
+            c->eax = HYPERV_CPUID_MIN;
+        } else {
+            c->eax = env->cpuid_hv_level;
+        }
     }
     c->ebx = signature[0];
     c->ecx = signature[1];
