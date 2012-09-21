@@ -778,6 +778,7 @@ typedef struct CPUX86State {
     uint32_t cpuid_apic_id;
     bool cpuid_vendor_override;
     bool cpuid_hv_level_set;
+    bool cpuid_hv_vendor_set;
     /* Store the results of Centaur's CPUID instructions */
     uint32_t cpuid_xlevel2;
     uint32_t cpuid_ext4_features;
@@ -785,6 +786,9 @@ typedef struct CPUX86State {
     uint32_t cpuid_7_0_ebx;
     /* Hypervisor CPUIDs */
     uint32_t cpuid_hv_level;
+    uint32_t cpuid_hv_vendor1;
+    uint32_t cpuid_hv_vendor2;
+    uint32_t cpuid_hv_vendor3;
 
     /* MTRRs */
     uint64_t mtrr_fixed[11];
