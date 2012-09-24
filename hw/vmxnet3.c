@@ -279,7 +279,7 @@ typedef struct {
         VmxnetTxPktH tx_pkt;
         uint32_t offload_mode;
         uint32_t cso_or_gso_size;
-        uint16 tci;
+        uint16_t tci;
         bool needs_vlan;
 
         VmxnetRxPktH rx_pkt;
@@ -1678,7 +1678,7 @@ vmxnet3_io_bar1_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 static int
-vmxnet3_can_receive(VLANClientState *nc)
+vmxnet3_can_receive(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     return s->device_active &&
@@ -1758,7 +1758,7 @@ vmxnet3_rx_filter_may_indicate(VMXNET3State *s, const void *data,
 }
 
 static ssize_t
-vmxnet3_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
+vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     size_t bytes_indicated;
@@ -1793,13 +1793,13 @@ vmxnet3_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
     return bytes_indicated;
 }
 
-static void vmxnet3_cleanup(VLANClientState *nc)
+static void vmxnet3_cleanup(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     s->nic = NULL;
 }
 
-static void vmxnet3_set_link_status(VLANClientState *nc)
+static void vmxnet3_set_link_status(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
 
@@ -1814,7 +1814,7 @@ static void vmxnet3_set_link_status(VLANClientState *nc)
 }
 
 static NetClientInfo net_vmxnet3_info = {
-        .type = NET_CLIENT_TYPE_NIC,
+        .type = NET_CLIENT_OPTIONS_KIND_NIC,
         .size = sizeof(NICState),
         .can_receive = vmxnet3_can_receive,
         .receive = vmxnet3_receive,
@@ -1824,10 +1824,10 @@ static NetClientInfo net_vmxnet3_info = {
 
 static bool vmxnet3_peer_has_vnet_hdr(VMXNET3State *s)
 {
-    VLANClientState *peer = s->nic->nc.peer;
+    NetClientState *peer = s->nic->nc.peer;
 
     if ((NULL != peer)                              &&
-        (NET_CLIENT_TYPE_TAP == peer->info->type)   &&
+        (NET_CLIENT_OPTIONS_KIND_TAP == peer->info->type)   &&
         tap_has_vnet_hdr(peer)) {
         return true;
     }
@@ -1910,6 +1910,7 @@ vmxnet3_use_msix_vectors(VMXNET3State *s, int num_vectors)
 static bool
 vmxnet3_init_msix(VMXNET3State *s)
 {
+#ifdef USE_MSIX
     int res = msix_init(&s->dev, VMXNET3_MAX_INTRS,
                         &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0);
     if (0 > res) {
@@ -1924,6 +1925,10 @@ vmxnet3_init_msix(VMXNET3State *s)
             s->msix_used = true;
         }
     }
+#else
+    VMW_WRPRN("Failed to initialize MSI-X, Not configured");
+    s->msix_used = false;
+#endif
     return s->msix_used;
 }
 
@@ -1932,7 +1937,7 @@ vmxnet3_cleanup_msix(VMXNET3State *s)
 {
     if (s->msix_used) {
         msix_vector_unuse(&s->dev, VMXNET3_MAX_INTRS);
-        msix_uninit(&s->dev, &s->msix_bar);
+        msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
     }
 }
 
@@ -2048,7 +2053,7 @@ static int vmxnet3_pci_init(PCIDevice *dev)
 }
 
 
-static int vmxnet3_pci_uninit(PCIDevice *dev)
+static void vmxnet3_pci_uninit(PCIDevice *dev)
 {
     VMXNET3State *s = DO_UPCAST(VMXNET3State, dev, dev);
 
@@ -2065,8 +2070,6 @@ static int vmxnet3_pci_uninit(PCIDevice *dev)
     memory_region_destroy(&s->bar0);
     memory_region_destroy(&s->bar1);
     memory_region_destroy(&s->msix_bar);
-
-    return 0;
 }
 
 static void vmxnet3_qdev_reset(DeviceState *dev)
@@ -2113,11 +2116,7 @@ static const VMStateDescription vmxtate_vmxnet3_mcast_list = {
 
 static void vmxnet3_get_ring_from_file(QEMUFile *f, Vmxnet3Ring *r)
 {
-#if TARGET_PHYS_ADDR_BITS == 64
     r->pa = qemu_get_be64(f);
-#else
-    r->pa = qemu_get_be32(f);
-#endif
     r->size = qemu_get_be32(f);
     r->cell_size = qemu_get_be32(f);
     r->next = qemu_get_be32(f);
@@ -2126,11 +2125,7 @@ static void vmxnet3_get_ring_from_file(QEMUFile *f, Vmxnet3Ring *r)
 
 static void vmxnet3_put_ring_to_file(QEMUFile *f, Vmxnet3Ring *r)
 {
-#if TARGET_PHYS_ADDR_BITS == 64
     qemu_put_be64(f, r->pa);
-#else
-    qemu_put_be32(f, r->pa);
-#endif
     qemu_put_be32(f, r->size);
     qemu_put_be32(f, r->cell_size);
     qemu_put_be32(f, r->next);
@@ -2175,11 +2170,7 @@ static int vmxnet3_get_txq_descr(QEMUFile *f, void *pv, size_t size)
     vmxnet3_get_ring_from_file(f, &r->comp_ring);
     r->intr_idx = qemu_get_byte(f);
 
-#if TARGET_PHYS_ADDR_BITS == 64
     r->tx_stats_pa = qemu_get_be64(f);
-#else
-    r->tx_stats_pa = qemu_get_be32(f);
-#endif
 
     vmxnet3_get_tx_stats_from_file(f, &r->txq_stats);
 
@@ -2193,11 +2184,7 @@ static void vmxnet3_put_txq_descr(QEMUFile *f, void *pv, size_t size)
     vmxnet3_put_ring_to_file(f, &r->tx_ring);
     vmxnet3_put_ring_to_file(f, &r->comp_ring);
     qemu_put_byte(f, r->intr_idx);
-#if TARGET_PHYS_ADDR_BITS == 64
     qemu_put_be64(f, r->tx_stats_pa);
-#else
-    qemu_put_be32(f, r->tx_stats_pa);
-#endif
     vmxnet3_put_tx_stats_to_file(f, &r->txq_stats);
 }
 
@@ -2248,11 +2235,7 @@ static int vmxnet3_get_rxq_descr(QEMUFile *f, void *pv, size_t size)
 
     vmxnet3_get_ring_from_file(f, &r->comp_ring);
     r->intr_idx = qemu_get_byte(f);
-#if TARGET_PHYS_ADDR_BITS == 64
     r->rx_stats_pa = qemu_get_be64(f);
-#else
-    r->rx_stats_pa = qemu_get_be32(f);
-#endif
 
     vmxnet3_get_rx_stats_from_file(f, &r->rxq_stats);
 
@@ -2270,11 +2253,7 @@ static void vmxnet3_put_rxq_descr(QEMUFile *f, void *pv, size_t size)
 
     vmxnet3_put_ring_to_file(f, &r->comp_ring);
     qemu_put_byte(f, r->intr_idx);
-#if TARGET_PHYS_ADDR_BITS == 64
     qemu_put_be64(f, r->rx_stats_pa);
-#else
-    qemu_put_be32(f, r->rx_stats_pa);
-#endif
     vmxnet3_put_rx_stats_to_file(f, &r->rxq_stats);
 }
 
@@ -2288,7 +2267,7 @@ static int vmxnet3_post_load(void *opaque, int version_id)
     if (s->msix_used) {
         if  (!vmxnet3_use_msix_vectors(s, VMXNET3_MAX_INTRS)) {
             VMW_WRPRN("Failed to re-use MSI-X vectors");
-            msix_uninit(&s->dev, &s->msix_bar);
+            msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
             s->msix_used = false;
             return -1;
         }
@@ -2356,13 +2335,8 @@ static const VMStateDescription vmstate_vmxnet3 = {
             VMSTATE_UINT32(last_command, VMXNET3State),
             VMSTATE_UINT32(link_status_and_speed, VMXNET3State),
             VMSTATE_UINT32(temp_mac, VMXNET3State),
-#if TARGET_PHYS_ADDR_BITS == 64
             VMSTATE_UINT64(drv_shmem, VMXNET3State),
             VMSTATE_UINT64(temp_shared_guest_driver_memory, VMXNET3State),
-#else
-            VMSTATE_UINT32(drv_shmem, VMXNET3State),
-            VMSTATE_UINT32(temp_shared_guest_driver_memory, VMXNET3State),
-#endif
 
             VMSTATE_ARRAY(txq_descr, VMXNET3State,
                 VMXNET3_DEVICE_MAX_TX_QUEUES, 0, txq_descr_info,

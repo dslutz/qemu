@@ -140,11 +140,11 @@ void vmxnet_tx_pkt_reset(VmxnetTxPktH pkt);
  * Send packet to qemu. handles sw offloads if vhdr is not supported.
  *
  * @pkt:            private handle.
- * @vc:             VLANClientState.
+ * @vc:             NetClientState.
  * @ret: number of bytes sent.
  *
  */
-size_t vmxnet_tx_pkt_send(VmxnetTxPktH pkt, VLANClientState *vc);
+size_t vmxnet_tx_pkt_send(VmxnetTxPktH pkt, NetClientState *vc);
 
 /**
  * parse raw packet data and analyze offload requirements.
