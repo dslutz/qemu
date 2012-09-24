@@ -1193,6 +1193,12 @@ static void x86_cpuid_set_hv_level(Object *obj, Visitor *v, void *opaque,
 }
 
 #if !defined(CONFIG_USER_ONLY)
+static void x86_set_hyperv(Object *obj, Error **errp)
+{
+    object_property_set_int(obj, CPUID_HV_LEVEL_HYPERV,
+                            "hypervisor-level", errp);
+}
+
 static void x86_get_hv_spinlocks(Object *obj, Visitor *v, void *opaque,
                                  const char *name, Error **errp)
 {
@@ -1215,6 +1221,7 @@ static void x86_set_hv_spinlocks(Object *obj, Visitor *v, void *opaque,
         return;
     }
     hyperv_set_spinlock_retries(value);
+    x86_set_hyperv(obj, errp);
 }
 
 static void x86_get_hv_relaxed(Object *obj, Visitor *v, void *opaque,
@@ -1235,6 +1242,7 @@ static void x86_set_hv_relaxed(Object *obj, Visitor *v, void *opaque,
         return;
     }
     hyperv_enable_relaxed_timing(value);
+    x86_set_hyperv(obj, errp);
 }
 
 static void x86_get_hv_vapic(Object *obj, Visitor *v, void *opaque,
@@ -1255,6 +1263,7 @@ static void x86_set_hv_vapic(Object *obj, Visitor *v, void *opaque,
         return;
     }
     hyperv_enable_vapic_recommended(value);
+    x86_set_hyperv(obj, errp);
 }
 #endif
 
