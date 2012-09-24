@@ -133,7 +133,7 @@ void vmxnet_tx_pkt_update_ip_checksums(VmxnetTxPktH pkt)
     ph_raw_csum = eth_calc_pseudo_hdr_csum(ip_hdr, p->payload_len);
     csum = cpu_to_be16(net_checksum_finish(ph_raw_csum));
     iov_from_buf(&p->vec[VMXNET_TX_PKT_PL_START_FRAG], p->payload_frags,
-                 &csum, p->virt_hdr.csum_offset, sizeof(csum));
+                 p->virt_hdr.csum_offset, &csum, sizeof(csum));
 }
 
 static void vmxnet_tx_pkt_calculate_hdr_len(VmxnetTxPkt *p)
@@ -155,8 +155,8 @@ static bool vmxnet_tx_pkt_parse_headers(VmxnetTxPktH pkt)
     l2_hdr = &p->vec[VMXNET_TX_PKT_L2HDR_FRAG];
     l3_hdr = &p->vec[VMXNET_TX_PKT_L3HDR_FRAG];
 
-    bytes_read = iov_to_buf(p->raw, p->raw_frags, l2_hdr->iov_base,
-                            0, ETH_MAX_L2_HDR_LEN);
+    bytes_read = iov_to_buf(p->raw, p->raw_frags, 0,
+                            l2_hdr->iov_base, ETH_MAX_L2_HDR_LEN);
     if (bytes_read < ETH_MAX_L2_HDR_LEN) {
         l2_hdr->iov_len = 0;
         return false;
@@ -170,8 +170,9 @@ static bool vmxnet_tx_pkt_parse_headers(VmxnetTxPktH pkt)
     case ETH_P_IP:
         l3_hdr->iov_base = g_malloc(ETH_MAX_IP4_HDR_LEN);
 
-        bytes_read = iov_to_buf(p->raw, p->raw_frags, l3_hdr->iov_base,
-                                l2_hdr->iov_len, sizeof(struct ip_header));
+        bytes_read = iov_to_buf(p->raw, p->raw_frags,
+                                l2_hdr->iov_len,
+                                l3_hdr->iov_base, sizeof(struct ip_header));
 
         if (bytes_read < sizeof(struct ip_header)) {
             l3_hdr->iov_len = 0;
@@ -183,8 +184,8 @@ static bool vmxnet_tx_pkt_parse_headers(VmxnetTxPktH pkt)
 
         /* copy optional IPv4 header data */
         bytes_read = iov_to_buf(p->raw, p->raw_frags,
-                                l3_hdr->iov_base + sizeof(struct ip_header),
                                 l2_hdr->iov_len + sizeof(struct ip_header),
+                                l3_hdr->iov_base + sizeof(struct ip_header),
                                 l3_hdr->iov_len - sizeof(struct ip_header));
         if (bytes_read < l3_hdr->iov_len - sizeof(struct ip_header)) {
             l3_hdr->iov_len = 0;
@@ -201,8 +202,9 @@ static bool vmxnet_tx_pkt_parse_headers(VmxnetTxPktH pkt)
 
         l3_hdr->iov_base = g_malloc(full_ip6hdr_len);
 
-        bytes_read = iov_to_buf(p->raw, p->raw_frags, l3_hdr->iov_base,
-                                l2_hdr->iov_len, full_ip6hdr_len);
+        bytes_read = iov_to_buf(p->raw, p->raw_frags,
+                                l2_hdr->iov_len,
+                                l3_hdr->iov_base, full_ip6hdr_len);
 
         if (bytes_read < full_ip6hdr_len) {
             l3_hdr->iov_len = 0;
@@ -298,7 +300,7 @@ void vmxnet_tx_pkt_build_vheader(VmxnetTxPktH pkt, bool tso_enable,
     case VIRTIO_NET_HDR_GSO_TCPV4:
     case VIRTIO_NET_HDR_GSO_TCPV6:
         iov_to_buf(&p->vec[VMXNET_TX_PKT_PL_START_FRAG], p->payload_frags,
-                   &l4hdr, 0, sizeof(l4hdr));
+                   0, &l4hdr, sizeof(l4hdr));
         p->virt_hdr.hdr_len = p->hdr_len + l4hdr.th_off * sizeof(uint32_t);
         p->virt_hdr.gso_size = IP_FRAG_ALIGN_SIZE(gso_size);
         break;
@@ -448,7 +450,7 @@ static void vmxnet_tx_pkt_do_sw_csum(VmxnetTxPkt *p)
     size_t csum_offset = p->virt_hdr.csum_start + p->virt_hdr.csum_offset;
 
     /* Put zero to checksum field */
-    iov_from_buf(iov, iov_len, &csum, csum_offset, sizeof csum);
+    iov_from_buf(iov, iov_len, csum_offset, &csum, sizeof csum);
 
     /* Calculate L4 TCP/UDP checksum */
     csl = p->payload_len;
@@ -461,7 +463,7 @@ static void vmxnet_tx_pkt_do_sw_csum(VmxnetTxPkt *p)
 
     /* Put the checksum obtained into the packet */
     csum = cpu_to_be16(net_checksum_finish(csum_cntr));
-    iov_from_buf(iov, iov_len, &csum, csum_offset, sizeof csum);
+    iov_from_buf(iov, iov_len, csum_offset, &csum, sizeof(csum));
 }
 
 enum {
@@ -512,7 +514,7 @@ static size_t vmxnet_tx_pkt_fetch_fragment(VmxnetTxPkt *p, int *src_idx,
 }
 
 static size_t vmxnet_tx_pkt_do_sw_fragmentation(VmxnetTxPkt *p,
-    VLANClientState *vc)
+    NetClientState *vc)
 {
     struct iovec fragment[VMXNET_MAX_FRAG_SG_LIST];
     size_t fragment_len = 0;
@@ -558,7 +560,7 @@ static size_t vmxnet_tx_pkt_do_sw_fragmentation(VmxnetTxPkt *p,
     return bytes_sent;
 }
 
-size_t vmxnet_tx_pkt_send(VmxnetTxPktH pkt, VLANClientState *vc)
+size_t vmxnet_tx_pkt_send(VmxnetTxPktH pkt, NetClientState *vc)
 {
     size_t bytes_sent = 0;
     VmxnetTxPkt *p = (VmxnetTxPkt *)pkt;
@@ -610,7 +612,7 @@ typedef struct {
     struct virtio_net_hdr virt_hdr;
     uint8_t ehdr_buf[ETH_MAX_L2_HDR_LEN];
     struct iovec vec[VMXNET_MAX_RX_PACKET_FRAGMENTS];
-    uint16 vec_len;
+    uint16_t vec_len;
     uint32_t tot_len;
     uint16_t tci;
     bool vlan_stripped;

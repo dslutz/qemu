@@ -279,7 +279,7 @@ typedef struct {
         VmxnetTxPktH tx_pkt;
         uint32_t offload_mode;
         uint32_t cso_or_gso_size;
-        uint16 tci;
+        uint16_t tci;
         bool needs_vlan;
 
         VmxnetRxPktH rx_pkt;
@@ -1678,7 +1678,7 @@ vmxnet3_io_bar1_read(void *opaque, target_phys_addr_t addr, unsigned size)
 }
 
 static int
-vmxnet3_can_receive(VLANClientState *nc)
+vmxnet3_can_receive(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     return s->device_active &&
@@ -1758,7 +1758,7 @@ vmxnet3_rx_filter_may_indicate(VMXNET3State *s, const void *data,
 }
 
 static ssize_t
-vmxnet3_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
+vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     size_t bytes_indicated;
@@ -1793,13 +1793,13 @@ vmxnet3_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
     return bytes_indicated;
 }
 
-static void vmxnet3_cleanup(VLANClientState *nc)
+static void vmxnet3_cleanup(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
     s->nic = NULL;
 }
 
-static void vmxnet3_set_link_status(VLANClientState *nc)
+static void vmxnet3_set_link_status(NetClientState *nc)
 {
     VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
 
@@ -1814,7 +1814,7 @@ static void vmxnet3_set_link_status(VLANClientState *nc)
 }
 
 static NetClientInfo net_vmxnet3_info = {
-        .type = NET_CLIENT_TYPE_NIC,
+        .type = NET_CLIENT_OPTIONS_KIND_NIC,
         .size = sizeof(NICState),
         .can_receive = vmxnet3_can_receive,
         .receive = vmxnet3_receive,
@@ -1824,10 +1824,10 @@ static NetClientInfo net_vmxnet3_info = {
 
 static bool vmxnet3_peer_has_vnet_hdr(VMXNET3State *s)
 {
-    VLANClientState *peer = s->nic->nc.peer;
+    NetClientState *peer = s->nic->nc.peer;
 
     if ((NULL != peer)                              &&
-        (NET_CLIENT_TYPE_TAP == peer->info->type)   &&
+        (NET_CLIENT_OPTIONS_KIND_TAP == peer->info->type)   &&
         tap_has_vnet_hdr(peer)) {
         return true;
     }
@@ -1910,6 +1910,7 @@ vmxnet3_use_msix_vectors(VMXNET3State *s, int num_vectors)
 static bool
 vmxnet3_init_msix(VMXNET3State *s)
 {
+#ifdef USE_MSIX
     int res = msix_init(&s->dev, VMXNET3_MAX_INTRS,
                         &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0);
     if (0 > res) {
@@ -1924,6 +1925,10 @@ vmxnet3_init_msix(VMXNET3State *s)
             s->msix_used = true;
         }
     }
+#else
+    VMW_WRPRN("Failed to initialize MSI-X, Not configured");
+    s->msix_used = false;
+#endif
     return s->msix_used;
 }
 
@@ -1932,7 +1937,7 @@ vmxnet3_cleanup_msix(VMXNET3State *s)
 {
     if (s->msix_used) {
         msix_vector_unuse(&s->dev, VMXNET3_MAX_INTRS);
-        msix_uninit(&s->dev, &s->msix_bar);
+        msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
     }
 }
 
@@ -2048,7 +2053,7 @@ static int vmxnet3_pci_init(PCIDevice *dev)
 }
 
 
-static int vmxnet3_pci_uninit(PCIDevice *dev)
+static void vmxnet3_pci_uninit(PCIDevice *dev)
 {
     VMXNET3State *s = DO_UPCAST(VMXNET3State, dev, dev);
 
@@ -2065,8 +2070,6 @@ static int vmxnet3_pci_uninit(PCIDevice *dev)
     memory_region_destroy(&s->bar0);
     memory_region_destroy(&s->bar1);
     memory_region_destroy(&s->msix_bar);
-
-    return 0;
 }
 
 static void vmxnet3_qdev_reset(DeviceState *dev)
@@ -2288,7 +2291,7 @@ static int vmxnet3_post_load(void *opaque, int version_id)
     if (s->msix_used) {
         if  (!vmxnet3_use_msix_vectors(s, VMXNET3_MAX_INTRS)) {
             VMW_WRPRN("Failed to re-use MSI-X vectors");
-            msix_uninit(&s->dev, &s->msix_bar);
+            msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
             s->msix_used = false;
             return -1;
         }
