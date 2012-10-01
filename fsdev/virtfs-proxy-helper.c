@@ -282,6 +282,7 @@ static int send_status(int sockfd, struct iovec *iovec, int status)
  */
 static int setfsugid(int uid, int gid)
 {
+    int rc;
     /*
      * We still need DAC_OVERRIDE because  we don't change
      * supplementary group ids, and hence may be subjected DAC rules
@@ -290,8 +291,14 @@ static int setfsugid(int uid, int gid)
         CAP_DAC_OVERRIDE,
     };
 
-    setfsgid(gid);
-    setfsuid(uid);
+    rc = setfsgid(gid);
+    if (rc) {
+        return rc;
+    }
+    rc = setfsuid(uid);
+    if (rc) {
+        return rc;
+    }
 
     if (uid != 0 || gid != 0) {
         return do_cap_set(cap_list, ARRAY_SIZE(cap_list), 0);
