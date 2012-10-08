@@ -117,6 +117,7 @@ hw-obj-$(CONFIG_OPENCORES_ETH) += opencores_eth.o
 hw-obj-$(CONFIG_LSI_SCSI_PCI) += lsi53c895a.o
 hw-obj-$(CONFIG_MEGASAS_SCSI_PCI) += megasas.o
 hw-obj-$(CONFIG_LSISAS1068_SCSI_PCI) += lsisas1068.o
+hw-obj-$(CONFIG_PVSCSI_SCSI_PCI) += pvscsi.o
 hw-obj-$(CONFIG_ESP) += esp.o
 hw-obj-$(CONFIG_ESP_PCI) += esp-pci.o
 
