@@ -941,7 +941,7 @@ pvscsi_init(PCIDevice *dev)
     return 0;
 }
 
-static int
+static void
 pvscsi_uninit(PCIDevice *dev)
 {
     PVSCSI_State *s = DO_UPCAST(PVSCSI_State, dev, dev);
@@ -952,8 +952,6 @@ pvscsi_uninit(PCIDevice *dev)
     pvscsi_cleanup_msi(s);
 
     memory_region_destroy(&s->io_space);
-
-    return 0;
 }
 
 static void
