@@ -63,8 +63,8 @@ typedef struct PVSCSIRingsMgr {
 } PVSCSIRingsMgr;
 
 typedef struct PVSCSISGState {
-    target_phys_addr_t elemAddr;
-    target_phys_addr_t dataAddr;
+    hwaddr elemAddr;
+    hwaddr dataAddr;
     uint32_t resid;
 } PVSCSISGState;
 
@@ -176,7 +176,7 @@ pvscsi_rings_mgr_cleanup(PVSCSIRingsMgr *mgr)
     memset(mgr->cmp_ring_pages_pa, 0, sizeof(mgr->cmp_ring_pages_pa));
 }
 
-static target_phys_addr_t
+static hwaddr
 pvscsi_rings_mgr_pop_req_descr(PVSCSIRingsMgr *mgr)
 {
     uint32_t ready_prt = RS_GET_FIELD(mgr->rs_pa, reqProdIdx);
@@ -202,7 +202,7 @@ pvscsi_rings_mgr_flush_req_ring(PVSCSIRingsMgr *mgr)
     RS_SET_FIELD(mgr->rs_pa, reqConsIdx, mgr->consumed_ptr);
 }
 
-static target_phys_addr_t
+static hwaddr
 pvscsi_rings_mgr_pop_cmp_descr(PVSCSIRingsMgr *mgr)
 {
     /*
@@ -301,7 +301,7 @@ pvscsi_raise_completion_interrupt(PVSCSI_State *s)
 static void
 pvscsi_cmp_ring_put(PVSCSI_State *s, struct PVSCSIRingCmpDesc *cmp_desc)
 {
-    target_phys_addr_t cmp_descr_pa;
+    hwaddr cmp_descr_pa;
 
     cmp_descr_pa = pvscsi_rings_mgr_pop_cmp_descr(&s->rings);
     trace_pvscsi_cmp_ring_put(cmp_descr_pa);
@@ -558,7 +558,7 @@ static void
 pvscsi_process_io(PVSCSI_State *s)
 {
     PVSCSIRingReqDesc descr;
-    target_phys_addr_t next_descr_pa;
+    hwaddr next_descr_pa;
 
     assert(s->rings_info_valid);
     while ((next_descr_pa = pvscsi_rings_mgr_pop_req_descr(&s->rings)) != 0) {
@@ -784,7 +784,7 @@ pvscsi_on_command(PVSCSI_State *s, uint64_t cmd_id)
 }
 
 static void
-pvscsi_io_write(void *opaque, target_phys_addr_t addr,
+pvscsi_io_write(void *opaque, hwaddr addr,
                 uint64_t val, unsigned size)
 {
     PVSCSI_State *s = opaque;
@@ -833,7 +833,7 @@ pvscsi_io_write(void *opaque, target_phys_addr_t addr,
 }
 
 static uint64_t
-pvscsi_io_read(void *opaque, target_phys_addr_t addr, unsigned size)
+pvscsi_io_read(void *opaque, hwaddr addr, unsigned size)
 {
     PVSCSI_State *s = opaque;
 
@@ -941,7 +941,7 @@ pvscsi_init(PCIDevice *dev)
     return 0;
 }
 
-static int
+static void
 pvscsi_uninit(PCIDevice *dev)
 {
     PVSCSI_State *s = DO_UPCAST(PVSCSI_State, dev, dev);
@@ -952,8 +952,6 @@ pvscsi_uninit(PCIDevice *dev)
     pvscsi_cleanup_msi(s);
 
     memory_region_destroy(&s->io_space);
-
-    return 0;
 }
 
 static void
