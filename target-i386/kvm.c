@@ -409,13 +409,14 @@ int kvm_arch_init_vcpu(CPUX86State *env)
     c = &cpuid_data.entries[cpuid_i++];
     memset(c, 0, sizeof(*c));
     c->function = KVM_CPUID_FEATURES;
-    c->eax = env->cpuid_kvm_features &
-        kvm_arch_get_supported_cpuid(s, KVM_CPUID_FEATURES, 0, R_EAX);
+    if (!env->cpuid_hv_features_set) {
+        c->eax = env->cpuid_kvm_features &
+            kvm_arch_get_supported_cpuid(s, KVM_CPUID_FEATURES, 0, R_EAX);
+    } else {
+        c->eax = env->cpuid_hv_features;
+    }
 
     if (hyperv_enabled()) {
-        memcpy(signature, "Hv#1\0\0\0\0\0\0\0\0", 12);
-        c->eax = signature[0];
-
         c = &cpuid_data.entries[cpuid_i++];
         memset(c, 0, sizeof(*c));
         c->function = HYPERV_CPUID_VERSION;
@@ -449,24 +450,28 @@ int kvm_arch_init_vcpu(CPUX86State *env)
         c->function = HYPERV_CPUID_IMPLEMENT_LIMITS;
         c->eax = 0x40;
         c->ebx = 0x40;
+    }
+    if (hyperv_enabled() || env->cpuid_hv_vendor_set) {
+        c = &cpuid_data.entries[cpuid_i++];
+        memset(c, 0, sizeof(*c));
+        c->function = KVM_CPUID_SIGNATURE_NEXT;
+        memcpy(signature, "KVMKVMKVM\0\0\0", 12);
+        if (env->cpuid_hv_features_set) {
+            c->eax = KVM_CPUID_SIGNATURE_NEXT + 1;
+        } else {
+            c->eax = 0;
+        }
+        c->ebx = signature[0];
+        c->ecx = signature[1];
+        c->edx = signature[2];
 
-        c = &cpuid_data.entries[cpuid_i++];
-        memset(c, 0, sizeof(*c));
-        c->function = KVM_CPUID_SIGNATURE_NEXT;
-        memcpy(signature, "KVMKVMKVM\0\0\0", 12);
-        c->eax = 0;
-        c->ebx = signature[0];
-        c->ecx = signature[1];
-        c->edx = signature[2];
-    } else if (env->cpuid_hv_vendor_set) {
-        c = &cpuid_data.entries[cpuid_i++];
-        memset(c, 0, sizeof(*c));
-        c->function = KVM_CPUID_SIGNATURE_NEXT;
-        memcpy(signature, "KVMKVMKVM\0\0\0", 12);
-        c->eax = 0;
-        c->ebx = signature[0];
-        c->ecx = signature[1];
-        c->edx = signature[2];
+        if (env->cpuid_hv_features_set) {
+            c = &cpuid_data.entries[cpuid_i++];
+            memset(c, 0, sizeof(*c));
+            c->function = KVM_CPUID_SIGNATURE_NEXT + 1;
+            c->eax = env->cpuid_kvm_features &
+                kvm_arch_get_supported_cpuid(s, KVM_CPUID_FEATURES, 0, R_EAX);
+        }
     }
 
     has_msr_async_pf_en = c->eax & (1 << KVM_FEATURE_ASYNC_PF);
