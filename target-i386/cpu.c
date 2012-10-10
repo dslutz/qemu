@@ -1252,6 +1252,52 @@ static void x86_cpuid_set_hv_features(Object *obj, Visitor *v, void *opaque,
     cpu->env.cpuid_hv_features_set = true;
 }
 
+static void x86_cpuid_get_hv_timing_tsc(Object *obj, Visitor *v, void *opaque,
+                                const char *name, Error **errp)
+{
+    X86CPU *cpu = X86_CPU(obj);
+
+    visit_type_uint32(v, &cpu->env.cpuid_hv_timing_tsc, name, errp);
+}
+
+static void x86_cpuid_set_hv_timing_tsc(Object *obj, Visitor *v, void *opaque,
+                                const char *name, Error **errp)
+{
+    X86CPU *cpu = X86_CPU(obj);
+    uint32_t value;
+
+    visit_type_uint32(v, &value, name, errp);
+    if (error_is_set(errp)) {
+        return;
+    }
+
+    cpu->env.cpuid_hv_timing_tsc = value;
+    cpu->env.cpuid_hv_timing_set = true;
+}
+
+static void x86_cpuid_get_hv_timing_bus(Object *obj, Visitor *v, void *opaque,
+                                const char *name, Error **errp)
+{
+    X86CPU *cpu = X86_CPU(obj);
+
+    visit_type_uint32(v, &cpu->env.cpuid_hv_timing_bus, name, errp);
+}
+
+static void x86_cpuid_set_hv_timing_bus(Object *obj, Visitor *v, void *opaque,
+                                const char *name, Error **errp)
+{
+    X86CPU *cpu = X86_CPU(obj);
+    uint32_t value;
+
+    visit_type_uint32(v, &value, name, errp);
+    if (error_is_set(errp)) {
+        return;
+    }
+
+    cpu->env.cpuid_hv_timing_bus = value;
+    cpu->env.cpuid_hv_timing_set = true;
+}
+
 #if !defined(CONFIG_USER_ONLY)
 static void x86_get_hv_spinlocks(Object *obj, Visitor *v, void *opaque,
                                  const char *name, Error **errp)
@@ -2152,6 +2198,12 @@ static void x86_cpu_initfn(Object *obj)
     object_property_add(obj, "hypervisor-features", "int",
                         x86_cpuid_get_hv_features,
                         x86_cpuid_set_hv_features, NULL, NULL, NULL);
+    object_property_add(obj, "hypervisor-timing-tsc", "int",
+                        x86_cpuid_get_hv_timing_tsc,
+                        x86_cpuid_set_hv_timing_tsc, NULL, NULL, NULL);
+    object_property_add(obj, "hypervisor-timing-bus", "int",
+                        x86_cpuid_get_hv_timing_bus,
+                        x86_cpuid_set_hv_timing_bus, NULL, NULL, NULL);
 #if !defined(CONFIG_USER_ONLY)
     object_property_add(obj, "hv_spinlocks", "int",
                         x86_get_hv_spinlocks,
