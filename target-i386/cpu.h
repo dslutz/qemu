@@ -780,6 +780,7 @@ typedef struct CPUX86State {
     bool cpuid_hv_level_set;
     bool cpuid_hv_vendor_set;
     bool cpuid_hv_features_set;
+    bool cpuid_hv_timing_set;
     /* Store the results of Centaur's CPUID instructions */
     uint32_t cpuid_xlevel2;
     uint32_t cpuid_ext4_features;
@@ -792,6 +793,9 @@ typedef struct CPUX86State {
     uint32_t cpuid_hv_vendor3;
     /* Hypervisor features */
     uint32_t cpuid_hv_features;
+    /* VMware Timing Information */
+    uint32_t cpuid_hv_timing_tsc;
+    uint32_t cpuid_hv_timing_bus;
 
     /* MTRRs */
     uint64_t mtrr_fixed[11];
