@@ -1305,6 +1305,8 @@ static void x86_set_hyperv(Object *obj, Error **errp)
                             "hypervisor-level", errp);
     object_property_set_str(obj, CPUID_HV_VENDOR_HYPERV,
                             "hypervisor-vendor", errp);
+    object_property_set_int(obj, CPUID_HV_FEATURES_HYPERV,
+                            "hypervisor-features", errp);
 }
 
 static void x86_get_hv_spinlocks(Object *obj, Visitor *v, void *opaque,
