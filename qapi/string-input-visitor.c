@@ -115,7 +115,7 @@ static void parse_type_freq(Visitor *v, int64_t *obj, const char *name,
 {
     StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
     char *endp = (char *) siv->string;
-    long long val;
+    long long val = 0;
 
     errno = 0;
     if (siv->string) {
