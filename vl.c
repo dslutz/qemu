@@ -263,6 +263,7 @@ static NotifierList machine_init_done_notifiers =
 static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
+int xen_vmware = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;
@@ -3511,7 +3512,7 @@ int main(int argc, char **argv, char **envp)
     qemu_spice_init();
 #endif
 
-    if (icount_option && (kvm_enabled() || xen_enabled())) {
+    if (icount_option && (kvm_enabled() || xen_enabled(0))) {
         fprintf(stderr, "-icount is not allowed with kvm or xen\n");
         exit(1);
     }
@@ -3525,7 +3526,7 @@ int main(int argc, char **argv, char **envp)
     if (foreach_device_config(DEV_BT, bt_parse))
         exit(1);
 
-    if (!xen_enabled()) {
+    if (!xen_enabled(0)) {
         /* On 32-bit hosts, QEMU is limited by virtual address space */
         if (ram_size > (2047 << 20) && HOST_LONG_BITS == 32) {
             fprintf(stderr, "qemu: at most 2047 MB RAM can be simulated\n");

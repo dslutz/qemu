@@ -854,7 +854,7 @@ static DeviceState *apic_init(void *env, uint8_t apic_id)
 
     if (kvm_irqchip_in_kernel()) {
         dev = qdev_create(NULL, "kvm-apic");
-    } else if (xen_enabled()) {
+    } else if (xen_enabled(0)) {
         dev = qdev_create(NULL, "xen-apic");
     } else {
         dev = qdev_create(NULL, "apic");
@@ -1073,7 +1073,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
 
     qemu_register_boot_set(pc_boot_set, *rtc_state);
 
-    if (!xen_enabled()) {
+    if (!xen_enabled(0)) {
         if (kvm_irqchip_in_kernel()) {
             pit = kvm_pit_init(isa_bus, 0x40);
         } else {

@@ -21,10 +21,24 @@ extern uint32_t xen_domid;
 extern enum xen_mode xen_mode;
 
 extern int xen_allowed;
+extern int xen_vmware;
 
-static inline int xen_enabled(void)
+static inline int xen_enabled(int who)
 {
 #if defined(CONFIG_XEN_BACKEND) && !defined(CONFIG_NO_XEN)
+    switch(who) {
+    case -1:
+        xen_vmware = 1;
+        break;
+    case -2:
+        xen_vmware = 0;
+        break;
+    case 1:
+        if (xen_allowed)
+            return xen_vmware;
+    default:
+        break;
+    }
     return xen_allowed;
 #else
     return 0;
