@@ -305,18 +305,22 @@ static PCIBus *i440fx_common_init(const char *device_name,
                                         &f->smram_region, 1);
     memory_region_set_enabled(&f->smram_region, false);
 
+    if (vmware_mode)
+        *piix3_devfn = PCI_DEVFN(0x7, 0);
+    else
+        *piix3_devfn = -1;
     /* Xen supports additional interrupt routes from the PCI devices to
      * the IOAPIC: the four pins of each PCI device on the bus are also
      * connected to the IOAPIC directly.
      * These additional routes can be discovered through ACPI. */
     if (xen_enabled(0)) {
         piix3 = DO_UPCAST(PIIX3State, dev,
-                pci_create_simple_multifunction(b, -1, true, "PIIX3-xen"));
+                pci_create_simple_multifunction(b, *piix3_devfn, true, "PIIX3-xen"));
         pci_bus_irqs(b, xen_piix3_set_irq, xen_pci_slot_get_pirq,
                 piix3, XEN_PIIX_NUM_PIRQS);
     } else {
         piix3 = DO_UPCAST(PIIX3State, dev,
-                pci_create_simple_multifunction(b, -1, true, "PIIX3"));
+                pci_create_simple_multifunction(b, *piix3_devfn, true, "PIIX3"));
         pci_bus_irqs(b, piix3_set_irq, pci_slot_get_pirq, piix3,
                 PIIX_NUM_PIRQS);
         pci_bus_set_route_irq_fn(b, piix3_route_intx_pin_to_irq);
