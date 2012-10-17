@@ -310,7 +310,7 @@ static PCIBus *i440fx_common_init(const char *device_name,
      * the IOAPIC: the four pins of each PCI device on the bus are also
      * connected to the IOAPIC directly.
      * These additional routes can be discovered through ACPI. */
-    if (xen_enabled()) {
+    if (xen_enabled(0)) {
         piix3 = DO_UPCAST(PIIX3State, dev,
                 pci_create_simple_multifunction(b, -1, true, "PIIX3-xen"));
         pci_bus_irqs(b, xen_piix3_set_irq, xen_pci_slot_get_pirq,

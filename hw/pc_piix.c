@@ -174,7 +174,7 @@ static void pc_init1(MemoryRegion *system_memory,
     }
 
     /* allocate ram and load rom/bios */
-    if (!xen_enabled()) {
+    if (!xen_enabled(0)) {
         fw_cfg = pc_memory_init(system_memory,
                        kernel_filename, kernel_cmdline, initrd_filename,
                        below_4g_mem_size, above_4g_mem_size,
@@ -210,7 +210,7 @@ static void pc_init1(MemoryRegion *system_memory,
 
     if (kvm_irqchip_in_kernel()) {
         i8259 = kvm_i8259_init(isa_bus);
-    } else if (xen_enabled()) {
+    } else if (xen_enabled(0)) {
         i8259 = xen_interrupt_controller_init();
     } else {
         cpu_irq = pc_allocate_cpu_irq();
@@ -227,12 +227,12 @@ static void pc_init1(MemoryRegion *system_memory,
     pc_register_ferr_irq(gsi[13]);
 
     pc_vga_init(isa_bus, pci_enabled ? pci_bus : NULL);
-    if (xen_enabled()) {
+    if (xen_enabled(1)) {
         pci_create_simple(pci_bus, -1, "xen-platform");
     }
 
     /* init basic PC hardware */
-    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy, xen_enabled());
+    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy, xen_enabled(0));
 
     for(i = 0; i < nb_nics; i++) {
         NICInfo *nd = &nd_table[i];
@@ -246,7 +246,7 @@ static void pc_init1(MemoryRegion *system_memory,
     ide_drive_get(hd, MAX_IDE_BUS);
     if (pci_enabled) {
         PCIDevice *dev;
-        if (xen_enabled()) {
+        if (xen_enabled(0)) {
             dev = pci_piix3_xen_ide_init(pci_bus, hd, piix3_devfn + 1);
         } else {
             dev = pci_piix3_ide_init(pci_bus, hd, piix3_devfn + 1);

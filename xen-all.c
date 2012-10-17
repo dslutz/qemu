@@ -542,7 +542,7 @@ static void xen_log_sync(MemoryListener *listener, MemoryRegionSection *section)
 
 static void xen_log_global_start(MemoryListener *listener)
 {
-    if (xen_enabled()) {
+    if (xen_enabled(0)) {
         xen_in_migration = true;
     }
 }

@@ -1950,7 +1950,7 @@ static void x86_cpu_apic_init(X86CPU *cpu, Error **errp)
 
     if (kvm_irqchip_in_kernel()) {
         apic_type = "kvm-apic";
-    } else if (xen_enabled()) {
+    } else if (xen_enabled(0)) {
         apic_type = "xen-apic";
     }
 
