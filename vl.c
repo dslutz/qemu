@@ -264,6 +264,7 @@ static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
 int xen_pci_device = 0;
+int vmware_mode = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;

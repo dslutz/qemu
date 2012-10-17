@@ -22,6 +22,7 @@ extern enum xen_mode xen_mode;
 
 extern int xen_allowed;
 extern int xen_pci_device;
+extern int vmware_mode;
 
 static inline int xen_enabled(int who)
 {
