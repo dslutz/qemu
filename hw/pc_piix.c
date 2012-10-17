@@ -738,7 +738,7 @@ static QEMUMachine kvmvmware_machine = {
     .name = "kvmvmware",
     .desc = "KVM VMware PC",
     .init = pc_kvm_vmware_init,
-    .max_cpus = HVM_MAX_VCPUS,
+    .max_cpus = 255,
     .default_machine_opts = "accel=kvm",
 };
 #endif
