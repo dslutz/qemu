@@ -713,8 +713,8 @@ static QEMUMachine xenfv_machine = {
 };
 
 static QEMUMachine xenfvvmware_machine = {
-    .name = "xenfv",
-    .desc = "Xen Fully-virtualized vmware PC",
+    .name = "xenfvvmware",
+    .desc = "Xen Fully-virtualized VMware PC",
     .init = pc_xen_hvm_vmware_init,
     .max_cpus = HVM_MAX_VCPUS,
     .default_machine_opts = "accel=xen",
