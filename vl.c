@@ -263,7 +263,7 @@ static NotifierList machine_init_done_notifiers =
 static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
-int xen_vmware = 0;
+int xen_pci_device = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;

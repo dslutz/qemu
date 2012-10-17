@@ -344,6 +344,24 @@ static void pc_init_isa(QEMUMachineInitArgs *args)
 #ifdef CONFIG_XEN
 static void pc_xen_hvm_init(QEMUMachineInitArgs *args)
 {
+    xen_enabled(-1);
+    if (xen_hvm_init() != 0) {
+        hw_error("xen hardware virtual machine initialisation failed");
+    }
+    pc_init_pci_no_kvmclock(ram_size, boot_device,
+                            kernel_filename, kernel_cmdline,
+                            initrd_filename, cpu_model);
+    xen_vcpu_init();
+}
+
+static void pc_xen_hvm_vmware_init(ram_addr_t ram_size,
+                                   const char *boot_device,
+                                   const char *kernel_filename,
+                                   const char *kernel_cmdline,
+                                   const char *initrd_filename,
+                                   const char *cpu_model)
+{
+    xen_enabled(-2);
     if (xen_hvm_init() != 0) {
         hw_error("xen hardware virtual machine initialisation failed");
     }
@@ -693,6 +711,14 @@ static QEMUMachine xenfv_machine = {
     .max_cpus = HVM_MAX_VCPUS,
     .default_machine_opts = "accel=xen",
 };
+
+static QEMUMachine xenfvvmware_machine = {
+    .name = "xenfv",
+    .desc = "Xen Fully-virtualized vmware PC",
+    .init = pc_xen_hvm_vmware_init,
+    .max_cpus = HVM_MAX_VCPUS,
+    .default_machine_opts = "accel=xen",
+};
 #endif
 
 static void pc_machine_init(void)
@@ -710,6 +736,7 @@ static void pc_machine_init(void)
     qemu_register_machine(&isapc_machine);
 #ifdef CONFIG_XEN
     qemu_register_machine(&xenfv_machine);
+    qemu_register_machine(&xenfvvmware_machine);
 #endif
 }
 
