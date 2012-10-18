@@ -35,6 +35,11 @@
 #include "msix.h"
 #include "exec-memory.h"
 
+#ifndef VMARE_MODE_DEF
+#define VMARE_MODE_DEF
+extern int vmware_mode;
+#endif
+
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
 # define PCI_DPRINTF(format, ...)       printf(format, ## __VA_ARGS__)
@@ -1539,7 +1544,8 @@ PCIDevice *pci_vga_init(PCIBus *bus)
     case VGA_STD:
         return pci_create_simple(bus, -1, "VGA");
     case VGA_VMWARE:
-        return pci_create_simple(bus, -1, "vmware-svga");
+        return pci_create_simple(bus, vmware_mode ? PCI_DEVFN(0xf, 0) : -1,
+                                 "vmware-svga");
     case VGA_NONE:
     default: /* Other non-PCI types. Checking for unsupported types is already
                 done in vl.c. */
