@@ -3659,6 +3659,8 @@ int main(int argc, char **argv, char **envp)
         kernel_filename = qemu_opt_get(machine_opts, "kernel");
         initrd_filename = qemu_opt_get(machine_opts, "initrd");
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
+        vmware_mode = qemu_opt_get_bool(machine_opts, "vmware", vmware_mode);
+        printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
     } else {
         kernel_filename = initrd_filename = kernel_cmdline = NULL;
     }

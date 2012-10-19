@@ -628,6 +628,10 @@ static QemuOptsList qemu_machine_opts = {
             .type = QEMU_OPT_BOOL,
             .help = "Set on/off to enable/disable usb",
         },
+        }, {
+            .name = "vmware",
+            .type = QEMU_OPT_BOOL,
+            .help = "enable/disable vmware mode",
         { /* End of list */ }
     },
 };

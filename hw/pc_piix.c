@@ -246,7 +246,9 @@ static void pc_init1(MemoryRegion *system_memory,
     ide_drive_get(hd, MAX_IDE_BUS);
     if (pci_enabled) {
         PCIDevice *dev;
-        if (xen_enabled(0)) {
+        if (vmware_mode)  {
+            dev = pci_piix4_ide_init(pci_bus, hd, piix3_devfn + 1);
+        } else if (xen_enabled(0)) {
             dev = pci_piix3_xen_ide_init(pci_bus, hd, piix3_devfn + 1);
         } else {
             dev = pci_piix3_ide_init(pci_bus, hd, piix3_devfn + 1);
@@ -363,6 +365,7 @@ static void pc_xen_hvm_vmware_init(ram_addr_t ram_size,
 {
     xen_enabled(-2);
     vmware_mode = 1;
+    printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
     if (xen_hvm_init() != 0) {
         hw_error("xen hardware virtual machine initialisation failed");
     }
@@ -378,6 +381,7 @@ static void pc_kvm_vmware_init(ram_addr_t ram_size,
                                const char *cpu_model)
 {
     vmware_mode = 1;
+    printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
     pc_init_pci(ram_size, boot_device,
                 kernel_filename, kernel_cmdline,
                 initrd_filename, cpu_model);

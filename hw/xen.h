@@ -22,10 +22,6 @@ extern enum xen_mode xen_mode;
 
 extern int xen_allowed;
 extern int xen_pci_device;
-#ifndef VMARE_MODE_DEF
-#define VMARE_MODE_DEF
-extern int vmware_mode;
-#endif
 
 static inline int xen_enabled(int who)
 {

@@ -1365,7 +1365,11 @@ static void e1000_vmw_class_init(ObjectClass *klass, void *data)
     k->device_id = E1000_VMW_DEVID;
     k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     k->subsystem_id = PCI_DEVICE_ID_VMWARE_NET2;
-    k->revision = 0x03;
+    if (vmware_mode) {
+        k->revision = 0x01;
+    } else {
+        k->revision = 0x03;
+    }
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     dc->desc = "Intel Gigabit Ethernet";
     dc->reset = qdev_e1000_reset;
