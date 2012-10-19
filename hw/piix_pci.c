@@ -586,7 +586,10 @@ static void i440fx_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     /* Either PCI_DEVICE_ID_INTEL_82441 or PCI_DEVICE_ID_INTEL_82443BX_0 */
     k->device_id = hostbridge_device_id;
-    k->revision = 0x02;
+    if (hostbridge_device_id == PCI_DEVICE_ID_INTEL_82443BX_0)
+        k->revision = 0x01;
+    else
+        k->revision = 0x02;
     k->class_id = PCI_CLASS_BRIDGE_HOST;
     dc->desc = "Host bridge";
     dc->no_user = 1;
