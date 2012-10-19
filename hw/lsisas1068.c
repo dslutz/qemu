@@ -5947,6 +5947,9 @@ static void mptscsi_class_init(ObjectClass *oc, void *data)
     pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->subsystem_id = MPTSCSI_PCI_SPI_SUBSYSTEM_ID;
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
+    if (vmware_mode) {
+        pc->revision = 0x01;
+    }
     dc->props = mptscsi_properties;
     dc->reset = mpt_scsi_reset;
     dc->vmsd = &vmstate_mpt;

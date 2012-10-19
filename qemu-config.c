@@ -619,6 +619,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "mem-merge",
             .type = QEMU_OPT_BOOL,
             .help = "enable/disable memory merge support",
+        }, {
+            .name = "vmware",
+            .type = QEMU_OPT_BOOL,
+            .help = "enable/disable vmware mode",
         },
         { /* End of list */ }
     },

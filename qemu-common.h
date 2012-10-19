@@ -40,6 +40,8 @@ typedef struct MigrationParams MigrationParams;
 #include <signal.h>
 #include <glib.h>
 
+extern int vmware_mode;
+
 #ifdef _WIN32
 #include "qemu-os-win32.h"
 #endif

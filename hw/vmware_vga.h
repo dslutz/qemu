@@ -3,11 +3,6 @@
 
 #include "qemu-common.h"
 
-#ifndef VMARE_MODE_DEF
-#define VMARE_MODE_DEF
-extern int vmware_mode;
-#endif
-
 /* vmware_vga.c */
 static inline DeviceState *pci_vmsvga_init(PCIBus *bus)
 {
