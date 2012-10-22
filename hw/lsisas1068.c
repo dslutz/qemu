@@ -5944,11 +5944,14 @@ static void mptscsi_class_init(ObjectClass *oc, void *data)
     pc->exit = mpt_scsi_uninit;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_53C1030;
-    pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
-    pc->subsystem_id = MPTSCSI_PCI_SPI_SUBSYSTEM_ID;
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
     if (vmware_mode) {
         pc->revision = 0x01;
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        pc->subsystem_id = 0x1976;
+    } else {
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+        pc->subsystem_id = MPTSCSI_PCI_SPI_SUBSYSTEM_ID;
     }
     dc->props = mptscsi_properties;
     dc->reset = mpt_scsi_reset;
@@ -5971,8 +5974,13 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068;
-    pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
-    pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
+    if (vmware_mode) {
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        pc->subsystem_id = 0x1976;
+    } else {
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+        pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
+    }
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
@@ -5990,8 +5998,13 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
-    pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
-    pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
+    if (vmware_mode) {
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        pc->subsystem_id = 0x1976;
+    } else {
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+        pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
+    }
     pc->is_express = 1;
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
     dc->props = mptsas_properties;

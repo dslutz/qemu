@@ -41,6 +41,7 @@ typedef struct MigrationParams MigrationParams;
 #include <glib.h>
 
 extern int vmware_mode;
+extern int xen_platform_pci;
 
 #ifdef _WIN32
 #include "qemu-os-win32.h"
