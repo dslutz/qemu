@@ -227,7 +227,9 @@ static void pc_init1(MemoryRegion *system_memory,
     pc_register_ferr_irq(gsi[13]);
 
     pc_vga_init(isa_bus, pci_enabled ? pci_bus : NULL);
-    if (xen_enabled(1)) {
+    if (xen_enabled(1) && xen_platform_pci) {
+        printf("%s: vmware_mode=%d xen_platform_pci=%d\n",
+               __func__, vmware_mode, xen_platform_pci);
         pci_create_simple(pci_bus, -1, "xen-platform");
     }
 

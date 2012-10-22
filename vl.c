@@ -265,6 +265,7 @@ int kvm_allowed = 0;
 int xen_allowed = 0;
 int xen_pci_device = 0;
 int vmware_mode = 0;
+int xen_platform_pci = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;
@@ -3660,7 +3661,9 @@ int main(int argc, char **argv, char **envp)
         initrd_filename = qemu_opt_get(machine_opts, "initrd");
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
         vmware_mode = qemu_opt_get_bool(machine_opts, "vmware", vmware_mode);
-        printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
+        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci", xen_enabled(0));
+        printf("%s: vmware_mode=%d xen_platform_pci=%d\n",
+               __func__, vmware_mode, xen_platform_pci);
     } else {
         kernel_filename = initrd_filename = kernel_cmdline = NULL;
     }

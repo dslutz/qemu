@@ -632,6 +632,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "vmware",
             .type = QEMU_OPT_BOOL,
             .help = "enable/disable vmware mode",
+        }, {
+            .name = "xen_platform_pci",
+            .type = QEMU_OPT_BOOL,
+            .help = "enable/disable add of xen platform pci",
         { /* End of list */ }
     },
 };
