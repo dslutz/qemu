@@ -351,38 +351,6 @@ static void pc_xen_hvm_init(ram_addr_t ram_size,
                             initrd_filename, cpu_model);
     xen_vcpu_init();
 }
-
-static void pc_xen_hvm_vmware_init(ram_addr_t ram_size,
-                                   const char *boot_device,
-                                   const char *kernel_filename,
-                                   const char *kernel_cmdline,
-                                   const char *initrd_filename,
-                                   const char *cpu_model)
-{
-    vmware_mode = 1;
-    printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
-    if (xen_hvm_init() != 0) {
-        hw_error("xen hardware virtual machine initialisation failed");
-    }
-    pc_init_pci_no_kvmclock(ram_size, boot_device,
-                            kernel_filename, kernel_cmdline,
-                            initrd_filename, cpu_model);
-    xen_vcpu_init();
-}
-#else
-static void pc_kvm_vmware_init(ram_addr_t ram_size,
-                               const char *boot_device,
-                               const char *kernel_filename,
-                               const char *kernel_cmdline,
-                               const char *initrd_filename,
-                               const char *cpu_model)
-{
-    vmware_mode = 1;
-    printf("%s: vmware_mode=%d\n", __func__, vmware_mode);
-    pc_init_pci(ram_size, boot_device,
-                kernel_filename, kernel_cmdline,
-                initrd_filename, cpu_model);
-}
 #endif
 
 static QEMUMachine pc_machine_v1_3 = {
@@ -714,22 +682,6 @@ static QEMUMachine xenfv_machine = {
     .max_cpus = HVM_MAX_VCPUS,
     .default_machine_opts = "accel=xen",
 };
-
-static QEMUMachine xenfvvmware_machine = {
-    .name = "xenfvvmware",
-    .desc = "Xen Fully-virtualized VMware PC",
-    .init = pc_xen_hvm_vmware_init,
-    .max_cpus = HVM_MAX_VCPUS,
-    .default_machine_opts = "accel=xen",
-};
-#else
-static QEMUMachine kvmvmware_machine = {
-    .name = "kvmvmware",
-    .desc = "KVM VMware PC",
-    .init = pc_kvm_vmware_init,
-    .max_cpus = 255,
-    .default_machine_opts = "accel=kvm",
-};
 #endif
 
 static void pc_machine_init(void)
@@ -747,9 +699,6 @@ static void pc_machine_init(void)
     qemu_register_machine(&isapc_machine);
 #ifdef CONFIG_XEN
     qemu_register_machine(&xenfv_machine);
-    qemu_register_machine(&xenfvvmware_machine);
-#else
-    qemu_register_machine(&kvmvmware_machine);
 #endif
 }
 
