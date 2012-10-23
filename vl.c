@@ -263,7 +263,6 @@ static NotifierList machine_init_done_notifiers =
 static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
-int xen_pci_device = 0;
 int vmware_mode = 0;
 int xen_platform_pci = 0;
 uint32_t xen_domid;
@@ -3478,7 +3477,7 @@ int main(int argc, char **argv, char **envp)
         initrd_filename = qemu_opt_get(machine_opts, "initrd");
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
         vmware_mode = qemu_opt_get_bool(machine_opts, "vmware", vmware_mode);
-        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci", xen_enabled(0));
+        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci", xen_enabled());
         printf("%s: vmware_mode=%d xen_platform_pci=%d\n",
                __func__, vmware_mode, xen_platform_pci);
     } else {
@@ -3518,7 +3517,7 @@ int main(int argc, char **argv, char **envp)
     qemu_spice_init();
 #endif
 
-    if (icount_option && (kvm_enabled() || xen_enabled(0))) {
+    if (icount_option && (kvm_enabled() || xen_enabled())) {
         fprintf(stderr, "-icount is not allowed with kvm or xen\n");
         exit(1);
     }
@@ -3532,7 +3531,7 @@ int main(int argc, char **argv, char **envp)
     if (foreach_device_config(DEV_BT, bt_parse))
         exit(1);
 
-    if (!xen_enabled(0)) {
+    if (!xen_enabled()) {
         /* On 32-bit hosts, QEMU is limited by virtual address space */
         if (ram_size > (2047 << 20) && HOST_LONG_BITS == 32) {
             fprintf(stderr, "qemu: at most 2047 MB RAM can be simulated\n");

@@ -118,7 +118,6 @@ static void xen_init_pv(ram_addr_t ram_size,
                         const char *initrd_filename,
                         const char *cpu_model)
 {
-    xen_enabled(-1);
     xen_init_common(ram_size, boot_device, kernel_filename,
                     kernel_cmdline, initrd_filename, cpu_model);
 }
@@ -130,7 +129,6 @@ static void xen_init_pv_vmware(ram_addr_t ram_size,
                                const char *initrd_filename,
                                const char *cpu_model)
 {
-    xen_enabled(-2);
     xen_init_common(ram_size, boot_device, kernel_filename,
                     kernel_cmdline, initrd_filename, cpu_model);
 }
