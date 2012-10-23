@@ -2567,7 +2567,7 @@ ram_addr_t qemu_ram_alloc_from_ptr(ram_addr_t size, void *host,
             exit(1);
 #endif
         } else {
-            if (xen_enabled(0)) {
+            if (xen_enabled()) {
                 xen_ram_alloc(new_block->offset, size, mr);
             } else if (kvm_enabled()) {
                 /* some s390/kvm configurations have special constraints */
@@ -2639,7 +2639,7 @@ void qemu_ram_free(ram_addr_t addr)
 #if defined(TARGET_S390X) && defined(CONFIG_KVM)
                 munmap(block->host, block->length);
 #else
-                if (xen_enabled(0)) {
+                if (xen_enabled()) {
                     xen_invalidate_map_cache_entry(block->host);
                 } else {
                     qemu_vfree(block->host);
@@ -2734,7 +2734,7 @@ void *qemu_get_ram_ptr(ram_addr_t addr)
                 QLIST_REMOVE(block, next);
                 QLIST_INSERT_HEAD(&ram_list.blocks, block, next);
             }
-            if (xen_enabled(0)) {
+            if (xen_enabled()) {
                 /* We need to check if the requested address is in the RAM
                  * because we don't want to map the entire memory in QEMU.
                  * In that case just map until the end of the page.
@@ -2765,7 +2765,7 @@ static void *qemu_safe_ram_ptr(ram_addr_t addr)
 
     QLIST_FOREACH(block, &ram_list.blocks, next) {
         if (addr - block->offset < block->length) {
-            if (xen_enabled(0)) {
+            if (xen_enabled()) {
                 /* We need to check if the requested address is in the RAM
                  * because we don't want to map the entire memory in QEMU.
                  * In that case just map until the end of the page.
@@ -2794,7 +2794,7 @@ static void *qemu_ram_ptr_length(ram_addr_t addr, ram_addr_t *size)
     if (*size == 0) {
         return NULL;
     }
-    if (xen_enabled(0)) {
+    if (xen_enabled()) {
         return xen_map_cache(addr, *size, 1);
     } else {
         RAMBlock *block;
@@ -2822,7 +2822,7 @@ int qemu_ram_addr_from_host(void *ptr, ram_addr_t *ram_addr)
     RAMBlock *block;
     uint8_t *host = ptr;
 
-    if (xen_enabled(0)) {
+    if (xen_enabled()) {
         *ram_addr = xen_ram_addr_from_mapcache(ptr);
         return 0;
     }
@@ -3634,7 +3634,7 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
                 access_len -= l;
             }
         }
-        if (xen_enabled(0)) {
+        if (xen_enabled()) {
             xen_invalidate_map_cache_entry(buffer);
         }
         return;

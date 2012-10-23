@@ -1008,7 +1008,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
 
     qemu_register_boot_set(pc_boot_set, *rtc_state);
 
-    if (!xen_enabled(0)) {
+    if (!xen_enabled()) {
         if (kvm_irqchip_in_kernel()) {
             pit = kvm_pit_init(isa_bus, 0x40);
         } else {
