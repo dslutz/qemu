@@ -35,11 +35,6 @@
 #include "msix.h"
 #include "exec-memory.h"
 
-#ifndef VMARE_MODE_DEF
-#define VMARE_MODE_DEF
-extern int vmware_mode;
-#endif
-
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
 # define PCI_DPRINTF(format, ...)       printf(format, ## __VA_ARGS__)

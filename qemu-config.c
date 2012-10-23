@@ -627,7 +627,6 @@ static QemuOptsList qemu_machine_opts = {
             .name = "usb",
             .type = QEMU_OPT_BOOL,
             .help = "Set on/off to enable/disable usb",
-        },
         }, {
             .name = "vmware",
             .type = QEMU_OPT_BOOL,
@@ -636,6 +635,7 @@ static QemuOptsList qemu_machine_opts = {
             .name = "xen_platform_pci",
             .type = QEMU_OPT_BOOL,
             .help = "enable/disable add of xen platform pci",
+        },
         { /* End of list */ }
     },
 };
