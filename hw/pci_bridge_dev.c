@@ -36,6 +36,7 @@ struct PCIBridgeDev {
     MemoryRegion bar;
     uint8_t chassis_nr;
 #define PCI_BRIDGE_DEV_F_MSI_REQ 0
+#define PCI_BRIDGE_DEV_F_MSI_X_REQ 1
     uint32_t flags;
 };
 typedef struct PCIBridgeDev PCIBridgeDev;
@@ -224,6 +225,7 @@ static Property pci_bridge_dev_properties[] = {
 
 static Property vmware_bridge_dev_properties[] = {
     DEFINE_PROP_BIT("msi", PCIBridgeDev, flags, PCI_BRIDGE_DEV_F_MSI_REQ, true),
+    DEFINE_PROP_BIT("msi-x", PCIBridgeDev, flags, PCI_BRIDGE_DEV_F_MSI_X_REQ, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
