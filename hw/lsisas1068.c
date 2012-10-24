@@ -5981,7 +5981,7 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
         pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
     }
-    pc->class_id = PCI_CLASS_STORAGE_SCSI;
+    pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
     dc->vmsd = &vmstate_mpt;
@@ -6006,7 +6006,7 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
         pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
     }
     pc->is_express = 1;
-    pc->class_id = PCI_CLASS_STORAGE_SCSI;
+    pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
     dc->vmsd = &vmstate_mpt;
