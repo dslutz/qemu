@@ -1531,16 +1531,17 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, const char *default_model,
 
 PCIDevice *pci_vga_init(PCIBus *bus)
 {
+    int devfn = vmware_mode ? PCI_DEVFN(0xf, 0) : -1;
+
     switch (vga_interface_type) {
     case VGA_CIRRUS:
-        return pci_create_simple(bus, -1, "cirrus-vga");
+        return pci_create_simple(bus, devfn, "cirrus-vga");
     case VGA_QXL:
-        return pci_create_simple(bus, -1, "qxl-vga");
+        return pci_create_simple(bus, devfn, "qxl-vga");
     case VGA_STD:
-        return pci_create_simple(bus, -1, "VGA");
+        return pci_create_simple(bus, devfn, "VGA");
     case VGA_VMWARE:
-        return pci_create_simple(bus, vmware_mode ? PCI_DEVFN(0xf, 0) : -1,
-                                 "vmware-svga");
+        return pci_create_simple(bus, devfn, "vmware-svga");
     case VGA_NONE:
     default: /* Other non-PCI types. Checking for unsupported types is already
                 done in vl.c. */
