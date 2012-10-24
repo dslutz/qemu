@@ -290,6 +290,8 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB;
     k->class_id = PCI_CLASS_STORAGE_IDE;
     if (vmware_mode) {
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = 0x1976;
         k->revision = 0x01;
     }
     dc->no_user = 1;

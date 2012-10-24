@@ -477,6 +477,8 @@ static void piix4_pm_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB_3;
     if (vmware_mode) {
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = 0x1976;
         k->revision = 0x08;
     } else {
         k->revision = 0x03;

@@ -92,6 +92,43 @@ bridge_error:
     return err;
 }
 
+static int vmware_bridge_dev_initfn(PCIDevice *dev)
+{
+    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
+    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    int err;
+
+    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
+    err = pci_bridge_initfn(dev);
+    if (err) {
+        goto bridge_error;
+    }
+    err = pci_bridge_ssvid_init(dev, 0, PCI_VENDOR_ID_VMWARE, PCI_DEVICE_ID_VMWARE_PCI_BRIDGE);
+    if (err < 0) {
+        goto ssvid_error;
+    }
+    if ((bridge_dev->flags & (1 << PCI_BRIDGE_DEV_F_MSI_REQ)) &&
+        msi_supported) {
+        err = msi_init(dev, 0, 1, true, true);
+        if (err < 0) {
+            goto msi_error;
+        }
+    }
+    dev->config[PCI_CLASS_PROG] = 0x01; /* Supports subtractive decoding. */
+    dev->config[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
+    /*
+     * This device does not generate interrupts. Interrupt delivery from
+     * devices attached to the bus is unaffected.
+     */
+    dev->config[PCI_INTERRUPT_PIN] = 0x00;
+    return 0;
+msi_error:
+ssvid_error:
+    pci_bridge_exitfn(dev);
+bridge_error:
+    return err;
+}
+
 static void pci_bridge_dev_exitfn(PCIDevice *dev)
 {
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
@@ -105,6 +142,14 @@ static void pci_bridge_dev_exitfn(PCIDevice *dev)
     pci_bridge_exitfn(dev);
 }
 
+static void vmware_bridge_dev_exitfn(PCIDevice *dev)
+{
+    if (msi_present(dev)) {
+        msi_uninit(dev);
+    }
+    pci_bridge_exitfn(dev);
+}
+
 static void pci_bridge_dev_write_config(PCIDevice *d,
                                         uint32_t address, uint32_t val, int len)
 {
@@ -113,6 +158,16 @@ static void pci_bridge_dev_write_config(PCIDevice *d,
         msi_write_config(d, address, val, len);
     }
     shpc_cap_write_config(d, address, val, len);
+}
+
+static void vmware_bridge_dev_write_config(PCIDevice *d,
+                                           uint32_t address, uint32_t val,
+                                           int len)
+{
+    pci_bridge_write_config(d, address, val, len);
+    if (msi_present(d)) {
+        msi_write_config(d, address, val, len);
+    }
 }
 
 static void qdev_pci_bridge_dev_reset(DeviceState *qdev)
@@ -168,8 +223,26 @@ static void agp_bridge_dev_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_BRIDGE_PCI;
     k->revision = 0x01;
     k->is_bridge = 1,
-    dc->desc = "PCI Bridge to AGP bridge";
+    dc->desc = "PCI Bridge to AGP";
     dc->reset = qdev_pci_bridge_dev_reset;
+    dc->props = pci_bridge_dev_properties;
+    dc->vmsd = &pci_bridge_dev_vmstate;
+}
+
+static void vmware_bridge_dev_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+    k->init = vmware_bridge_dev_initfn;
+    k->exit = vmware_bridge_dev_exitfn;
+    k->config_write = vmware_bridge_dev_write_config;
+    k->vendor_id = PCI_VENDOR_ID_VMWARE;
+    k->device_id = PCI_DEVICE_ID_VMWARE_PCI_BRIDGE;
+    k->class_id = PCI_CLASS_BRIDGE_PCI;
+    k->revision = 0x02;
+    k->is_bridge = 1,
+    dc->desc = "VMware PCI Bridge";
+    dc->reset = pci_bridge_reset;
     dc->props = pci_bridge_dev_properties;
     dc->vmsd = &pci_bridge_dev_vmstate;
 }
@@ -188,10 +261,18 @@ static TypeInfo agp_bridge_dev_info = {
     .class_init = agp_bridge_dev_class_init,
 };
 
+static TypeInfo vmware_bridge_dev_info = {
+    .name = "vmware-pci-bridge",
+    .parent        = TYPE_PCI_DEVICE,
+    .instance_size = sizeof(PCIBridgeDev),
+    .class_init = vmware_bridge_dev_class_init,
+};
+
 static void pci_bridge_dev_register(void)
 {
     type_register_static(&pci_bridge_dev_info);
     type_register_static(&agp_bridge_dev_info);
+    type_register_static(&vmware_bridge_dev_info);
 }
 
 type_init(pci_bridge_dev_register);

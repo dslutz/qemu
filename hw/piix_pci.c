@@ -557,6 +557,10 @@ static void piix3_class_init(ObjectClass *klass, void *data)
     k->vendor_id    = PCI_VENDOR_ID_INTEL;
     k->device_id    = PCI_DEVICE_ID_INTEL_82371SB_0; // 82371SB PIIX3 PCI-to-ISA bridge (Step A1)
     k->class_id     = PCI_CLASS_BRIDGE_ISA;
+    if (vmware_mode) {
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = 0x1976;
+    }
 }
 
 static const TypeInfo piix3_info = {
@@ -600,6 +604,10 @@ static void i440fx_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     /* Either PCI_DEVICE_ID_INTEL_82441 or PCI_DEVICE_ID_INTEL_82443BX_0 */
     k->device_id = hostbridge_device_id;
+    if (vmware_mode) {
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = 0x1976;
+    }
     if (hostbridge_device_id == PCI_DEVICE_ID_INTEL_82443BX_0)
         k->revision = 0x01;
     else
