@@ -2972,7 +2972,7 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
 
 DeviceState *pci_cirrus_vga_init(PCIBus *bus)
 {
-    return &pci_create_simple(bus, -1, "cirrus-vga")->qdev;
+    return &pci_create_simple(bus, vmware_mode ? PCI_DEVFN(0xf, 0) : -1, "cirrus-vga")->qdev;
 }
 
 static void cirrus_vga_class_init(ObjectClass *klass, void *data)

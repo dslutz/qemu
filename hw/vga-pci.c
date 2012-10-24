@@ -72,7 +72,7 @@ static int pci_vga_initfn(PCIDevice *dev)
 
 DeviceState *pci_vga_init(PCIBus *bus)
 {
-    return &pci_create_simple(bus, -1, "VGA")->qdev;
+    return &pci_create_simple(bus, vmware_mode ? PCI_DEVFN(0xf, 0) : -1, "VGA")->qdev;
 }
 
 static Property vga_pci_properties[] = {
