@@ -169,6 +169,11 @@ int main(int argc, char **argv)
 
 #include "ui/qemu-spice.h"
 
+char * wpc;
+short * wps;
+int * wpi;
+long * wpl;
+
 //#define DEBUG_NET
 //#define DEBUG_SLIRP
 
