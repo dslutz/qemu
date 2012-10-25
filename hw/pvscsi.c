@@ -1029,8 +1029,15 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
     k->exit = pvscsi_uninit;
     k->vendor_id = PCI_VENDOR_ID_VMWARE;
     k->device_id = PCI_DEVICE_ID_VMWARE_PVSCSI;
-    k->class_id = PCI_CLASS_STORAGE_SCSI;
-    k->subsystem_id = 0x1000;
+    if (vmware_mode) {
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = PCI_DEVICE_ID_VMWARE_PVSCSI;
+        k->class_id = PCI_CLASS_STORAGE_SAS;
+        k->revision = 0x02;
+    } else {
+        k->subsystem_id = 0x1000;
+        k->class_id = PCI_CLASS_STORAGE_SCSI;
+    }
     dc->reset = pvscsi_reset;
     dc->vmsd = &vmstate_pvscsi;
     k->config_write = pvscsi_write_config;
