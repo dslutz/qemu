@@ -33,6 +33,8 @@
 #include "vmxnet_utils.h"
 #include "vmxnet_pkt.h"
 
+#define USE_MSIX
+
 #define PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION 0x1
 #define VMXNET3_MSIX_BAR_SIZE 0x2000
 
@@ -1912,14 +1914,16 @@ vmxnet3_init_msix(VMXNET3State *s)
 {
 #ifdef USE_MSIX
     int res = msix_init(&s->dev, VMXNET3_MAX_INTRS,
-                        &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0);
+                        &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0,
+                       &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0x800,
+                       0x90);
     if (0 > res) {
         VMW_WRPRN("Failed to initialize MSI-X, error %d", res);
         s->msix_used = false;
     } else {
         if (!vmxnet3_use_msix_vectors(s, VMXNET3_MAX_INTRS)) {
             VMW_WRPRN("Failed to use MSI-X vectors, error %d", res);
-            msix_uninit(&s->dev, &s->msix_bar);
+            msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
             s->msix_used = false;
         } else {
             s->msix_used = true;
