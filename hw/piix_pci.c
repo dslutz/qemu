@@ -554,12 +554,15 @@ static void piix3_class_init(ObjectClass *klass, void *data)
     k->init         = piix3_initfn;
     k->config_write = piix3_write_config;
     k->vendor_id    = PCI_VENDOR_ID_INTEL;
-    k->device_id    = PCI_DEVICE_ID_INTEL_82371SB_0; // 82371SB PIIX3 PCI-to-ISA bridge (Step A1)
-    k->class_id     = PCI_CLASS_BRIDGE_ISA;
     if (vmware_mode) {
+        k->device_id = PCI_DEVICE_ID_INTEL_82371AB_0; // 82371AB PIIX4 PCI-to-ISA bridge
+        k->revision = 0x08;
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = 0x1976;
+    } else {
+        k->device_id = PCI_DEVICE_ID_INTEL_82371SB_0; // 82371SB PIIX3 PCI-to-ISA bridge (Step A1)
     }
+    k->class_id     = PCI_CLASS_BRIDGE_ISA;
 }
 
 static const TypeInfo piix3_info = {
@@ -581,7 +584,14 @@ static void piix3_xen_class_init(ObjectClass *klass, void *data)
     k->init         = piix3_initfn;
     k->config_write = piix3_write_config_xen;
     k->vendor_id    = PCI_VENDOR_ID_INTEL;
-    k->device_id    = PCI_DEVICE_ID_INTEL_82371SB_0; // 82371SB PIIX3 PCI-to-ISA bridge (Step A1)
+    if (vmware_mode) {
+        k->device_id = PCI_DEVICE_ID_INTEL_82371AB_0; // 82371AB PIIX4 PCI-to-ISA bridge
+        k->revision = 0x08;
+        k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
+        k->subsystem_id = 0x1976;
+    } else {
+        k->device_id = PCI_DEVICE_ID_INTEL_82371SB_0; // 82371SB PIIX3 PCI-to-ISA bridge (Step A1)
+    }
     k->class_id     = PCI_CLASS_BRIDGE_ISA;
 };
 
