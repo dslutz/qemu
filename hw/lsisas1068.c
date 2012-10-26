@@ -3216,14 +3216,6 @@ typedef struct MptCmd {
     struct MptState *state;
 } MptCmd;
 
-typedef struct MptDevice {
-    struct MptState *p_lsi_logic;
-
-    uint32_t i_lun;
-    uint32_t c_outstanding_requests;
-    uint32_t *p_drv_base;
-} MptDevice;
-
 typedef struct MptState {
     PCIDevice dev;
     MemoryRegion mmio_io;
