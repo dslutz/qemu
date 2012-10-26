@@ -912,9 +912,11 @@ pvscsi_init(PCIDevice *dev)
 
     trace_pvscsi_state("init");
 
-    /* PCI subsystem ID */
-    s->dev.config[PCI_SUBSYSTEM_ID] = 0x00;
-    s->dev.config[PCI_SUBSYSTEM_ID + 1] = 0x10;
+    if (!vmware_mode) {
+        /* PCI subsystem ID */
+        s->dev.config[PCI_SUBSYSTEM_ID] = 0x00;
+        s->dev.config[PCI_SUBSYSTEM_ID + 1] = 0x10;
+    }
 
     /* PCI latency timer = 255 */
     s->dev.config[PCI_LATENCY_TIMER] = 0xff;

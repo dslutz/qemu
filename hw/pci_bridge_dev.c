@@ -97,6 +97,7 @@ static int vmware_bridge_dev_initfn(PCIDevice *dev)
 {
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
     PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    uint8_t *conf = dev->config;
     int err;
 
     pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
@@ -115,13 +116,13 @@ static int vmware_bridge_dev_initfn(PCIDevice *dev)
             goto msi_error;
         }
     }
-    dev->config[PCI_CLASS_PROG] = 0x01; /* Supports subtractive decoding. */
-    dev->config[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
+    conf[PCI_CLASS_PROG] = 0x01; /* Supports subtractive decoding. */
+    conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
      * devices attached to the bus is unaffected.
      */
-    dev->config[PCI_INTERRUPT_PIN] = 0x00;
+    conf[PCI_INTERRUPT_PIN] = 0x00;
     return 0;
 msi_error:
 ssvid_error:
@@ -134,6 +135,7 @@ static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
 {
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
     PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    uint8_t *conf = dev->config;
     int err;
 
     pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
@@ -152,13 +154,13 @@ static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
             goto msi_error;
         }
     }
-    dev->config[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
-    dev->config[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
+    conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
+    conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
      * devices attached to the bus is unaffected.
      */
-    dev->config[PCI_INTERRUPT_PIN] = 0x00;
+    conf[PCI_INTERRUPT_PIN] = 0x00;
     return 0;
 msi_error:
 ssvid_error:
