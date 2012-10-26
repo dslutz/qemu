@@ -5975,6 +5975,7 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068;
     if (vmware_mode) {
+        pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
@@ -5999,6 +6000,7 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
     if (vmware_mode) {
+        pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
