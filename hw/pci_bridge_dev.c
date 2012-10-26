@@ -100,8 +100,6 @@ static int vmware_bridge_dev_initfn(PCIDevice *dev)
     uint8_t *conf = dev->config;
     int err;
 
-    pci_bridge_reset(&dev->qdev);
-
     pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
     err = pci_bridge_initfn(dev);
     if (err) {
@@ -139,8 +137,6 @@ static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
     PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
     uint8_t *conf = dev->config;
     int err;
-
-    pci_bridge_reset(&dev->qdev);
 
     pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
     err = pci_bridge_initfn(dev);
