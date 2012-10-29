@@ -112,7 +112,7 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
             goto msi_error;
         }
     }
-    conf[PCI_CLASS_PROG] = 0x01; /* Supports subtractive decoding. */
+    conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
     conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
