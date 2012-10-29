@@ -93,6 +93,39 @@ bridge_error:
     return err;
 }
 
+static int agp_bridge_dev_initfn(PCIDevice *dev)
+{
+    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
+    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    uint8_t *conf = dev->config;
+    int err;
+
+    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
+    err = pci_bridge_initfn(dev);
+    if (err) {
+        goto bridge_error;
+    }
+    if ((bridge_dev->flags & (1 << PCI_BRIDGE_DEV_F_MSI_REQ)) &&
+        msi_supported) {
+        err = msi_init(dev, 0, 1, true, true);
+        if (err < 0) {
+            goto msi_error;
+        }
+    }
+    conf[PCI_CLASS_PROG] = 0x01; /* Supports subtractive decoding. */
+    conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
+    /*
+     * This device does not generate interrupts. Interrupt delivery from
+     * devices attached to the bus is unaffected.
+     */
+    conf[PCI_INTERRUPT_PIN] = 0x00;
+    return 0;
+msi_error:
+    pci_bridge_exitfn(dev);
+bridge_error:
+    return err;
+}
+
 static int vmware_bridge_dev_initfn(PCIDevice *dev)
 {
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
@@ -269,7 +302,7 @@ static void agp_bridge_dev_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
-    k->init = pci_bridge_dev_initfn;
+    k->init = agp_bridge_dev_initfn;
     k->exit = pci_bridge_dev_exitfn;
     k->config_write = pci_bridge_dev_write_config;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
