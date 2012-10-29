@@ -303,17 +303,17 @@ static void agp_bridge_dev_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     k->init = agp_bridge_dev_initfn;
-    k->exit = pci_bridge_dev_exitfn;
-    k->config_write = pci_bridge_dev_write_config;
+    k->exit = vmware_bridge_dev_exitfn;
+    k->config_write = vmware_bridge_dev_write_config;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82443_AGP;
     k->class_id = PCI_CLASS_BRIDGE_PCI;
     k->revision = 0x01;
     k->is_bridge = 1;
     dc->desc = "PCI Bridge to AGP";
-    dc->reset = qdev_pci_bridge_dev_reset;
-    dc->props = pci_bridge_dev_properties;
-    dc->vmsd = &pci_bridge_dev_vmstate;
+    dc->reset = pci_bridge_reset;
+    dc->props = vmware_bridge_dev_properties;
+    dc->vmsd = &vmware_bridge_dev_vmstate;
 }
 
 static void vmware_bridge_dev_class_init(ObjectClass *klass, void *data)
