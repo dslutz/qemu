@@ -152,7 +152,11 @@ static int pci_piix_ide_initfn(PCIDevice *dev)
     PCIIDEState *d = DO_UPCAST(PCIIDEState, dev, dev);
     uint8_t *pci_conf = d->dev.config;
 
-    pci_conf[PCI_CLASS_PROG] = 0x80; // legacy ATA mode
+    if (vmware_mode) {
+        pci_conf[PCI_CLASS_PROG] = 0x8a; /* legacy ATA mode */
+    } else {
+        pci_conf[PCI_CLASS_PROG] = 0x80; /* legacy ATA mode */
+    }
 
     qemu_register_reset(piix3_reset, d);
 
