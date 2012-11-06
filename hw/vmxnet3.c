@@ -27,6 +27,7 @@
 #include "msix.h"
 #include "msi.h"
 
+#define VMXNET_DEBUG_WARNINGS
 #include "vmxnet3.h"
 #include "vmxnet_debug.h"
 #include "vmware_utils.h"
@@ -1910,6 +1911,25 @@ vmxnet3_use_msix_vectors(VMXNET3State *s, int num_vectors)
 }
 
 static bool
+vmxnet3_init_pci_express(VMXNET3State *s)
+{
+    PCIDevice *dev = &s->dev;
+    uint8_t *conf = dev->config;
+
+    if (pci_is_express(dev)) {
+	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+	if (offset < 0)
+	    return false;
+	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	/* set to 32x */
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, 32);
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, 32);
+    }
+    return true;
+}
+
+static bool
 vmxnet3_init_msix(VMXNET3State *s)
 {
 #ifdef USE_MSIX
@@ -1949,7 +1969,7 @@ static bool
 vmxnet3_init_msi(VMXNET3State *s)
 {
 #define VMXNET3_MSI_NUM_VECTORS   (1)
-#define VMXNET3_MSI_OFFSET        (0x50)
+#define VMXNET3_MSI_OFFSET        (0x80)
 #define VMXNET3_USE_64BIT         (true)
 #define VMXNET3_PER_VECTOR_MASK   (false)
 
@@ -2035,8 +2055,15 @@ static int vmxnet3_pci_init(PCIDevice *dev)
         s->interrupt_states[i].is_masked = true;
     }
 
-    /* Interrupt pin A */
-    s->dev.config[PCI_INTERRUPT_PIN] = 0x01;
+    if (!vmxnet3_init_pci_express(s)) {
+        VMW_WRPRN("Failed to initialize PCIe, configuration is inconsistent.");
+	pci_word_test_and_clear_mask(s->dev.config + PCI_COMMAND, PCI_COMMAND_INTX_DISABLE);
+	pci_word_test_and_clear_mask(s->dev.config + PCI_COMMAND, PCI_COMMAND_MASTER);
+    }
+    else {
+	/* Interrupt pin A */
+	s->dev.config[PCI_INTERRUPT_PIN] = 0x01;
+    }
 
     if (!vmxnet3_init_msix(s)) {
         VMW_WRPRN("Failed to initialize MSI-X, configuration is inconsistent.");
@@ -2421,6 +2448,7 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
         c->revision = PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION;
     }
     c->class_id = PCI_CLASS_NETWORK_ETHERNET;
+    c->is_express = 1;
     c->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     c->subsystem_id = PCI_DEVICE_ID_VMWARE_VMXNET3;
     c->config_write = vmxnet3_write_config,
