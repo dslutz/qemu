@@ -187,13 +187,19 @@ static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
             goto msi_error;
         }
     }
-    conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
-    conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
+    if (pci_is_express(dev)) {
+	int offset = pcie_cap_init(dev, 0, PCI_EXP_TYPE_ROOT_PORT, 0);
+	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_set_long_by_mask(conf + offset, PCI_EXP_LNKCAP_MLW, 32);
+    }
+    pci_set_byte(conf + PCI_CLASS_PROG, 0x00); /* Normal decode. */
+    pci_set_byte(conf + PCI_INTERRUPT_LINE, 0x00); /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
      * devices attached to the bus is unaffected.
      */
-    conf[PCI_INTERRUPT_PIN] = 0x00;
+    pci_set_byte(conf + PCI_INTERRUPT_PIN, 0x00);
     return 0;
 msi_error:
 ssvid_error:
