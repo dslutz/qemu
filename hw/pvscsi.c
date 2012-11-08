@@ -499,9 +499,10 @@ pvscsi_convert_sglist(PVSCSIRequest *r)
 }
 
 static void
-pvscsi_build_sglist(PVSCSIRequest *r)
+pvscsi_build_sglist(PVSCSI_State *s,
+                    PVSCSIRequest *r)
 {
-    qemu_sglist_init(&r->sgl, 1, NULL);
+    qemu_sglist_init(&r->sgl, 1, pci_dma_context(&s->dev));
     if (r->req.flags & PVSCSI_FLAG_CMD_WITH_SG_LIST) {
         pvscsi_convert_sglist(r);
     } else {
@@ -546,7 +547,7 @@ pvscsi_process_request_descriptor(PVSCSI_State *s,
         return;
     }
 
-    pvscsi_build_sglist(r);
+    pvscsi_build_sglist(s, r);
     n = scsi_req_enqueue(r->sreq);
 
     if (n) {
