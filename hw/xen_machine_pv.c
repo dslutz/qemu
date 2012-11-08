@@ -111,28 +111,6 @@ static void xen_init_pv(QEMUMachineInitArgs *args)
     xen_init_display(xen_domid);
 }
 
-static void xen_init_pv(ram_addr_t ram_size,
-                        const char *boot_device,
-                        const char *kernel_filename,
-                        const char *kernel_cmdline,
-                        const char *initrd_filename,
-                        const char *cpu_model)
-{
-    xen_init_common(ram_size, boot_device, kernel_filename,
-                    kernel_cmdline, initrd_filename, cpu_model);
-}
-
-static void xen_init_pv_vmware(ram_addr_t ram_size,
-                               const char *boot_device,
-                               const char *kernel_filename,
-                               const char *kernel_cmdline,
-                               const char *initrd_filename,
-                               const char *cpu_model)
-{
-    xen_init_common(ram_size, boot_device, kernel_filename,
-                    kernel_cmdline, initrd_filename, cpu_model);
-}
-
 static QEMUMachine xenpv_machine = {
     .name = "xenpv",
     .desc = "Xen Para-virtualized PC",
@@ -141,18 +119,9 @@ static QEMUMachine xenpv_machine = {
     .default_machine_opts = "accel=xen",
 };
 
-static QEMUMachine xenpvvmware_machine = {
-    .name = "xenpvvmware",
-    .desc = "Xen Para-virtualized VMware PC",
-    .init = xen_init_pv_vmware,
-    .max_cpus = 1,
-    .default_machine_opts = "accel=xen",
-};
-
 static void xenpv_machine_init(void)
 {
     qemu_register_machine(&xenpv_machine);
-    qemu_register_machine(&xenpvvmware_machine);
 }
 
 machine_init(xenpv_machine_init);
