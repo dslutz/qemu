@@ -1,5 +1,10 @@
+#include "vmxnet/vmware_adjust.h"
+
 #define PCNET_IOPORT_SIZE       0x20
 #define PCNET_PNPMMIO_SIZE      0x20
+
+#define VMXNET_PNPMMIO_MORPH_SIZE 0x04
+#define VMXNET_PNPMMIO_SIZE     0x40
 
 #define PCNET_LOOPTEST_CRC	1
 #define PCNET_LOOPTEST_NOCRC	2
@@ -42,6 +47,17 @@ struct PCNetState_st {
     MemoryRegion mmio;
     uint8_t buffer[4096];
     qemu_irq irq;
+    Vmxnet2_DriverData dd;
+    uint16_t morph[1];
+    uint16_t vmxRxRingIndex;
+    uint16_t vmxRxLastInterruptIndex;
+    uint16_t vmxRxRingLength;
+    uint16_t vmxRxRing2Index;
+    uint16_t vmxRxRing2Length;
+    uint16_t vmxTxRingIndex;
+    uint16_t vmxTxLastInterruptIndex;
+    uint16_t vmxTxRingLength;
+    uint16_t vmxInterruptEnabled;
     void (*phys_mem_read)(void *dma_opaque, hwaddr addr,
                          uint8_t *buf, int len, int do_bswap);
     void (*phys_mem_write)(void *dma_opaque, hwaddr addr,
