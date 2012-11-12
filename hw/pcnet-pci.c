@@ -52,9 +52,8 @@ typedef struct {
 
 typedef struct {
     PCIDevice pci_dev;
-    PCNetState state;
+    PCNetVState state;
     MemoryRegion io_bar;
-    PCNetVState vstate;
 } PCIPCNetVState;
 
 static void pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val)
@@ -262,8 +261,8 @@ static const VMStateDescription vmstate_pci_vlance = {
     .minimum_version_id_old = 1,
     .fields      = (VMStateField []) {
         VMSTATE_PCI_DEVICE(pci_dev, PCIPCNetVState),
-        VMSTATE_STRUCT(state, PCIPCNetVState, 0, vmstate_pcnet, PCNetState),
-        VMSTATE_STRUCT(vstate, PCIPCNetVState, 0, vmstate_vlance, PCNetVState),
+        VMSTATE_STRUCT(state.s1, PCIPCNetVState, 0, vmstate_pcnet, PCNetState),
+        VMSTATE_STRUCT(state.s2, PCIPCNetVState, 0, vmstate_vlance, PCNetState2),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -308,6 +307,16 @@ static void pci_pcnet_uninit(PCIDevice *dev)
     qemu_del_net_client(&d->state.nic->nc);
 }
 
+static void pci_vlance_uninit(PCIDevice *dev)
+{
+    PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev, dev);
+
+    memory_region_destroy(&d->io_bar);
+    qemu_del_timer(d->state.poll_timer);
+    qemu_free_timer(d->state.poll_timer);
+    qemu_del_net_client(&d->state.nic->nc);
+}
+
 static NetClientInfo net_pci_pcnet_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
@@ -322,8 +331,8 @@ static NetClientInfo net_pci_vlance_info = {
     .size = sizeof(NICState),
     .can_receive = vlance_can_receive,
     .receive = vlance_receive,
-    .link_status_changed = vlance_set_link_status,
-    .cleanup = pci_vlance_cleanup,
+    .link_status_changed = pcnet_set_link_status,
+    .cleanup = pci_pcnet_cleanup,
 };
 
 static int pci_pcnet_init(PCIDevice *pci_dev)
@@ -367,16 +376,16 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_pcnet_info);
 }
 
-static void vlance_common_init(PCNetVState *vs)
+static void vlance_common_init(PCNetState2 *s2)
 {
-    memset(vs, 0, sizeof(vs));
+    memset(s2, 0, sizeof(s2));
 }
 
 static int pci_vmxnet_init(PCIDevice *pci_dev)
 {
     PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev, pci_dev);
-    PCNetVState *vs = &d->vstate;
-    PCNetState *s = &d->state;
+    PCNetVState *vs = &d->state;
+    PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
 
 #if 0
@@ -404,15 +413,16 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
 
-    vlance_common_init(vs);
+    vlance_common_init(&vs->s2);
+    vs->s2.fVMXNet = 1;
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_vlance_info);
 }
 
 static int pci_vlance_init(PCIDevice *pci_dev)
 {
     PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev, pci_dev);
-    PCNetVState *vs = &d->vstate;
-    PCNetState *s = &d->state;
+    PCNetVState *vs = &d->state;
+    PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
 
 #if 0
@@ -440,7 +450,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
 
-    vlance_common_init(vs);
+    vlance_common_init(&vs->s2);
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_vlance_info);
 }
 
@@ -479,7 +489,7 @@ static void vmxnet_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->init = pci_vmxnet_init;
-    k->exit = pci_pcnet_uninit;
+    k->exit = pci_vlance_uninit;
     k->romfile = "pxe-pcnet.rom",
     k->vendor_id = PCI_VENDOR_ID_VMWARE;
     k->device_id = PCI_DEVICE_ID_VMWARE_NET;
@@ -498,7 +508,7 @@ static void vlance_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->init = pci_vlance_init;
-    k->exit = pci_pcnet_uninit;
+    k->exit = pci_vlance_uninit;
     k->romfile = "pxe-pcnet.rom",
     k->vendor_id = PCI_VENDOR_ID_AMD;
     k->device_id = PCI_DEVICE_ID_AMD_LANCE;

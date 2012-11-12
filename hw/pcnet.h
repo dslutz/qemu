@@ -32,6 +32,7 @@
 #define BCR_SWSTYLE(S)     ((S)->bcr[BCR_SWS ] & 0x00FF)
 
 typedef struct PCNetState_st PCNetState;
+typedef struct PCNetState2_st PCNetState2;
 typedef struct PCNetVState_st PCNetVState;
 
 struct PCNetState_st {
@@ -57,10 +58,11 @@ struct PCNetState_st {
     int looptest;
 };
 
-struct PCNetVState_st {
-    uint16_t bcr2[50-32];
-    uint16_t aMII[16];
-    uint16_t aMorph[1];
+struct PCNetState2_st {
+    target_phys_addr_t VMXDATA;
+    target_phys_addr_t vmxRxRing;
+    target_phys_addr_t vmxRxRing2;
+    target_phys_addr_t vmxTxRing;
     uint16_t vmxRxRingIndex;
     uint16_t vmxRxLastInterruptIndex;
     uint16_t vmxRxRingLength;
@@ -71,8 +73,19 @@ struct PCNetVState_st {
     uint16_t vmxTxRingLength;
     uint16_t vmxInterruptEnabled;
     int fVMXNet;
+    int fSignalRxMiss;
+    int fMaybeOutOfSpace;
+    uint16_t bcr2[50-32];
+    uint16_t aMII[16];
+    uint16_t aMorph[1];
+    uint32_t VMXDATALENGTH;
     uint32_t aVmxnet[VMXNET_CHIP_IO_RESV_SIZE];
     Vmxnet2_DriverData dd;
+};
+
+struct PCNetVState_st {
+    PCNetState s1;
+    PCNetState2 s2;
 };
 
 void pcnet_h_reset(void *opaque);
@@ -84,6 +97,8 @@ uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap);
 int pcnet_can_receive(NetClientState *nc);
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_set_link_status(NetClientState *nc);
+int vlance_can_receive(NetClientState *nc);
+ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
 extern const VMStateDescription vmstate_pcnet;

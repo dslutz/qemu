@@ -114,6 +114,12 @@ struct qemu_ether_header {
 #define PHYSADDR(S,A) \
   (BCR_SSIZE32(S) ? (A) : (A) | ((0xff00 & (uint32_t)(S)->csr[2])<<16))
 
+#define HOST_IS_OWNER(desc)  (!((desc) & 0x8000))
+
+#define RT_LIKELY(expr) __builtin_expect(!!(expr), 1)
+#define UNLIKELY(expr) __builtin_expect(!!(expr), 0)
+#define RT_MIN(Value1, Value2) ( (Value1) <= (Value2) ? (Value1) : (Value2) )
+
 struct pcnet_initblk16 {
     uint16_t mode;
     uint16_t padr[3];
@@ -386,6 +392,15 @@ static inline void pcnet_rmd_load(PCNetState *s, struct pcnet_RMD *rmd,
             rmd->msg_length = tmp;
         }
     }
+}
+
+static inline int vmxnetRmdLoad(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
+                                 target_phys_addr_t addr)
+{
+    PCNetState *s = &vs->s1;
+
+    s->phys_mem_read(s->dma_opaque, addr, (void *)rmd, sizeof(*rmd), 0);
+    return (rmd->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
 static inline void pcnet_rmd_store(PCNetState *s, struct pcnet_RMD *rmd,
@@ -666,6 +681,11 @@ static inline hwaddr pcnet_rdra_addr(PCNetState *s, int idx)
     return s->rdra + ((CSR_RCVRL(s) - idx) * (BCR_SWSTYLE(s) ? 16 : 8));
 }
 
+static inline target_phys_addr_t vmxnetRdraAddr(PCNetVState *vs, int idx)
+{
+    return vs->s2.vmxRxRing + (idx * sizeof(Vmxnet2_RxRingEntry));
+}
+
 static inline int64_t pcnet_get_next_poll_time(PCNetState *s, int64_t current_time)
 {
     int64_t next_time = current_time +
@@ -784,6 +804,41 @@ static void pcnet_update_irq(PCNetState *s)
     }
     qemu_set_irq(s->irq, isr);
     s->isr = isr;
+}
+
+static void vmxnetUpdateIrq(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+    int iISR = 0;
+
+    if (s2->vmxRxLastInterruptIndex != s2->vmxRxRingIndex) {
+      /* (jbp) don't interrupt immediatly out of reset */
+      if (s2->vmxRxLastInterruptIndex != 0xffff)
+	      iISR = 1;
+      s2->vmxRxLastInterruptIndex = s2->vmxRxRingIndex;
+    }
+
+    if (s2->vmxTxLastInterruptIndex != s2->vmxTxRingIndex) {
+      /* (jbp) don't interrupt immediatly out of reset */
+      if (s2->vmxTxLastInterruptIndex != 0xffff) {
+          iISR = 1;
+      }
+      s2->vmxTxLastInterruptIndex = s2->vmxTxRingIndex;
+    }
+
+    if (!s2->vmxInterruptEnabled) {
+      iISR = 0;
+    }
+
+//    Log2(("#%d set irq iISR=%d\n", PCNET_INST_NR, iISR));
+
+    /* normal path is to _not_ change the IRQ status */
+    if (UNLIKELY(iISR != s->isr)) {
+// Log(("#%d INTA=%d (vmxnet) vmxInterruptEnabled %d\n", PCNET_INST_NR, iISR, s2->vmxInterruptEnabled));
+        qemu_set_irq(s->irq, iISR);
+        s->isr = iISR;
+    }
 }
 
 static void pcnet_init(PCNetState *s)
@@ -1013,6 +1068,28 @@ int pcnet_can_receive(NetClientState *nc)
     return sizeof(s->buffer)-16;
 }
 
+int vlance_can_receive(NetClientState *nc)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = &vs->s1;
+    Vmxnet2_RxRingEntry  rmd;
+    target_phys_addr_t addr;
+
+    if (!vs->s2.VMXDATA)
+        return pcnet_can_receive(nc);
+
+    addr = vmxnetRdraAddr(vs, vs->s2.vmxRxRingIndex);
+    if (!vmxnetRmdLoad(vs, &rmd, addr))
+    {
+	/** @todo Notify the guest _now_. Will potentially increase the interrupt load */
+	if (vs->s2.fSignalRxMiss)
+	    vs->s1.csr[0] |= 0x1000; /* Set MISS flag */
+        return 0;
+    }
+    else
+        return sizeof(s->buffer)-16;
+}
+
 #define MIN_BUF_SIZE 60
 
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
@@ -1197,6 +1274,48 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
     return size_;
 }
 
+static void vmxnetRdtePoll(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+
+    /* assume lack of a next receive descriptor */
+    CSR_NRST(s) = 0;
+
+    if (RT_LIKELY(s2->VMXDATA))
+    {
+      /*
+       * The current receive message descriptor.
+       */
+      Vmxnet2_RxRingEntry  rmd;
+      target_phys_addr_t addr;
+
+      addr = vmxnetRdraAddr(vs, s2->vmxRxRingIndex);
+      if (!vmxnetRmdLoad(vs, &rmd, addr))
+	{
+	  return;
+	}
+      if (1) // || (RT_LIKELY((!IS_RMD_BAD(rmd)))))
+	{
+	  if (s2->fMaybeOutOfSpace)
+	    {
+#if 0
+	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(pThis));
+#endif
+	    }
+	}
+      else
+	{
+#if 0
+	  /* This is not problematic since we don't own the descriptor */
+	  LogRel(("PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
+		  PCNET_INST_NR, addr, pThis->vmxRxRingIndex));
+#endif
+	  return;
+	}
+    }
+}
+
 void pcnet_set_link_status(NetClientState *nc)
 {
     PCNetState *d = DO_UPCAST(NICState, nc, nc)->opaque;
@@ -1303,6 +1422,149 @@ static void pcnet_transmit(PCNetState *s)
     }
 
     s->tx_busy = 0;
+}
+
+/**
+ * Poll for changes in RX and TX descriptor rings.
+ */
+static void pcnetPollRxTx(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+
+    if (!s2->VMXDATA) {
+        if (CSR_RXON(s)) {
+            /*
+             * The second case is important for pcnetWaitReceiveAvail(): If CSR_CRST(s) was
+             * true but pcnetCanReceive() returned false for some other reason we need to check
+             * _now_ if we have to wakeup pcnetWaitReceiveAvail().
+             */
+            if (HOST_IS_OWNER(CSR_CRST(s))  /* only poll RDTEs if none available or ... */
+                || s2->fMaybeOutOfSpace) {  /* ... for waking up pcnetWaitReceiveAvail() */
+                pcnet_rdte_poll(s);
+            }
+        }
+
+        if (CSR_TDMD(s) || (CSR_TXON(s) && !CSR_DPOLL(s)))
+            pcnet_transmit(s);
+    } else {
+        vmxnetRdtePoll(vs); // ###################### not always need could be optimized.
+        pcnet_transmit(s);
+    }
+}
+
+static inline void vmxnetRmdStorePassHost(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
+                                          target_phys_addr_t addr)
+{
+    s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, 0);
+}
+
+ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+    int is_padr = 0, is_bcast = 0, is_ladr = 0;
+    uint8_t buf1[MIN_BUF_SIZE];
+    int size = size_;
+    int cbPacket;
+
+    if (!vs->s2.VMXDATA)
+        return pcnet_receive(nc, buf, size_);
+
+#ifdef PCNET_DEBUG
+    printf("vlance_receive size=%d\n", size);
+#endif
+
+    /* if too small buffer, then expand it */
+    if (size < MIN_BUF_SIZE) {
+        memcpy(buf1, buf, size);
+        memset(buf1 + size, 0, MIN_BUF_SIZE - size);
+        buf = buf1;
+        size = MIN_BUF_SIZE;
+    }
+
+    /*
+     * Perform address matching.
+     */
+    if (CSR_PROM(s)
+        || (is_padr=padr_match(s, buf, size))
+        || (is_bcast=padr_bcast(s, buf, size))
+        || (is_ladr=ladr_match(s, buf, size))) {
+        uint8_t *src = s->buffer;
+        Vmxnet2_RxRingEntry  rmd;
+
+        memcpy(src, buf, size);
+      if (1 || !CSR_ASTRP_RCV(s))
+	{
+	  uint32_t fcs = ~0;
+	  uint8_t *p = src;
+
+	  while (size < 60)
+	    src[size++] = 0;
+	  while (p != &src[size])
+	    CRC(fcs, *p++);
+	  ((uint32_t *)&src[size])[0] = htonl(fcs);
+	  /* FCS at end of packet */
+	  size += 4;
+	  cbPacket = (int)size;
+
+#ifdef PCNET_DEBUG_MATCH
+	  PRINT_PKTHDR(buf);
+#endif
+
+	  vmxnetRmdLoad(vs, &rmd, vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
+
+	  size_t cbBuf = RT_MIN(rmd.bufferLength, size);
+	  target_phys_addr_t rbadr = rmd.paddr;
+
+	  /* We have to leave the critical section here or we risk deadlocking
+	   * with EMT when the write is to an unallocated page or has an access
+	   * handler associated with it.
+	   *
+	   * This shouldn't be a problem because:
+	   *  - any modification to the RX descriptor by the driver is
+	   *    forbidden as long as it is owned by the device
+	   *  - we don't cache any register state beyond this point
+	   */
+          s->phys_mem_write(s->dma_opaque, rbadr, src, cbBuf, 0);
+
+	  src += cbBuf;
+	  size -= cbBuf;
+
+	  if (RT_LIKELY(size == 0))
+            {
+	      rmd.ownership = VMXNET2_OWNERSHIP_DRIVER;
+	      rmd.actualLength = cbPacket;
+	      rmd.flags = 0;
+            }
+	  else
+            {
+//	      Log(("#%d: Overflow by %ubytes\n", PCNET_INST_NR, size));
+            }
+
+	  /* write back, clear the own bit */
+	  vmxnetRmdStorePassHost(s, &rmd, vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
+
+
+#if 0
+	  Log(("#%d RCVRC=%d CRDA=%#010x\n", PCNET_INST_NR,
+	       CSR_RCVRC(s), vmxnetRdraAddr(vs, s2->vmxRxRingIndex)));
+#endif
+#ifdef PCNET_DEBUG_RMD
+	  //	  PRINT_VMXNETRMD(&rmd);
+#endif
+	  VMXNET_INC(s2->vmxRxRingIndex, s2->vmxRxRingLength);
+	  
+        }
+    }
+
+    /* see description of TXDPOLL:
+     * ``transmit polling will take place following receive activities'' */
+    pcnetPollRxTx(vs);
+    vmxnetUpdateIrq(vs);
+
+    return size_;
 }
 
 static void pcnet_poll(PCNetState *s)
@@ -1735,20 +1997,20 @@ const VMStateDescription vmstate_vlance = {
         VMSTATE_BUFFER(buffer, PCNetState),
         VMSTATE_INT32(tx_busy, PCNetState),
         VMSTATE_TIMER(poll_timer, PCNetState),
-        VMSTATE_UINT16_ARRAY(bcr2, PCNetVState, 50-32),
-        VMSTATE_UINT16_ARRAY(aMII, PCNetVState, 16),
-        VMSTATE_UINT16_ARRAY(aMorph, PCNetVState, 1),
-        VMSTATE_UINT16(vmxRxRingIndex, PCNetVState),
-        VMSTATE_UINT16(vmxRxLastInterruptIndex, PCNetVState),
-        VMSTATE_UINT16(vmxRxRingLength, PCNetVState),
-        VMSTATE_UINT16(vmxRxRing2Index, PCNetVState),
-        VMSTATE_UINT16(vmxRxRing2Length, PCNetVState),
-        VMSTATE_UINT16(vmxTxRingIndex, PCNetVState),
-        VMSTATE_UINT16(vmxTxLastInterruptIndex, PCNetVState),
-        VMSTATE_UINT16(vmxTxRingLength, PCNetVState),
-        VMSTATE_UINT16(vmxInterruptEnabled, PCNetVState),
-        VMSTATE_INT32(fVMXNet, PCNetVState),
-        VMSTATE_UINT32_ARRAY(aVmxnet, PCNetVState, VMXNET_CHIP_IO_RESV_SIZE),
+        VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
+        VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
+        VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),
+        VMSTATE_UINT16(vmxRxRingIndex, PCNetState2),
+        VMSTATE_UINT16(vmxRxLastInterruptIndex, PCNetState2),
+        VMSTATE_UINT16(vmxRxRingLength, PCNetState2),
+        VMSTATE_UINT16(vmxRxRing2Index, PCNetState2),
+        VMSTATE_UINT16(vmxRxRing2Length, PCNetState2),
+        VMSTATE_UINT16(vmxTxRingIndex, PCNetState2),
+        VMSTATE_UINT16(vmxTxLastInterruptIndex, PCNetState2),
+        VMSTATE_UINT16(vmxTxRingLength, PCNetState2),
+        VMSTATE_UINT16(vmxInterruptEnabled, PCNetState2),
+        VMSTATE_INT32(fVMXNet, PCNetState2),
+        VMSTATE_UINT32_ARRAY(aVmxnet, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
         VMSTATE_END_OF_LIST()
     }
 };
