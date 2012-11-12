@@ -32,6 +32,7 @@
 #define BCR_SWSTYLE(S)     ((S)->bcr[BCR_SWS ] & 0x00FF)
 
 typedef struct PCNetState_st PCNetState;
+typedef struct PCNetVState_st PCNetVState;
 
 struct PCNetState_st {
     NICState *nic;
@@ -47,8 +48,19 @@ struct PCNetState_st {
     MemoryRegion mmio;
     uint8_t buffer[4096];
     qemu_irq irq;
-    Vmxnet2_DriverData dd;
-    uint16_t morph[1];
+    void (*phys_mem_read)(void *dma_opaque, hwaddr addr,
+                         uint8_t *buf, int len, int do_bswap);
+    void (*phys_mem_write)(void *dma_opaque, hwaddr addr,
+                          uint8_t *buf, int len, int do_bswap);
+    void *dma_opaque;
+    int tx_busy;
+    int looptest;
+};
+
+struct PCNetVState_st {
+    uint16_t bcr2[50-32];
+    uint16_t aMII[16];
+    uint16_t aMorph[1];
     uint16_t vmxRxRingIndex;
     uint16_t vmxRxLastInterruptIndex;
     uint16_t vmxRxRingLength;
@@ -58,13 +70,9 @@ struct PCNetState_st {
     uint16_t vmxTxLastInterruptIndex;
     uint16_t vmxTxRingLength;
     uint16_t vmxInterruptEnabled;
-    void (*phys_mem_read)(void *dma_opaque, hwaddr addr,
-                         uint8_t *buf, int len, int do_bswap);
-    void (*phys_mem_write)(void *dma_opaque, hwaddr addr,
-                          uint8_t *buf, int len, int do_bswap);
-    void *dma_opaque;
-    int tx_busy;
-    int looptest;
+    int fVMXNet;
+    uint32_t aVmxnet[VMXNET_CHIP_IO_RESV_SIZE];
+    Vmxnet2_DriverData dd;
 };
 
 void pcnet_h_reset(void *opaque);
@@ -79,3 +87,4 @@ void pcnet_set_link_status(NetClientState *nc);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
 extern const VMStateDescription vmstate_pcnet;
+extern const VMStateDescription vmstate_vlance;

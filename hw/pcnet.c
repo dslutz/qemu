@@ -1716,6 +1716,43 @@ const VMStateDescription vmstate_pcnet = {
     }
 };
 
+const VMStateDescription vmstate_vlance = {
+    .name = "vlance",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
+    .fields      = (VMStateField []) {
+        VMSTATE_INT32(rap, PCNetState),
+        VMSTATE_INT32(isr, PCNetState),
+        VMSTATE_INT32(lnkst, PCNetState),
+        VMSTATE_UINT32(rdra, PCNetState),
+        VMSTATE_UINT32(tdra, PCNetState),
+        VMSTATE_BUFFER(prom, PCNetState),
+        VMSTATE_UINT16_ARRAY(csr, PCNetState, 128),
+        VMSTATE_UINT16_ARRAY(bcr, PCNetState, 32),
+        VMSTATE_UINT64(timer, PCNetState),
+        VMSTATE_INT32(xmit_pos, PCNetState),
+        VMSTATE_BUFFER(buffer, PCNetState),
+        VMSTATE_INT32(tx_busy, PCNetState),
+        VMSTATE_TIMER(poll_timer, PCNetState),
+        VMSTATE_UINT16_ARRAY(bcr2, PCNetVState, 50-32),
+        VMSTATE_UINT16_ARRAY(aMII, PCNetVState, 16),
+        VMSTATE_UINT16_ARRAY(aMorph, PCNetVState, 1),
+        VMSTATE_UINT16(vmxRxRingIndex, PCNetVState),
+        VMSTATE_UINT16(vmxRxLastInterruptIndex, PCNetVState),
+        VMSTATE_UINT16(vmxRxRingLength, PCNetVState),
+        VMSTATE_UINT16(vmxRxRing2Index, PCNetVState),
+        VMSTATE_UINT16(vmxRxRing2Length, PCNetVState),
+        VMSTATE_UINT16(vmxTxRingIndex, PCNetVState),
+        VMSTATE_UINT16(vmxTxLastInterruptIndex, PCNetVState),
+        VMSTATE_UINT16(vmxTxRingLength, PCNetVState),
+        VMSTATE_UINT16(vmxInterruptEnabled, PCNetVState),
+        VMSTATE_INT32(fVMXNet, PCNetVState),
+        VMSTATE_UINT32_ARRAY(aVmxnet, PCNetVState, VMXNET_CHIP_IO_RESV_SIZE),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 void pcnet_common_cleanup(PCNetState *d)
 {
     d->nic = NULL;
