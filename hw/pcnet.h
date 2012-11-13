@@ -143,7 +143,7 @@ int vlance_can_receive(NetClientState *nc);
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
-void pcnetPollRxTx(PCNetVState *pThis);
+void pcnetPollRxTx(PCNetVState *vs);
 void pcnet_update_irq(PCNetState *s);
 void vmxnetUpdateIrq(PCNetVState *vs);
 extern const VMStateDescription vmstate_pcnet;

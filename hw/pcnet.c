@@ -1087,7 +1087,7 @@ static void vmxnetRdtePoll(PCNetVState *vs)
 	  if (s2->fMaybeOutOfSpace)
 	    {
 #if 0
-	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(pThis));
+	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(vs));
 #endif
 	    }
 	}
@@ -1096,7 +1096,7 @@ static void vmxnetRdtePoll(PCNetVState *vs)
 #if 0
 	  /* This is not problematic since we don't own the descriptor */
 	  LogRel(("PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
-		  PCNET_INST_NR, addr, pThis->vmxRxRingIndex));
+		  PCNET_INST_NR, addr, vs->vmxRxRingIndex));
 #endif
 	  return;
 	}
@@ -1862,14 +1862,14 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
         val &= 0xffff;
         vs->s2.bcr2[BCR_STVAL-32] = val;
 #if 0
-        if (pThis->fAm79C973)
-            TMTimerSetNano(pThis->CTX_SUFF(pTimerSoftInt), 12800U * val);
+        if (vs->fAm79C973)
+            TMTimerSetNano(vs->CTX_SUFF(pTimerSoftInt), 12800U * val);
         break;
 #endif
     case BCR_MIIMDR:
         vs->s2.aMII[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
 #ifdef PCNET_DEBUG_MII
-        // Log(("#%d pcnet: mii write %d <- %#x\n", PCNET_INST_NR, pThis->aBCR[BCR_MIIADDR] & 0x1f, val));
+        // Log(("#%d pcnet: mii write %d <- %#x\n", PCNET_INST_NR, vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f, val));
 #endif
         break;
     default:
