@@ -840,6 +840,7 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
 static void vlance_common_init(PCNetState2 *s2)
 {
     memset(s2, 0, sizeof(s2));
+    s2->fLinkUp = 1;
 }
 
 static int pci_vmxnet_init(PCIDevice *pci_dev)
