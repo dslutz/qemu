@@ -1318,6 +1318,15 @@ void pcnet_set_link_status(NetClientState *nc)
     d->lnkst = nc->link_down ? 0 : 0x40;
 }
 
+void vlance_set_link_status(NetClientState *nc)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+
+    vs->s1.lnkst = nc->link_down ? 0 : 0x40;
+    vs->s2.fLinkTempDown = 0;
+    vs->s2.cLinkDownReported = 0;
+}
+
 static void pcnet_transmit(PCNetState *s)
 {
     hwaddr xmit_cxda = 0;

@@ -139,6 +139,7 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap);
 int pcnet_can_receive(NetClientState *nc);
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_set_link_status(NetClientState *nc);
+void vlance_set_link_status(NetClientState *nc);
 int vlance_can_receive(NetClientState *nc);
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);

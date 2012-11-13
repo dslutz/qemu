@@ -787,7 +787,7 @@ static NetClientInfo net_pci_vlance_info = {
     .size = sizeof(NICState),
     .can_receive = vlance_can_receive,
     .receive = vlance_receive,
-    .link_status_changed = pcnet_set_link_status,
+    .link_status_changed = vlance_set_link_status,
     .cleanup = pci_pcnet_cleanup,
 };
 
