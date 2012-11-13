@@ -93,10 +93,10 @@ struct PCNetState_st {
 };
 
 struct PCNetState2_st {
-    target_phys_addr_t VMXDATA;
-    target_phys_addr_t vmxRxRing;
-    target_phys_addr_t vmxRxRing2;
-    target_phys_addr_t vmxTxRing;
+    uint64_t VMXDATA;
+    uint64_t vmxRxRing;
+    uint64_t vmxRxRing2;
+    uint64_t vmxTxRing;
     uint16_t vmxRxRingIndex;
     uint16_t vmxRxLastInterruptIndex;
     uint16_t vmxRxRingLength;
