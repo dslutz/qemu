@@ -136,9 +136,479 @@ static const MemoryRegionOps pcnet_io_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static void pcnetIoMorphportWriteU8(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+//  LogRel(("%s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__));
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportWriteU8: addr=%#010x val=%#06x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x03) {
+    case 0x00:
+        pThis->s2.aMorph[0] = (pThis->s2.aMorph[0] & 0xff00) | (val & 0xff);
+        break;
+    }
+}
+
+static uint32_t pcnetIoMorphportReadU8(PCNetVState *pThis, uint32_t addr)
+{
+//  LogRel(("%s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__));
+    uint32_t val = ~0U;
+
+    switch (addr & 0x03)
+	{
+	case 0x00: /* RESET */
+	    val = pThis->s2.aMorph[0] & 0xff;
+	    break;
+	}
+
+    pcnet_update_irq(&pThis->s1);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportReadU8: addr=%#010x val=%#06x\n", PCNET_INST_NR, addr, val & 0xff));
+#endif
+    return val;
+}
+
+static void pcnetIoMorphportWriteU16(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportWriteU16: addr=%#010x val=%#06x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x03) {
+    case 0x00: /* RDP */
+        pThis->s2.aMorph[0] = val;
+        break;
+    }
+}
+
+static uint32_t pcnetIoMorphportReadU16(PCNetVState *pThis, uint32_t addr)
+{
+//  LogRel(("%s:%d in %s; addr %x\n", __FILE__, __LINE__, __FUNCTION__, (uint32_t)addr));
+    uint32_t val = ~0U;
+
+    switch (addr & 0x03) {
+    case 0x00:
+        val = pThis->s2.aMorph[0];
+        break;
+    }
+
+    pcnet_update_irq(&pThis->s1);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportReadU16: addr=%#010x val=%#06x\n", PCNET_INST_NR, addr, val & 0xffff));
+#endif
+    return val;
+}
+
+static void pcnetIoMorphportWriteU32(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+//  LogRel(("%s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__));
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportWriteU32: addr=%#010x val=%#010x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x03) {
+    case 0x00: /* RDP */
+        pThis->s2.aMorph[0] = val;
+    }
+}
+
+static uint32_t pcnetIoMorphportReadU32(PCNetVState *pThis, uint32_t addr)
+{
+//  LogRel(("%s:%d in %s\n", __FILE__, __LINE__, __FUNCTION__));
+    uint32_t val = ~0U;
+
+    switch (addr & 0x03) {
+    case 0x00:
+        val = pThis->s2.aMorph[0];
+        break;
+    }
+
+    pcnet_update_irq(&pThis->s1);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoMorphportReadU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+#endif
+    return val;
+}
+
+static void pcnetIoVmxnetportWriteU8(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportWriteU8: addr=%#010x val=%#06x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x3f) {
+    case 0x00:
+        pThis->s2.aVmxnet[0] = (pThis->s2.aVmxnet[0] & 0xff00) | (val & 0xff);
+        break;
+    case VMXNET_MAC_ADDR:
+    case VMXNET_MAC_ADDR+1:
+    case VMXNET_MAC_ADDR+2:
+    case VMXNET_MAC_ADDR+3:
+    case VMXNET_MAC_ADDR+4:
+    case VMXNET_MAC_ADDR+5:
+        pThis->s1.prom[(addr-VMXNET_MAC_ADDR) & 0x0f] = val & 0xff;
+        break;
+    default:
+//	    LogRel(("Unhandled #%d pcnetIoVmxnetportWriteU8: addr=%#010x val=%#06x \n", PCNET_INST_NR, addr, val));
+        break;
+    }
+}
+
+static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *pThis, uint32_t addr)
+{
+    uint32_t val = ~0U;
+
+    switch (addr & 0x3f) {
+	case VMXNET_MAC_ADDR:
+	case VMXNET_MAC_ADDR+1:
+	case VMXNET_MAC_ADDR+2:
+	case VMXNET_MAC_ADDR+3:
+	case VMXNET_MAC_ADDR+4:
+	case VMXNET_MAC_ADDR+5:
+	    val = pThis->s1.prom[(addr-VMXNET_MAC_ADDR) & 0x0f] & 0xff;
+	    break;
+	case VMXNET_LOW_VERSION:
+	    val = pThis->s2.aVmxnet[VMXNET_LOW_VERSION] & 0xff;
+	    break;
+	case VMXNET_HIGH_VERSION:
+	    val = pThis->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xff;
+	    break;
+	default: 
+//	    Log(("Unhandled #%d pcnetIoVmxnetportReadU8: addr=%#010x val=%#06x \n", PCNET_INST_NR, addr, val & 0xff));
+	    break;
+	}
+
+    pcnet_update_irq(&pThis->s1);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportReadU8: addr=%#010x val=%#06x\n", PCNET_INST_NR, addr, val & 0xff));
+#endif
+    return val;
+}
+
+static void pcnetIoVmxnetportWriteU16(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportWriteU16: addr=%#010x val=%#06x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x3f) {
+    case 0x00: /* RDP */
+        pThis->s2.aVmxnet[0] = val;
+        break;
+    default:
+//	    LogRel(("Unhandled #%d pcnetIoVmxnetportWriteU16: addr=%#010x val=%#06x \n", PCNET_INST_NR, addr, val));
+        break;
+    }
+}
+
+static uint32_t pcnetIoVmxnetportReadU16(PCNetVState *pThis, uint32_t addr)
+{
+    uint32_t val = ~0U;
+
+    switch (addr & 0x3f) {
+    case 0x00:
+        val = pThis->s2.aVmxnet[0];
+        break;
+    case VMXNET_LOW_VERSION:
+        val = pThis->s2.aVmxnet[VMXNET_LOW_VERSION] & 0xFFFF;
+        break;
+    case VMXNET_HIGH_VERSION:
+        val = pThis->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xFFFF;
+        break;
+    default:
+//	    Log(("Unhandled #%d pcnetIoVmxnetportReadU16: addr=%#010x val=%#06x\n", PCNET_INST_NR, addr, val & 0xffff));
+        break;
+    }
+
+    pcnet_update_irq(&pThis->s1);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportReadU16: addr=%#010x val=%#06x\n", PCNET_INST_NR, addr, val & 0xffff));
+#endif
+    return val;
+}
+
+static void pcnetIoVmxnetportWriteU32(PCNetVState *pThis, uint32_t addr, uint32_t val)
+{
+    PCNetState *s = &pThis->s1;
+    Vmxnet2_DriverData dd;
+    uint16_t *ladrf;
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportWriteU32: addr=%#010x val=%#010x\n", PCNET_INST_NR,
+	  addr, val));
+#endif
+    switch (addr & 0x3f) {
+    case VMXNET_COMMAND_ADDR:
+	    pThis->s2.aVmxnet[VMXNET_COMMAND_ADDR] = val;
+	    if (val == VMXNET_CMD_INTR_DISABLE) {
+		pThis->s2.vmxInterruptEnabled = 0;
+		vmxnetUpdateIrq(pThis);
+	    } else if (val == VMXNET_CMD_INTR_ENABLE) {
+		pThis->s2.vmxInterruptEnabled = 1;
+		vmxnetUpdateIrq(pThis);
+	    } else if (val == VMXNET_CMD_INTR_ACK) {
+		vmxnetUpdateIrq(pThis);
+	    } else if (val == VMXNET_CMD_UPDATE_LADRF) {
+		s->phys_mem_read(s->dma_opaque, pThis->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
+		ladrf = (uint16_t *) dd.LADRF;
+		if ((dd.ifflags & VMXNET_IFF_MULTICAST)) {
+		    pThis->s1.csr[8] = ladrf[0];
+		    pThis->s1.csr[9] = ladrf[1];
+		    pThis->s1.csr[10] = ladrf[2];
+		    pThis->s1.csr[11] = ladrf[3];
+		}
+	    } else if (val == VMXNET_CMD_UPDATE_IFF) {
+                s->phys_mem_read(s->dma_opaque, pThis->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
+		ladrf = (uint16_t *) dd.LADRF;
+		pThis->s1.csr[8] = ladrf[0];
+		pThis->s1.csr[9] = ladrf[1];
+		pThis->s1.csr[10] = ladrf[2];
+		pThis->s1.csr[11] = ladrf[3];
+		if (!(dd.ifflags & VMXNET_IFF_MULTICAST)) {
+		    pThis->s1.csr[8] = 0;
+		    pThis->s1.csr[9] = 0;
+		    pThis->s1.csr[10] = 0;
+		    pThis->s1.csr[11] = 0;
+		}
+		if (dd.ifflags & ~(VMXNET_IFF_PROMISC | VMXNET_IFF_BROADCAST | VMXNET_IFF_MULTICAST)) {
+		    // Linux driver sets most bits to 1.
+//		    //		    LogRel(("Unhandled IFF ifflags = 0x%x\n", dd.ifflags));
+		}
+		if (!!(dd.ifflags & VMXNET_IFF_PROMISC) ^ CSR_PROM(s)) {
+		    /* check for promiscuous mode change */
+#if 0
+		    if (pThis->s2.pDrv)
+			pThis->s2.pDrv->pfnSetPromiscuousMode(pThis->s2.pDrv, !!(dd.ifflags & VMXNET_IFF_PROMISC));
+#endif
+		    pThis->s1.csr[15] = (dd.ifflags & VMXNET_IFF_PROMISC) ? (pThis->s1.csr[15] | 0x8000) : (pThis->s1.csr[15] & ~0x8000);
+		}
+		if (!!(dd.ifflags & VMXNET_IFF_BROADCAST) ^ CSR_DRCVBC(s))  {
+		    pThis->s1.csr[15] = !(dd.ifflags & VMXNET_IFF_BROADCAST) ? (pThis->s1.csr[15] | 0x4000) : (pThis->s1.csr[15] & ~0x4000);
+		}
+		if (!!(dd.ifflags & VMXNET_IFF_BROADCAST) ^ CSR_DRCVBC(s))  {
+		    pThis->s1.csr[15] = !(dd.ifflags & VMXNET_IFF_BROADCAST) ? (pThis->s1.csr[15] | 0x4000) : (pThis->s1.csr[15] & ~0x4000);
+		}
+	    } else {
+		if ((val != VMXNET_CMD_GET_FEATURES) && (val != VMXNET_CMD_GET_CAPABILITIES) &&
+		    (val != VMXNET_CMD_GET_NUM_RX_BUFFERS) && (val != VMXNET_CMD_GET_NUM_TX_BUFFERS)) {
+//		    LogRel(("Unhandled Command #%d pcnetIoVmxnetportWriteU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+		}
+	    }
+	    break;
+	case VMXNET_INIT_ADDR:
+	    pThis->s2.VMXDATA = val;
+            s->phys_mem_read(s->dma_opaque, pThis->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
+		
+#if 0
+	    LogRel(("vmxnet: rxRingLength = %d rxRingOffset = %d rxRingLength2 = %d rxRingOffset2 = %d txRingLength = %d txRingOffset = %d\n",
+		    dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset));
+#endif
+	    pThis->s2.vmxRxRing = val + dd.rxRingOffset;
+	    pThis->s2.vmxRxRingLength = dd.rxRingLength;
+	    pThis->s2.vmxRxRing2 = val + dd.rxRingOffset2;
+	    pThis->s2.vmxRxRing2Length = dd.rxRingLength2;
+	    pThis->s2.vmxTxRing = val + dd.txRingOffset;
+	    pThis->s2.vmxTxRingLength = dd.txRingLength;
+	    pThis->s2.vmxRxRingIndex = 0;
+	    pThis->s2.vmxRxLastInterruptIndex = -1;
+	    pThis->s2.vmxTxLastInterruptIndex = -1;
+	    pThis->s2.vmxRxRing2Index = 0;
+	    pThis->s2.vmxTxRingIndex = 0;
+	    pThis->s2.vmxInterruptEnabled = 1;
+	    ladrf = (uint16_t *) dd.LADRF;
+	    pThis->s1.csr[8] = ladrf[0];
+	    pThis->s1.csr[9] = ladrf[1];
+	    pThis->s1.csr[10] = ladrf[2];
+	    pThis->s1.csr[11] = ladrf[3];
+	    if (!(dd.ifflags & VMXNET_IFF_MULTICAST)) {
+		pThis->s1.csr[8] = 0;
+		pThis->s1.csr[9] = 0;
+		pThis->s1.csr[10] = 0;
+		pThis->s1.csr[11] = 0;
+	    }
+	    if (dd.ifflags & ~(VMXNET_IFF_PROMISC | VMXNET_IFF_BROADCAST | VMXNET_IFF_MULTICAST)) {
+		// Linux driver sets most bits to 1.
+//		LogRel(("vmxnet: Unhandled init IFF ifflags = 0x%x\n", dd.ifflags));
+	    }
+	    if (!!(dd.ifflags & VMXNET_IFF_PROMISC) ^ CSR_PROM(s)) {
+		/* check for promiscuous mode change */
+#if 0
+		if (pThis->s2.pDrv)
+		    pThis->s2.pDrv->pfnSetPromiscuousMode(pThis->s2.pDrv, !!(dd.ifflags & VMXNET_IFF_PROMISC));
+#endif
+		pThis->s1.csr[15] = (dd.ifflags & VMXNET_IFF_PROMISC) ? (pThis->s1.csr[15] | 0x8000) : (pThis->s1.csr[15] & ~0x8000);
+	    }
+	    if (!!(dd.ifflags & VMXNET_IFF_BROADCAST) ^ CSR_DRCVBC(s))  {
+		pThis->s1.csr[15] = !(dd.ifflags & VMXNET_IFF_BROADCAST) ? (pThis->s1.csr[15] | 0x4000) : (pThis->s1.csr[15] & ~0x4000);
+	    }
+	    break;
+	case VMXNET_INIT_LENGTH:
+	    pThis->s2.VMXDATALENGTH = val;
+	    pThis->s2.aVmxnet[VMXNET_INIT_LENGTH] = val;
+	    break;
+	default:
+//	    LogRel(("Unhandled #%d pcnetIoVmxnetportWriteU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+	    break;
+	}
+}
+
+static uint32_t pcnetIoVmxnetportReadU32(PCNetVState *pThis, uint32_t addr)
+{
+    uint32_t val = ~0U;
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportReadU32: addr=%#010x\n", PCNET_INST_NR, addr));
+#endif
+    switch (addr & 0x3f)
+        {
+	case 0x00:
+	    val = pThis->s2.aVmxnet[0];
+	    break;
+	case VMXNET_LOW_VERSION:
+	    val = pThis->s2.aVmxnet[VMXNET_LOW_VERSION];
+	    break;
+	case VMXNET_HIGH_VERSION:
+	    val = pThis->s2.aVmxnet[VMXNET_HIGH_VERSION];
+	    break;
+	case VMXNET_COMMAND_ADDR:
+	    switch (pThis->s2.aVmxnet[VMXNET_COMMAND_ADDR])
+		{
+		case VMXNET_CMD_GET_FEATURES:
+		    val = 0;
+		    break;
+		case VMXNET_CMD_GET_CAPABILITIES:
+		    val = 0;
+		    break;
+		case VMXNET_CMD_GET_NUM_RX_BUFFERS:
+		    val = 100;
+		    break;
+		case VMXNET_CMD_GET_NUM_TX_BUFFERS:
+		    val = 100;
+		    break;
+		default:
+//		    LogRel(("Unhandled command #%d pcnetIoVmxnetportReadU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+		    break;
+		}
+	    break;
+	case VMXNET_STATUS_ADDR:
+	    val = ((!pThis->s2.fLinkTempDown && pThis->s2.fLinkUp) ? VMXNET_STATUS_CONNECTED:0);
+	    val |= VMXNET_STATUS_ENABLED;
+	    if (pThis->s2.fLinkTempDown || !pThis->s2.fLinkUp) {
+		pThis->s2.cLinkDownReported++;
+	    }
+	    break;
+	case VMXNET_TX_ADDR:
+	    val = 0;
+	    pcnetPollRxTx(pThis);
+	    break;
+	default:
+//	    LogRel(("Unhandled #%d pcnetIoVmxnetportReadU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+	    break;
+	}
+    vmxnetUpdateIrq(pThis);
+
+#ifdef PCNET_DEBUG_IO
+//    Log2(("#%d pcnetIoVmxnetportReadU32: addr=%#010x val=%#010x\n", PCNET_INST_NR, addr, val));
+#endif
+    return val;
+}
+
+static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
+                                  unsigned size)
+{
+    PCNetVState *vs = opaque;
+
+    if (vs->s2.fVMXNet) {
+        if (size == 1) {
+            return pcnetIoVmxnetportReadU8(vs, addr);
+        } else if (size == 2) {
+            return pcnetIoVmxnetportReadU16(vs, addr);
+        } else if (size == 4) {
+            return pcnetIoVmxnetportReadU32(vs, addr);
+        }
+    } else if (addr < PCNET_IOPORT_SIZE) {
+        return pcnet_ioport_read(opaque, addr, size);
+    } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
+
+        if (size == 1) {
+            return pcnetIoMorphportReadU8(vs, addr1);
+        } else if (size == 2) {
+            return pcnetIoMorphportReadU16(vs, addr1);
+        } else if (size == 4) {
+            return pcnetIoMorphportReadU32(vs, addr1);
+        }
+    } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE + MORPH_PORT_SIZE;
+
+        if (size == 1) {
+            return pcnetIoVmxnetportReadU8(vs, addr1);
+        } else if (size == 2) {
+            return pcnetIoVmxnetportReadU16(vs, addr1);
+        } else if (size == 4) {
+            return pcnetIoVmxnetportReadU32(vs, addr1);
+        }
+    } else {
+        printf("%s: Bad read @ %llx,%d\n",
+               __func__, (long long unsigned int)addr, size);
+    }
+    return ((uint64_t)1 << (size * 8)) - 1;
+}
+
+static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
+                               uint64_t data, unsigned size)
+{
+    PCNetVState *vs = opaque;
+
+    if (vs->s2.fVMXNet) {
+        if (size == 1) {
+            pcnetIoVmxnetportWriteU8(vs, addr, data);
+        } else if (size == 2) {
+            pcnetIoVmxnetportWriteU16(vs, addr, data);
+        } else if (size == 4) {
+            pcnetIoVmxnetportWriteU32(vs, addr, data);
+        }
+    } else if (addr < PCNET_IOPORT_SIZE) {
+        pcnet_ioport_write(opaque, addr, data, size);
+    } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
+
+        if (size == 1) {
+            pcnetIoMorphportWriteU8(vs, addr1, data);
+        } else if (size == 2) {
+            pcnetIoMorphportWriteU16(vs, addr1, data);
+        } else if (size == 4) {
+            pcnetIoMorphportWriteU32(vs, addr1, data);
+        }
+    } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE + MORPH_PORT_SIZE;
+
+        if (size == 1) {
+            pcnetIoVmxnetportWriteU8(vs, addr1, data);
+        } else if (size == 2) {
+            pcnetIoVmxnetportWriteU16(vs, addr1, data);
+        } else if (size == 4) {
+            pcnetIoVmxnetportWriteU32(vs, addr1, data);
+        }
+    } else {
+        printf("%s: Bad write @ %llx of %llx,%d\n",
+               __func__,
+               (long long unsigned int)addr,
+               (long long unsigned int)data,
+               size);
+    }
+}
+
 static const MemoryRegionOps vlance_io_ops = {
-    .read = pcnet_ioport_read,
-    .write = pcnet_ioport_write,
+    .read = vlance_ioport_read,
+    .write = vlance_ioport_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -454,11 +924,21 @@ static int pci_vlance_init(PCIDevice *pci_dev)
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_vlance_info);
 }
 
-static void pci_reset(DeviceState *dev)
+static void pcnet_pci_reset(DeviceState *dev)
 {
     PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev.qdev, dev);
 
     pcnet_h_reset(&d->state);
+}
+
+static void vlance_pci_reset(DeviceState *dev)
+{
+    PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev.qdev, dev);
+    PCNetVState *vs = &d->state;
+    PCIDevice *pci_dev = vs->s1.dma_opaque;
+    PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(pci_dev);
+
+    vlance_h_reset(vs, pc->vendor_id, pc->subsystem_id, pc->subsystem_vendor_id);
 }
 
 static Property pcnet_properties[] = {
@@ -478,7 +958,7 @@ static void pcnet_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_AMD_LANCE;
     k->revision = 0x10;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
-    dc->reset = pci_reset;
+    dc->reset = pcnet_pci_reset;
     dc->vmsd = &vmstate_pci_pcnet;
     dc->props = pcnet_properties;
 }
@@ -497,7 +977,7 @@ static void vmxnet_class_init(ObjectClass *klass, void *data)
     k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     k->subsystem_id = PCI_DEVICE_ID_VMWARE_NET;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
-    dc->reset = pci_reset;
+    dc->reset = vlance_pci_reset;
     dc->vmsd = &vmstate_pci_vlance;
     dc->props = pcnet_properties;
 }
@@ -516,7 +996,7 @@ static void vlance_class_init(ObjectClass *klass, void *data)
     k->subsystem_vendor_id = PCI_VENDOR_ID_AMD;
     k->subsystem_id = PCI_DEVICE_ID_AMD_LANCE;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
-    dc->reset = pci_reset;
+    dc->reset = vlance_pci_reset;
     dc->vmsd = &vmstate_pci_vlance;
     dc->props = pcnet_properties;
 }

@@ -56,6 +56,15 @@
 #define BCR_SSIZE32(S)   !!((S)->bcr[BCR_SWS ] & 0x0100)
 #define BCR_SWSTYLE(S)     ((S)->bcr[BCR_SWS ] & 0x00FF)
 
+#define CSR_DRX(S)       !!(((S)->csr[15])&0x0001)
+#define CSR_DTX(S)       !!(((S)->csr[15])&0x0002)
+#define CSR_LOOP(S)      !!(((S)->csr[15])&0x0004)
+#define CSR_DXMTFCS(S)   !!(((S)->csr[15])&0x0008)
+#define CSR_INTL(S)      !!(((S)->csr[15])&0x0040)
+#define CSR_DRCVPA(S)    !!(((S)->csr[15])&0x2000)
+#define CSR_DRCVBC(S)    !!(((S)->csr[15])&0x4000)
+#define CSR_PROM(S)      !!(((S)->csr[15])&0x8000)
+
 typedef struct PCNetState_st PCNetState;
 typedef struct PCNetState2_st PCNetState2;
 typedef struct PCNetVState_st PCNetVState;
@@ -116,6 +125,7 @@ struct PCNetVState_st {
 };
 
 void pcnet_h_reset(void *opaque);
+void vlance_h_reset(void *opaque, uint16_t vid, uint16_t sid, uint16_t svid);
 void pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val);
 uint32_t pcnet_ioport_readw(void *opaque, uint32_t addr);
 void pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val);
@@ -133,5 +143,8 @@ int vlance_can_receive(NetClientState *nc);
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
+void pcnetPollRxTx(PCNetVState *pThis);
+void pcnet_update_irq(PCNetState *s);
+void vmxnetUpdateIrq(PCNetVState *vs);
 extern const VMStateDescription vmstate_pcnet;
 extern const VMStateDescription vmstate_vlance;

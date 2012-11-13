@@ -73,14 +73,6 @@ struct qemu_ether_header {
 #define CSR_SPND(S)      !!(((S)->csr[5])&0x0001)
 #define CSR_LTINTEN(S)   !!(((S)->csr[5])&0x4000)
 #define CSR_TOKINTD(S)   !!(((S)->csr[5])&0x8000)
-#define CSR_DRX(S)       !!(((S)->csr[15])&0x0001)
-#define CSR_DTX(S)       !!(((S)->csr[15])&0x0002)
-#define CSR_LOOP(S)      !!(((S)->csr[15])&0x0004)
-#define CSR_DXMTFCS(S)   !!(((S)->csr[15])&0x0008)
-#define CSR_INTL(S)      !!(((S)->csr[15])&0x0040)
-#define CSR_DRCVPA(S)    !!(((S)->csr[15])&0x2000)
-#define CSR_DRCVBC(S)    !!(((S)->csr[15])&0x4000)
-#define CSR_PROM(S)      !!(((S)->csr[15])&0x8000)
 
 #define CSR_CRBC(S)      ((S)->csr[40])
 #define CSR_CRST(S)      ((S)->csr[41])
@@ -707,7 +699,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val);
 static void pcnet_s_reset(PCNetState *s)
 {
 #ifdef PCNET_DEBUG
-    printf("pcnet_s_reset\n");
+    printf("%s\n", __func__);
 #endif
 
     s->rdra = 0;
@@ -748,7 +740,7 @@ static void pcnet_s_reset(PCNetState *s)
     s->tx_busy = 0;
 }
 
-static void pcnet_update_irq(PCNetState *s)
+void pcnet_update_irq(PCNetState *s)
 {
     int isr = 0;
     s->csr[0] &= ~0x0080;
@@ -807,7 +799,7 @@ static void pcnet_update_irq(PCNetState *s)
     s->isr = isr;
 }
 
-static void vmxnetUpdateIrq(PCNetVState *vs)
+void vmxnetUpdateIrq(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     PCNetState2 *s2 = &vs->s2;
@@ -849,7 +841,7 @@ static void pcnet_init(PCNetState *s)
     uint32_t rdra, tdra;
 
 #ifdef PCNET_DEBUG
-    printf("pcnet_init init_addr=0x%08x\n", PHYSADDR(s,CSR_IADR(s)));
+    printf("%s: init_addr=0x%08x\n", __func__, PHYSADDR(s,CSR_IADR(s)));
 #endif
 
     if (BCR_SSIZE32(s)) {
@@ -922,7 +914,7 @@ static void pcnet_init(PCNetState *s)
 static void pcnet_start(PCNetState *s)
 {
 #ifdef PCNET_DEBUG
-    printf("pcnet_start\n");
+    printf("%s\n", __func__);
 #endif
 
     if (!CSR_DTX(s))
@@ -939,7 +931,7 @@ static void pcnet_start(PCNetState *s)
 static void pcnet_stop(PCNetState *s)
 {
 #ifdef PCNET_DEBUG
-    printf("pcnet_stop\n");
+    printf("%s\n", __func__);
 #endif
     s->csr[0] &= ~0xffeb;
     s->csr[0] |= 0x0014;
@@ -1151,7 +1143,7 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
         return -1;
     }
 #ifdef PCNET_DEBUG
-    printf("pcnet_receive size=%d\n", size);
+    printf("%s: size=%d\n", __func__, size);
 #endif
 
     /* if too small buffer, then expand it */
@@ -1377,7 +1369,7 @@ static void pcnet_transmit(PCNetState *s)
                              s->buffer + s->xmit_pos, bcnt, CSR_BSWP(s));
             s->xmit_pos += bcnt;
 #ifdef PCNET_DEBUG
-            printf("pcnet_transmit size=%d\n", s->xmit_pos);
+            printf("%s: size=%d\n", __func__, s->xmit_pos);
 #endif
             if (CSR_LOOP(s)) {
                 if (BCR_SWSTYLE(s) == 1)
@@ -1430,7 +1422,7 @@ static void pcnet_transmit(PCNetState *s)
 /**
  * Poll for changes in RX and TX descriptor rings.
  */
-static void pcnetPollRxTx(PCNetVState *vs)
+void pcnetPollRxTx(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     PCNetState2 *s2 = &vs->s2;
@@ -1621,7 +1613,7 @@ static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value)
 {
     uint16_t val = new_value;
 #ifdef PCNET_DEBUG_CSR
-    printf("pcnet_csr_writew rap=%d val=0x%04x\n", rap, val);
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     switch (rap) {
     case 0:
@@ -1745,7 +1737,7 @@ static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap)
         val = s->csr[rap];
     }
 #ifdef PCNET_DEBUG_CSR
-    printf("pcnet_csr_readw rap=%d val=0x%04x\n", rap, val);
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     return val;
 }
@@ -1754,7 +1746,7 @@ static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val)
 {
     rap &= 127;
 #ifdef PCNET_DEBUG_BCR
-    printf("pcnet_bcr_writew rap=%d val=0x%04x\n", rap, val);
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     switch (rap) {
     case BCR_SWS:
@@ -1814,7 +1806,7 @@ uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap)
         break;
     }
 #ifdef PCNET_DEBUG_BCR
-    printf("pcnet_bcr_readw rap=%d val=0x%04x\n", rap, val);
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     return val;
 }
@@ -2040,7 +2032,7 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
         break;
     }
 #ifdef PCNET_DEBUG_BCR
-    printf("pcnet_bcr_readw rap=%d val=0x%04x\n", rap, val);
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     return val;
 }
@@ -2067,12 +2059,29 @@ void pcnet_h_reset(void *opaque)
     pcnet_poll_timer(s);
 }
 
+void vlance_h_reset(void *opaque, uint16_t vid, uint16_t sid, uint16_t svid)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
+    pcnet_h_reset(opaque);
+
+    vs->s2.bcr2[BCR_MIIADDR-32] = 0;  /* Internal PHY on Am79C973 would be (0x1e << 5) */
+    vs->s2.bcr2[BCR_PCIVID-32] = vid;
+    s->bcr[BCR_PCISID] = sid;
+    s->bcr[BCR_PCISVID] = svid;
+
+    vs->s2.aMorph[0] = 0x2934;
+    vs->s2.aVmxnet[VMXNET_LOW_VERSION] = 0xBABE864F;
+    vs->s2.aVmxnet[VMXNET_HIGH_VERSION] = 0xBABE864F;
+}
+
 void pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
 {
     PCNetState *s = opaque;
     pcnet_poll_timer(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_writew addr=0x%08x val=0x%04x\n", addr, val);
+    printf("%s: addr=0x%08x val=0x%04x\n", __func__, addr, val);
 #endif
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -2114,7 +2123,7 @@ uint32_t pcnet_ioport_readw(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_readw addr=0x%08x val=0x%04x\n", addr, val & 0xffff);
+    printf("%s: addr=0x%08x val=0x%04x\n", __func__, addr, val & 0xffff);
 #endif
     return val;
 }
@@ -2124,7 +2133,7 @@ void pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
     PCNetState *s = opaque;
     pcnet_poll_timer(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_writel addr=0x%08x val=0x%08x\n", addr, val);
+    printf("%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
 #endif
     if (BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -2173,7 +2182,7 @@ uint32_t pcnet_ioport_readl(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_readl addr=0x%08x val=0x%08x\n", addr, val);
+    printf("%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
 #endif
     return val;
 }
@@ -2229,14 +2238,17 @@ uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("vlance_ioport_readw addr=0x%08x val=0x%04x\n", addr, val & 0xffff);
+    printf("%s: addr=0x%08x val=0x%04x\n",
+           __func__, addr, val & 0xffff);
 #endif
     return val;
 }
 
 void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
 {
-    PCNetState *s = opaque;
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
     pcnet_poll_timer(s);
 #ifdef PCNET_DEBUG_IO
     printf("vlance_ioport_writel addr=0x%08x val=0x%08x\n", addr, val);
@@ -2250,7 +2262,7 @@ void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
             s->rap = val & 0x7f;
             break;
         case 0x0c:
-            pcnet_bcr_writew(s, s->rap, val & 0xffff);
+            vlance_bcr_writew(vs, s->rap, val & 0xffff);
             break;
         }
     } else
@@ -2266,8 +2278,10 @@ void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
 
 uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
 {
-    PCNetState *s = opaque;
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
     uint32_t val = -1;
+
     pcnet_poll_timer(s);
     if (BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -2282,7 +2296,7 @@ uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
             val = 0;
             break;
         case 0x0c:
-            val = pcnet_bcr_readw(s, s->rap);
+            val = vlance_bcr_readw(vs, s->rap);
             break;
         }
     }
