@@ -24,6 +24,31 @@
 #define BCR_EECAS    19
 #define BCR_SWS      20
 #define BCR_PLAT     22
+#define BCR_PCISVID  23
+#define BCR_PCISID   24
+#define BCR_SRAMSIZ  25
+#define BCR_SRAMB    26
+#define BCR_SRAMIC   27
+#define BCR_EBADDRL  28
+#define BCR_EBADDRU  29
+#define BCR_EBD      30
+#define BCR_STVAL    31
+#define BCR_MIICAS   32
+#define BCR_MIIADDR  33
+#define BCR_MIIMDR   34
+#define BCR_PCIVID   35
+#define BCR_PMC_A    36
+#define BCR_DATA0    37
+#define BCR_DATA1    38
+#define BCR_DATA2    39
+#define BCR_DATA3    40
+#define BCR_DATA4    41
+#define BCR_DATA5    42
+#define BCR_DATA6    43
+#define BCR_DATA7    44
+#define BCR_PMR1     45
+#define BCR_PMR2     46
+#define BCR_PMR3     47
 
 #define BCR_TMAULOOP(S)  !!((S)->bcr[BCR_MC  ] & 0x4000)
 #define BCR_APROMWE(S)   !!((S)->bcr[BCR_MC  ] & 0x0100)
@@ -92,7 +117,12 @@ void pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val);
 uint32_t pcnet_ioport_readw(void *opaque, uint32_t addr);
 void pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val);
 uint32_t pcnet_ioport_readl(void *opaque, uint32_t addr);
+void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val);
+uint32_t vlance_ioport_readw(void *opaque, uint32_t addr);
+void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val);
+uint32_t vlance_ioport_readl(void *opaque, uint32_t addr);
 uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap);
+uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap);
 int pcnet_can_receive(NetClientState *nc);
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_set_link_status(NetClientState *nc);

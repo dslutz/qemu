@@ -702,6 +702,7 @@ static void pcnet_poll_timer(void *opaque);
 static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap);
 static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value);
 static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val);
+static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val);
 
 static void pcnet_s_reset(PCNetState *s)
 {
@@ -1818,6 +1819,102 @@ uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap)
     return val;
 }
 
+static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
+{
+    PCNetState *s = &vs->s1;
+
+    rap &= 127;
+#ifdef PCNET_DEBUG_BCR
+    printf("%s: rap=%d val=0x%04x\n", __func__, rap, val);
+#endif
+    switch (rap) {
+    case BCR_SWS:
+        if (!(CSR_STOP(s) || CSR_SPND(s)))
+            return;
+        val &= ~0x0300;
+        switch (val & 0x00ff) {
+        case 0:
+            val |= 0x0200;
+            break;
+        case 1:
+            val |= 0x0100;
+            break;
+        case 2:
+        case 3:
+            val |= 0x0300;
+            break;
+        default:
+            printf("Bad SWSTYLE=0x%02x\n", val & 0xff);
+            val = 0x0200;
+            break;
+        }
+#ifdef PCNET_DEBUG
+       printf("BCR_SWS=0x%04x\n", val);
+#endif
+        /* fall through */
+    case BCR_LNKST:
+    case BCR_LED1:
+    case BCR_LED2:
+    case BCR_LED3:
+    case BCR_MC:
+    case BCR_FDC:
+    case BCR_BSBC:
+    case BCR_EECAS:
+    case BCR_PLAT:
+        s->bcr[rap] = val;
+        break;
+    case BCR_MIICAS:
+    case BCR_MIIADDR:
+        vs->s2.bcr2[rap-32] = val;
+    case BCR_STVAL:
+        val &= 0xffff;
+        vs->s2.bcr2[BCR_STVAL-32] = val;
+#if 0
+        if (pThis->fAm79C973)
+            TMTimerSetNano(pThis->CTX_SUFF(pTimerSoftInt), 12800U * val);
+        break;
+#endif
+    case BCR_MIIMDR:
+        vs->s2.aMII[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
+#ifdef PCNET_DEBUG_MII
+        // Log(("#%d pcnet: mii write %d <- %#x\n", PCNET_INST_NR, pThis->aBCR[BCR_MIIADDR] & 0x1f, val));
+#endif
+        break;
+    default:
+        break;
+    }
+}
+
+uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
+{
+    PCNetState *s = &vs->s1;
+    uint32_t val;
+
+    rap &= 127;
+    switch (rap) {
+    case BCR_LNKST:
+    case BCR_LED1:
+    case BCR_LED2:
+    case BCR_LED3:
+        val = s->bcr[rap] & ~0x8000;
+        val |= (val & 0x017f & s->lnkst) ? 0x8000 : 0;
+        break;
+    default:
+        if (rap < 32) {
+            val = s->bcr[rap];
+        } else if (rap < 50) {
+            val = vs->s2.bcr2[rap-32];
+        } else {
+            val = 0;
+        }
+        break;
+    }
+#ifdef PCNET_DEBUG_BCR
+    printf("pcnet_bcr_readw rap=%d val=0x%04x\n", rap, val);
+#endif
+    return val;
+}
+
 void pcnet_h_reset(void *opaque)
 {
     PCNetState *s = opaque;
@@ -1947,6 +2044,121 @@ uint32_t pcnet_ioport_readl(void *opaque, uint32_t addr)
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
     printf("pcnet_ioport_readl addr=0x%08x val=0x%08x\n", addr, val);
+#endif
+    return val;
+}
+
+void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
+    pcnet_poll_timer(s);
+#ifdef PCNET_DEBUG_IO
+    printf("%s: addr=0x%08x val=0x%04x\n", __func__, addr, val);
+#endif
+    if (!BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            pcnet_csr_writew(s, s->rap, val);
+            break;
+        case 0x02:
+            s->rap = val & 0x7f;
+            break;
+        case 0x06:
+            vlance_bcr_writew(vs, s->rap, val);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+}
+
+uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+    uint32_t val = -1;
+
+    pcnet_poll_timer(s);
+    if (!BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            val = pcnet_csr_readw(s, s->rap);
+            break;
+        case 0x02:
+            val = s->rap;
+            break;
+        case 0x04:
+            pcnet_s_reset(s);
+            val = 0;
+            break;
+        case 0x06:
+            val = vlance_bcr_readw(vs, s->rap);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+#ifdef PCNET_DEBUG_IO
+    printf("vlance_ioport_readw addr=0x%08x val=0x%04x\n", addr, val & 0xffff);
+#endif
+    return val;
+}
+
+void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
+{
+    PCNetState *s = opaque;
+    pcnet_poll_timer(s);
+#ifdef PCNET_DEBUG_IO
+    printf("vlance_ioport_writel addr=0x%08x val=0x%08x\n", addr, val);
+#endif
+    if (BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            pcnet_csr_writew(s, s->rap, val & 0xffff);
+            break;
+        case 0x04:
+            s->rap = val & 0x7f;
+            break;
+        case 0x0c:
+            pcnet_bcr_writew(s, s->rap, val & 0xffff);
+            break;
+        }
+    } else
+    if ((addr & 0x0f) == 0) {
+        /* switch device to dword i/o mode */
+        pcnet_bcr_writew(s, BCR_BSBC, pcnet_bcr_readw(s, BCR_BSBC) | 0x0080);
+#ifdef PCNET_DEBUG_IO
+        printf("device switched into dword i/o mode\n");
+#endif
+    }
+    pcnet_update_irq(s);
+}
+
+uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
+{
+    PCNetState *s = opaque;
+    uint32_t val = -1;
+    pcnet_poll_timer(s);
+    if (BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            val = pcnet_csr_readw(s, s->rap);
+            break;
+        case 0x04:
+            val = s->rap;
+            break;
+        case 0x08:
+            pcnet_s_reset(s);
+            val = 0;
+            break;
+        case 0x0c:
+            val = pcnet_bcr_readw(s, s->rap);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+#ifdef PCNET_DEBUG_IO
+    printf("vlance_ioport_readl addr=0x%08x val=0x%08x\n", addr, val);
 #endif
     return val;
 }
