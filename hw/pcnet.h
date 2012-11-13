@@ -80,7 +80,6 @@ struct PCNetState2_st {
     uint16_t aMorph[1];
     uint32_t VMXDATALENGTH;
     uint32_t aVmxnet[VMXNET_CHIP_IO_RESV_SIZE];
-    Vmxnet2_DriverData dd;
 };
 
 struct PCNetVState_st {

@@ -1068,6 +1068,48 @@ int pcnet_can_receive(NetClientState *nc)
     return sizeof(s->buffer)-16;
 }
 
+static void vmxnetRdtePoll(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+
+    /* assume lack of a next receive descriptor */
+    CSR_NRST(s) = 0;
+
+    if (RT_LIKELY(s2->VMXDATA))
+    {
+      /*
+       * The current receive message descriptor.
+       */
+      Vmxnet2_RxRingEntry  rmd;
+      target_phys_addr_t addr;
+
+      addr = vmxnetRdraAddr(vs, s2->vmxRxRingIndex);
+      if (!vmxnetRmdLoad(vs, &rmd, addr))
+	{
+	  return;
+	}
+      if (1) // || (RT_LIKELY((!IS_RMD_BAD(rmd)))))
+	{
+	  if (s2->fMaybeOutOfSpace)
+	    {
+#if 0
+	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(pThis));
+#endif
+	    }
+	}
+      else
+	{
+#if 0
+	  /* This is not problematic since we don't own the descriptor */
+	  LogRel(("PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
+		  PCNET_INST_NR, addr, pThis->vmxRxRingIndex));
+#endif
+	  return;
+	}
+    }
+}
+
 int vlance_can_receive(NetClientState *nc)
 {
     PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
@@ -1077,6 +1119,8 @@ int vlance_can_receive(NetClientState *nc)
 
     if (!vs->s2.VMXDATA)
         return pcnet_can_receive(nc);
+
+    vmxnetRdtePoll(vs);
 
     addr = vmxnetRdraAddr(vs, vs->s2.vmxRxRingIndex);
     if (!vmxnetRmdLoad(vs, &rmd, addr))
@@ -1272,48 +1316,6 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
     pcnet_update_irq(s);
 
     return size_;
-}
-
-static void vmxnetRdtePoll(PCNetVState *vs)
-{
-    PCNetState *s = &vs->s1;
-    PCNetState2 *s2 = &vs->s2;
-
-    /* assume lack of a next receive descriptor */
-    CSR_NRST(s) = 0;
-
-    if (RT_LIKELY(s2->VMXDATA))
-    {
-      /*
-       * The current receive message descriptor.
-       */
-      Vmxnet2_RxRingEntry  rmd;
-      target_phys_addr_t addr;
-
-      addr = vmxnetRdraAddr(vs, s2->vmxRxRingIndex);
-      if (!vmxnetRmdLoad(vs, &rmd, addr))
-	{
-	  return;
-	}
-      if (1) // || (RT_LIKELY((!IS_RMD_BAD(rmd)))))
-	{
-	  if (s2->fMaybeOutOfSpace)
-	    {
-#if 0
-	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(pThis));
-#endif
-	    }
-	}
-      else
-	{
-#if 0
-	  /* This is not problematic since we don't own the descriptor */
-	  LogRel(("PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
-		  PCNET_INST_NR, addr, pThis->vmxRxRingIndex));
-#endif
-	  return;
-	}
-    }
 }
 
 void pcnet_set_link_status(NetClientState *nc)
@@ -1984,22 +1986,10 @@ const VMStateDescription vmstate_vlance = {
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
     .fields      = (VMStateField []) {
-        VMSTATE_INT32(rap, PCNetState),
-        VMSTATE_INT32(isr, PCNetState),
-        VMSTATE_INT32(lnkst, PCNetState),
-        VMSTATE_UINT32(rdra, PCNetState),
-        VMSTATE_UINT32(tdra, PCNetState),
-        VMSTATE_BUFFER(prom, PCNetState),
-        VMSTATE_UINT16_ARRAY(csr, PCNetState, 128),
-        VMSTATE_UINT16_ARRAY(bcr, PCNetState, 32),
-        VMSTATE_UINT64(timer, PCNetState),
-        VMSTATE_INT32(xmit_pos, PCNetState),
-        VMSTATE_BUFFER(buffer, PCNetState),
-        VMSTATE_INT32(tx_busy, PCNetState),
-        VMSTATE_TIMER(poll_timer, PCNetState),
-        VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
-        VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
-        VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),
+        VMSTATE_UINT64(VMXDATA, PCNetState2),
+        VMSTATE_UINT64(vmxRxRing, PCNetState2),
+        VMSTATE_UINT64(vmxRxRing2, PCNetState2),
+        VMSTATE_UINT64(vmxTxRing, PCNetState2),
         VMSTATE_UINT16(vmxRxRingIndex, PCNetState2),
         VMSTATE_UINT16(vmxRxLastInterruptIndex, PCNetState2),
         VMSTATE_UINT16(vmxRxRingLength, PCNetState2),
@@ -2010,6 +2000,11 @@ const VMStateDescription vmstate_vlance = {
         VMSTATE_UINT16(vmxTxRingLength, PCNetState2),
         VMSTATE_UINT16(vmxInterruptEnabled, PCNetState2),
         VMSTATE_INT32(fVMXNet, PCNetState2),
+        VMSTATE_INT32(fSignalRxMiss, PCNetState2),
+        VMSTATE_INT32(fMaybeOutOfSpace, PCNetState2),
+        VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
+        VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
+        VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),
         VMSTATE_UINT32_ARRAY(aVmxnet, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
         VMSTATE_END_OF_LIST()
     }

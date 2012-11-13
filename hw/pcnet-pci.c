@@ -256,9 +256,9 @@ static const VMStateDescription vmstate_pci_pcnet = {
 
 static const VMStateDescription vmstate_pci_vlance = {
     .name = "vlance",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
     .fields      = (VMStateField []) {
         VMSTATE_PCI_DEVICE(pci_dev, PCIPCNetVState),
         VMSTATE_STRUCT(state.s1, PCIPCNetVState, 0, vmstate_pcnet, PCNetState),
