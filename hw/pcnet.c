@@ -1325,6 +1325,7 @@ void vlance_set_link_status(NetClientState *nc)
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
     vs->s2.fLinkTempDown = 0;
     vs->s2.cLinkDownReported = 0;
+    vs->s2.fLinkUp = !nc->link_down;
 }
 
 static void pcnet_transmit(PCNetState *s)

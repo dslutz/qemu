@@ -60,7 +60,7 @@ static void pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val)
 {
     PCNetState *s = opaque;
 #ifdef PCNET_DEBUG
-    printf("pcnet_aprom_writeb addr=0x%08x val=0x%02x\n", addr, val);
+    fprintf(stderr, "pcnet_aprom_writeb addr=0x%08x val=0x%02x\n", addr, val);
 #endif
     if (BCR_APROMWE(s)) {
         s->prom[addr & 15] = val;
@@ -72,7 +72,7 @@ static uint32_t pcnet_aprom_readb(void *opaque, uint32_t addr)
     PCNetState *s = opaque;
     uint32_t val = s->prom[addr & 15];
 #ifdef PCNET_DEBUG
-    printf("pcnet_aprom_readb addr=0x%08x val=0x%02x\n", addr, val);
+    fprintf(stderr, "pcnet_aprom_readb addr=0x%08x val=0x%02x\n", addr, val);
 #endif
     return val;
 }
@@ -139,7 +139,7 @@ static const MemoryRegionOps pcnet_io_ops = {
 static void pcnetIoMorphportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
     switch (addr & 0x03) {
     case 0x00:
@@ -160,7 +160,7 @@ static uint32_t pcnetIoMorphportReadU8(PCNetVState *vs, uint32_t addr)
 
     pcnet_update_irq(&vs->s1);
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
 #endif
     return val;
 }
@@ -168,7 +168,7 @@ static uint32_t pcnetIoMorphportReadU8(PCNetVState *vs, uint32_t addr)
 static void pcnetIoMorphportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
     switch (addr & 0x03) {
     case 0x00: /* RDP */
@@ -190,7 +190,7 @@ static uint32_t pcnetIoMorphportReadU16(PCNetVState *vs, uint32_t addr)
     pcnet_update_irq(&vs->s1);
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
 #endif
     return val;
 }
@@ -198,7 +198,7 @@ static uint32_t pcnetIoMorphportReadU16(PCNetVState *vs, uint32_t addr)
 static void pcnetIoMorphportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#010x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
     switch (addr & 0x03) {
     case 0x00: /* RDP */
@@ -219,7 +219,7 @@ static uint32_t pcnetIoMorphportReadU32(PCNetVState *vs, uint32_t addr)
     pcnet_update_irq(&vs->s1);
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#010x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
     return val;
 }
@@ -227,7 +227,7 @@ static uint32_t pcnetIoMorphportReadU32(PCNetVState *vs, uint32_t addr)
 static void pcnetIoVmxnetportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
     switch (addr & 0x3f) {
     case 0x00:
@@ -242,7 +242,7 @@ static void pcnetIoVmxnetportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t va
         vs->s1.prom[(addr-VMXNET_MAC_ADDR) & 0x0f] = val & 0xff;
         break;
     default:
-        printf("Unhandled %s: addr=%#010x val=%#06x\n",
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n",
                __func__, addr, val);
         break;
     }
@@ -268,7 +268,7 @@ static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *vs, uint32_t addr)
 	    val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xff;
 	    break;
 	default: 
-            printf("Unhandled %s: addr=%#010x val=%#06x \n",
+            fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x \n",
                    __func__, addr, val & 0xff);
 	    break;
 	}
@@ -276,7 +276,7 @@ static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *vs, uint32_t addr)
     pcnet_update_irq(&vs->s1);
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
 #endif
     return val;
 }
@@ -284,14 +284,14 @@ static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *vs, uint32_t addr)
 static void pcnetIoVmxnetportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
     switch (addr & 0x3f) {
     case 0x00: /* RDP */
         vs->s2.aVmxnet[0] = val;
         break;
     default:
-        printf("Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val);
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val);
         break;
     }
 }
@@ -311,14 +311,14 @@ static uint32_t pcnetIoVmxnetportReadU16(PCNetVState *vs, uint32_t addr)
         val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xFFFF;
         break;
     default:
-        printf("Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
         break;
     }
 
     pcnet_update_irq(&vs->s1);
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
+    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
 #endif
     return val;
 }
@@ -330,7 +330,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
     uint16_t *ladrf;
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#010x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
     switch (addr & 0x3f) {
     case VMXNET_COMMAND_ADDR:
@@ -367,7 +367,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 		}
 		if (dd.ifflags & ~(VMXNET_IFF_PROMISC | VMXNET_IFF_BROADCAST | VMXNET_IFF_MULTICAST)) {
 		    // Linux driver sets most bits to 1.
-                    // printf("Unhandled IFF ifflags = 0x%x\n", dd.ifflags);
+                    // fprintf(stderr, "Unhandled IFF ifflags = 0x%x\n", dd.ifflags);
 		}
 		if (!!(dd.ifflags & VMXNET_IFF_PROMISC) ^ CSR_PROM(s)) {
 		    /* check for promiscuous mode change */
@@ -386,7 +386,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	    } else {
 		if ((val != VMXNET_CMD_GET_FEATURES) && (val != VMXNET_CMD_GET_CAPABILITIES) &&
 		    (val != VMXNET_CMD_GET_NUM_RX_BUFFERS) && (val != VMXNET_CMD_GET_NUM_TX_BUFFERS)) {
-		    printf("Unhandled Command %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+		    fprintf(stderr, "Unhandled Command %s: addr=%#010x val=%#010x\n", __func__, addr, val);
 		}
 	    }
 	    break;
@@ -394,7 +394,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	    vs->s2.VMXDATA = val;
             s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
 		
-	    printf("vmxnet: rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
+	    fprintf(stderr, "vmxnet: rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
 		    dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
 	    vs->s2.vmxRxRing = val + dd.rxRingOffset;
 	    vs->s2.vmxRxRingLength = dd.rxRingLength;
@@ -421,7 +421,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	    }
 	    if (dd.ifflags & ~(VMXNET_IFF_PROMISC | VMXNET_IFF_BROADCAST | VMXNET_IFF_MULTICAST)) {
 		// Linux driver sets most bits to 1.
-                // printf("vmxnet: Unhandled init IFF ifflags = 0x%x\n", dd.ifflags);
+                // fprintf(stderr, "vmxnet: Unhandled init IFF ifflags = 0x%x\n", dd.ifflags);
 	    }
 	    if (!!(dd.ifflags & VMXNET_IFF_PROMISC) ^ CSR_PROM(s)) {
 		/* check for promiscuous mode change */
@@ -440,7 +440,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	    vs->s2.aVmxnet[VMXNET_INIT_LENGTH] = val;
 	    break;
 	default:
-            printf("Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+            fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
 	    break;
 	}
 }
@@ -449,59 +449,55 @@ static uint32_t pcnetIoVmxnetportReadU32(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
-#ifdef PCNET_DEBUG_IO
-    printf("%s: pcnetIoVmxnetportReadU32: addr=%#010x\n", __func__, addr);
-#endif
-    switch (addr & 0x3f)
+    switch (addr & 0x3f) {
+    case 0x00:
+        val = vs->s2.aVmxnet[0];
+        break;
+    case VMXNET_LOW_VERSION:
+        val = vs->s2.aVmxnet[VMXNET_LOW_VERSION];
+        break;
+    case VMXNET_HIGH_VERSION:
+        val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION];
+        break;
+    case VMXNET_COMMAND_ADDR:
+        switch (vs->s2.aVmxnet[VMXNET_COMMAND_ADDR])
         {
-	case 0x00:
-	    val = vs->s2.aVmxnet[0];
-	    break;
-	case VMXNET_LOW_VERSION:
-	    val = vs->s2.aVmxnet[VMXNET_LOW_VERSION];
-	    break;
-	case VMXNET_HIGH_VERSION:
-	    val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION];
-	    break;
-	case VMXNET_COMMAND_ADDR:
-	    switch (vs->s2.aVmxnet[VMXNET_COMMAND_ADDR])
-		{
-		case VMXNET_CMD_GET_FEATURES:
-		    val = 0;
-		    break;
-		case VMXNET_CMD_GET_CAPABILITIES:
-		    val = 0;
-		    break;
-		case VMXNET_CMD_GET_NUM_RX_BUFFERS:
-		    val = 100;
-		    break;
-		case VMXNET_CMD_GET_NUM_TX_BUFFERS:
-		    val = 100;
-		    break;
-		default:
-                    printf("Unhandled command %s: addr=%#010x val=%#010x\n", __func__, addr, val);
-		    break;
-		}
-	    break;
-	case VMXNET_STATUS_ADDR:
-	    val = ((!vs->s2.fLinkTempDown && vs->s2.fLinkUp) ? VMXNET_STATUS_CONNECTED:0);
-	    val |= VMXNET_STATUS_ENABLED;
-	    if (vs->s2.fLinkTempDown || !vs->s2.fLinkUp) {
-		vs->s2.cLinkDownReported++;
-	    }
-	    break;
-	case VMXNET_TX_ADDR:
-	    val = 0;
-	    pcnetPollRxTx(vs);
-	    break;
-	default:
-            printf("Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
-	    break;
-	}
+        case VMXNET_CMD_GET_FEATURES:
+            val = 0;
+            break;
+        case VMXNET_CMD_GET_CAPABILITIES:
+            val = 0;
+            break;
+        case VMXNET_CMD_GET_NUM_RX_BUFFERS:
+            val = 100;
+            break;
+        case VMXNET_CMD_GET_NUM_TX_BUFFERS:
+            val = 100;
+            break;
+        default:
+            fprintf(stderr, "Unhandled command %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+            break;
+        }
+        break;
+    case VMXNET_STATUS_ADDR:
+        val = ((!vs->s2.fLinkTempDown && vs->s2.fLinkUp) ? VMXNET_STATUS_CONNECTED:0);
+        val |= VMXNET_STATUS_ENABLED;
+        if (vs->s2.fLinkTempDown || !vs->s2.fLinkUp) {
+            vs->s2.cLinkDownReported++;
+        }
+        break;
+    case VMXNET_TX_ADDR:
+        val = 0;
+        pcnetPollRxTx(vs);
+        break;
+    default:
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+        break;
+    }
     vmxnetUpdateIrq(vs);
 
 #ifdef PCNET_DEBUG_IO
-    printf("%s: addr=%#010x val=%#010x\n", __func__, addr, val);
+    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
     return val;
 }
@@ -511,6 +507,10 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
 {
     PCNetVState *vs = opaque;
 
+#ifdef PCNET_DEBUG_IO
+    fprintf(stderr, "%s: addr=%#010lx size=%d fVMXNet=%d\n",
+            __func__, (long)addr, size, vs->s2.fVMXNet);
+#endif
     if (vs->s2.fVMXNet) {
         if (size == 1) {
             return pcnetIoVmxnetportReadU8(vs, addr);
@@ -532,7 +532,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             return pcnetIoMorphportReadU32(vs, addr1);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE + MORPH_PORT_SIZE;
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
             return pcnetIoVmxnetportReadU8(vs, addr1);
@@ -542,7 +542,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             return pcnetIoVmxnetportReadU32(vs, addr1);
         }
     } else {
-        printf("%s: Bad read @ %llx,%d\n",
+        fprintf(stderr, "%s: Bad read @ %llx,%d\n",
                __func__, (long long unsigned int)addr, size);
     }
     return ((uint64_t)1 << (size * 8)) - 1;
@@ -552,6 +552,11 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
                                uint64_t data, unsigned size)
 {
     PCNetVState *vs = opaque;
+
+#ifdef PCNET_DEBUG_IO
+    fprintf(stderr, "%s: addr=%#010lx data=%lx size=%d fVMXNet=%d\n",
+            __func__, (long)addr, (long)data, size, vs->s2.fVMXNet);
+#endif
 
     if (vs->s2.fVMXNet) {
         if (size == 1) {
@@ -574,7 +579,7 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
             pcnetIoMorphportWriteU32(vs, addr1, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE + MORPH_PORT_SIZE;
+        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
             pcnetIoVmxnetportWriteU8(vs, addr1, data);
@@ -584,7 +589,7 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
             pcnetIoVmxnetportWriteU32(vs, addr1, data);
         }
     } else {
-        printf("%s: Bad write @ %llx of %llx,%d\n",
+        fprintf(stderr, "%s: Bad write @ %llx of %llx,%d\n",
                __func__,
                (long long unsigned int)addr,
                (long long unsigned int)data,
@@ -602,7 +607,7 @@ static void pcnet_mmio_writeb(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_writeb addr=0x" TARGET_FMT_plx" val=0x%02x\n", addr,
+    fprintf(stderr, "pcnet_mmio_writeb addr=0x" TARGET_FMT_plx" val=0x%02x\n", addr,
            val);
 #endif
     if (!(addr & 0x10))
@@ -616,7 +621,7 @@ static uint32_t pcnet_mmio_readb(void *opaque, hwaddr addr)
     if (!(addr & 0x10))
         val = pcnet_aprom_readb(d, addr & 0x0f);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_readb addr=0x" TARGET_FMT_plx " val=0x%02x\n", addr,
+    fprintf(stderr, "pcnet_mmio_readb addr=0x" TARGET_FMT_plx " val=0x%02x\n", addr,
            val & 0xff);
 #endif
     return val;
@@ -626,7 +631,7 @@ static void pcnet_mmio_writew(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_writew addr=0x" TARGET_FMT_plx " val=0x%04x\n", addr,
+    fprintf(stderr, "pcnet_mmio_writew addr=0x" TARGET_FMT_plx " val=0x%04x\n", addr,
            val);
 #endif
     if (addr & 0x10)
@@ -651,7 +656,7 @@ static uint32_t pcnet_mmio_readw(void *opaque, hwaddr addr)
         val |= pcnet_aprom_readb(d, addr);
     }
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_readw addr=0x" TARGET_FMT_plx" val = 0x%04x\n", addr,
+    fprintf(stderr, "pcnet_mmio_readw addr=0x" TARGET_FMT_plx" val = 0x%04x\n", addr,
            val & 0xffff);
 #endif
     return val;
@@ -661,7 +666,7 @@ static void pcnet_mmio_writel(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_writel addr=0x" TARGET_FMT_plx" val=0x%08x\n", addr,
+    fprintf(stderr, "pcnet_mmio_writel addr=0x" TARGET_FMT_plx" val=0x%08x\n", addr,
            val);
 #endif
     if (addr & 0x10)
@@ -692,7 +697,7 @@ static uint32_t pcnet_mmio_readl(void *opaque, hwaddr addr)
         val |= pcnet_aprom_readb(d, addr);
     }
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_mmio_readl addr=0x" TARGET_FMT_plx " val=0x%08x\n", addr,
+    fprintf(stderr, "pcnet_mmio_readl addr=0x" TARGET_FMT_plx " val=0x%08x\n", addr,
            val);
 #endif
     return val;
@@ -798,7 +803,7 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
     uint8_t *pci_conf;
 
 #if 0
-    printf("sizeof(RMD)=%d, sizeof(TMD)=%d\n",
+    fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
         sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
 #endif
 
@@ -845,7 +850,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
     uint8_t *pci_conf;
 
 #if 0
-    printf("sizeof(RMD)=%d, sizeof(TMD)=%d\n",
+    fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
         sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
 #endif
 
@@ -882,7 +887,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
     uint8_t *pci_conf;
 
 #if 0
-    printf("sizeof(RMD)=%d, sizeof(TMD)=%d\n",
+    fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
         sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
 #endif
 
