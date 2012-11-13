@@ -100,6 +100,9 @@ struct PCNetState2_st {
     int fVMXNet;
     int fSignalRxMiss;
     int fMaybeOutOfSpace;
+    int fLinkUp;
+    int fLinkTempDown;
+    uint32_t cLinkDownReported;
     uint16_t bcr2[50-32];
     uint16_t aMII[16];
     uint16_t aMorph[1];

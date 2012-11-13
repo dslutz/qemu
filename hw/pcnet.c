@@ -1885,6 +1885,119 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
     }
 }
 
+static uint32_t pcnetMIIReadU16(PCNetVState *vs, uint32_t miiaddr)
+{
+    uint32_t val;
+    bool autoneg, duplex, fast;
+
+    autoneg = (vs->s2.bcr2[BCR_MIICAS-32] & 0x20) != 0;
+    duplex  = (vs->s2.bcr2[BCR_MIICAS-32] & 0x10) != 0;
+    fast    = (vs->s2.bcr2[BCR_MIICAS-32] & 0x08) != 0;
+
+    switch (miiaddr)
+    {
+        case 0:
+            /* MII basic mode control register. */
+            val = 0;
+            if (autoneg)
+                val |= 0x1000;  /* Enable auto negotiation. */
+            if (fast)
+                val |= 0x2000;  /* 100 Mbps */
+            if (duplex) /* Full duplex forced */
+                val |= 0x0100;  /* Full duplex */
+            break;
+
+        case 1:
+            /* MII basic mode status register. */
+            val = 0x7800    /* Can do 100mbps FD/HD and 10mbps FD/HD. */
+                | 0x0040    /* Mgmt frame preamble not required. */
+                | 0x0020    /* Auto-negotiation complete. */
+                | 0x0008    /* Able to do auto-negotiation. */
+                | 0x0004    /* Link up. */
+                | 0x0001;   /* Extended Capability, i.e. registers 4+ valid. */
+            if (!vs->s2.fLinkUp || vs->s2.fLinkTempDown) {
+                val &= ~(0x0020 | 0x0004);
+                vs->s2.cLinkDownReported++;
+            }
+            if (!autoneg) {
+                /* Auto-negotiation disabled. */
+                val &= ~(0x0020 | 0x0008);
+                if (duplex)
+                    /* Full duplex forced. */
+                    val &= ~0x2800;
+                else
+                    /* Half duplex forced. */
+                    val &= ~0x5000;
+
+                if (fast)
+                    /* 100 Mbps forced */
+                    val &= ~0x1800;
+                else
+                    /* 10 Mbps forced */
+                    val &= ~0x6000;
+            }
+            break;
+
+        case 2:
+            /* PHY identifier 1. */
+            val = 0x22;     /* Am79C874 PHY */
+            break;
+
+        case 3:
+            /* PHY identifier 2. */
+            val = 0x561b;   /* Am79C874 PHY */
+            break;
+
+        case 4:
+            /* Advertisement control register. */
+            val =   0x01e0  /* Try 100mbps FD/HD and 10mbps FD/HD. */
+#if 0
+                // Advertising flow control is a) not the default, and b) confuses
+                // the link speed detection routine in Windows PCnet driver
+                  | 0x0400  /* Try flow control. */
+#endif
+                  | 0x0001; /* CSMA selector. */
+            break;
+
+        case 5:
+            /* Link partner ability register. */
+            if (vs->s2.fLinkUp && !vs->s2.fLinkTempDown)
+                val =   0x8000  /* Next page bit. */
+                      | 0x4000  /* Link partner acked us. */
+                      | 0x0400  /* Can do flow control. */
+                      | 0x01e0  /* Can do 100mbps FD/HD and 10mbps FD/HD. */
+                      | 0x0001; /* Use CSMA selector. */
+            else
+            {
+                val = 0;
+                vs->s2.cLinkDownReported++;
+            }
+            break;
+
+        case 6:
+            /* Auto negotiation expansion register. */
+            if (vs->s2.fLinkUp && !vs->s2.fLinkTempDown)
+                val =   0x0008  /* Link partner supports npage. */
+                      | 0x0004  /* Enable npage words. */
+                      | 0x0001; /* Can do N-way auto-negotiation. */
+            else
+            {
+                val = 0;
+                vs->s2.cLinkDownReported++;
+            }
+            break;
+
+        default:
+            val = 0;
+            break;
+    }
+
+#ifdef PCNET_DEBUG_MII
+//    Log(("#%d pcnet: mii read %d -> %#x\n", PCNET_INST_NR, miiaddr, val));
+#endif
+    return val;
+}
+
 uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
 {
     PCNetState *s = &vs->s1;
@@ -1897,7 +2010,24 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
     case BCR_LED2:
     case BCR_LED3:
         val = s->bcr[rap] & ~0x8000;
+        /* Clear LNKSTE if we're not connected. */
+        if (vs->s2.fLinkTempDown || !vs->s2.fLinkUp)
+        {
+            if (rap == BCR_LNKST) {
+                vs->s2.cLinkDownReported++;
+            }
+            val &= ~0x40;
+        }
         val |= (val & 0x017f & s->lnkst) ? 0x8000 : 0;
+        break;
+    case BCR_MIIMDR:
+        if ((vs->s2.bcr2[BCR_MIIADDR-32] >> 5 & 0x1f) == 0)
+        {
+            uint32_t miiaddr = vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f;
+            val = pcnetMIIReadU16(vs, miiaddr);
+        }
+        else
+            val = 0xffff;
         break;
     default:
         if (rap < 32) {
@@ -2158,7 +2288,7 @@ uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("vlance_ioport_readl addr=0x%08x val=0x%08x\n", addr, val);
+    printf("%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
 #endif
     return val;
 }
