@@ -1436,21 +1436,21 @@ static void pcnet_transmit(PCNetState *s)
     s->tx_busy = 0;
 }
 
-static int vmxnetTdtePoll(PCNetVState *pThis, Vmxnet2_TxRingEntry *desc)
+static int vmxnetTdtePoll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
 {
-    PCNetState *s = &pThis->s1;
+    PCNetState *s = &vs->s1;
     target_phys_addr_t cxda;
 
     s->csr[60] = s->csr[34];
     s->csr[61] = s->csr[35];
     /* set current trasmit decriptor. */
-    cxda = pThis->s2.vmxTxRing + (pThis->s2.vmxTxRingIndex * sizeof(*desc));
+    cxda = vs->s2.vmxTxRing + (vs->s2.vmxTxRingIndex * sizeof(*desc));
     s->csr[34] = cxda & 0xffff;
     s->csr[35] = cxda >> 16;
 
     s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
     fprintf(stderr, "tx descriptor index=%d addr=0x%lx flags=0x%x ownership=0x%x extra=0x%x tsoMss=0x%x\n",
-            pThis->s2.vmxTxRingIndex, (long) cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+            vs->s2.vmxTxRingIndex, (long) cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
 
   if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
       if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
@@ -1461,18 +1461,18 @@ static int vmxnetTdtePoll(PCNetVState *pThis, Vmxnet2_TxRingEntry *desc)
   return (desc->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
-static inline int pcnetIsLinkUp(PCNetVState *pThis)
+static inline int pcnetIsLinkUp(PCNetVState *vs)
 {
-    return !pThis->s2.fLinkTempDown && pThis->s2.fLinkUp;
+    return !vs->s2.fLinkTempDown && vs->s2.fLinkUp;
 }
 
 /**
  * Store transmit message descriptor and hand it over to the host (the VM guest).
  * Make sure that all data are transmitted before we clear the own flag.
  */
-static inline void vmxnetTmdStorePassHost(PCNetVState *pThis, Vmxnet2_TxRingEntry *tmd, PA addr)
+static inline void vmxnetTmdStorePassHost(PCNetVState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
 {
-    PCNetState *s = &pThis->s1;
+    PCNetState *s = &vs->s1;
 
     tmd->ownership = VMXNET2_OWNERSHIP_DRIVER;
     s->phys_mem_write(s->dma_opaque, addr, (void*)tmd, 4, 0);
@@ -1481,9 +1481,9 @@ static inline void vmxnetTmdStorePassHost(PCNetVState *pThis, Vmxnet2_TxRingEntr
 /**
  * Fails a TMD with a generic error.
  */
-static inline void vmxnetXmitFailTMDGeneric(PCNetVState *pThis, Vmxnet2_TxRingEntry *pTmd)
+static inline void vmxnetXmitFailTMDGeneric(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
 {
-    PCNetState *s = &pThis->s1;
+    PCNetState *s = &vs->s1;
 
     /* make carrier error - hope this is correct. */
     s->csr[0] |= 0xa000; /* ERR | CERR */
@@ -1496,15 +1496,15 @@ static inline void vmxnetXmitFailTMDGeneric(PCNetVState *pThis, Vmxnet2_TxRingEn
  * Fails a TMD with a link down error.
  */
 
-static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *pThis, Vmxnet2_TxRingEntry *pTmd)
+static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
 {
-    pThis->s2.cLinkDownReported++;
-    vmxnetXmitFailTMDGeneric(pThis, pTmd);
+    vs->s2.cLinkDownReported++;
+    vmxnetXmitFailTMDGeneric(vs, pTmd);
 }
 
-static void vmxnetAsyncTransmit(PCNetVState *pThis)
+void vmxnetAsyncTransmit(PCNetVState *vs)
 {
-    PCNetState *s = &pThis->s1;
+    PCNetState *s = &vs->s1;
     unsigned cFlushIrq = 0;
     Vmxnet2_TxRingEntry tmd;
 
@@ -1515,15 +1515,15 @@ static void vmxnetAsyncTransmit(PCNetVState *pThis)
     /*
      * Iterate the transmit descriptors.
      */
-    while (vmxnetTdtePoll(pThis, &tmd)) {
+    while (vmxnetTdtePoll(vs, &tmd)) {
 #ifdef PCNET_DEBUG_TMD
-        fprintf(stderr, "%s TMDLOAD %#010x\n", __func__, PHYSADDR(pThis, CSR_CXDA(s)));
+        fprintf(stderr, "%s TMDLOAD %#010x\n", __func__, PHYSADDR(vs, CSR_CXDA(s)));
         PRINT_TMD(&tmd);
 #endif
 
         /* Don't continue sending packets when the link is down. */
-        if (UNLIKELY(!pcnetIsLinkUp(pThis)
-                     &&  pThis->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
+        if (UNLIKELY(!pcnetIsLinkUp(vs)
+                     &&  vs->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
             ) {
             s->csr[0] |= 0xa000; /* ERR | CERR */
             s->xmit_pos = -1;
@@ -1538,7 +1538,7 @@ static void vmxnetAsyncTransmit(PCNetVState *pThis)
         {
 	    const unsigned cb = tmd.sg.sg[0].length;
 
-            if (RT_LIKELY(pcnetIsLinkUp(pThis) || CSR_LOOP(s)))
+            if (RT_LIKELY(pcnetIsLinkUp(vs) || CSR_LOOP(s)))
             {
                 /* From the manual: ``A zero length buffer is acceptable as
                  * long as it is not the last buffer in a chain (STP = 0 and
@@ -1548,6 +1548,7 @@ static void vmxnetAsyncTransmit(PCNetVState *pThis)
                 {
                     s->phys_mem_read(s->dma_opaque, NET_SG_MAKE_PA(tmd.sg.sg[0]),
                                      s->buffer + s->xmit_pos, cb, CSR_BSWP(s));
+                    s->xmit_pos += cb;
                     if (CSR_LOOP(s)) {
                         s->looptest = PCNET_LOOPTEST_NOCRC;                        
                         vlance_receive(&s->nic->nc, s->buffer, s->xmit_pos);
@@ -1555,26 +1556,26 @@ static void vmxnetAsyncTransmit(PCNetVState *pThis)
                     } else {
                         if (s->nic)
                             qemu_send_packet(&s->nic->nc, s->buffer, s->xmit_pos);
-                        s->xmit_pos = 0;
                     }
+                    s->xmit_pos = 0;
                 }
                 else
                 {
                     /* Signal error, as this violates the Ethernet specs. */
                     /** @todo check if the correct error is generated. */
-                    fprintf(stderr, "%s: pcnetAsyncTransmit: illegal 4kb frame -> signalling error\n", __func__);
-
-                    vmxnetXmitFailTMDGeneric(pThis, &tmd);
+                    fprintf(stderr, "%s: pcnetAsyncTransmit: illegal %d frame -> signalling error\n",
+                            __func__, cb);
+                    vmxnetXmitFailTMDGeneric(vs, &tmd);
                 }
             }
             else
-                vmxnetXmitFailTMDLinkDown(pThis, &tmd);
+                vmxnetXmitFailTMDLinkDown(vs, &tmd);
 
             /* Write back the TMD and pass it to the host (clear own bit). */
-            vmxnetTmdStorePassHost(pThis, &tmd, CSR_CXDA(s));
+            vmxnetTmdStorePassHost(vs, &tmd, CSR_CXDA(s));
 
             /* advance the ring counter register */
-	    VMXNET_INC(pThis->s2.vmxTxRingIndex, pThis->s2.vmxTxRingLength);
+	    VMXNET_INC(vs->s2.vmxTxRingIndex, vs->s2.vmxTxRingLength);
         } else {
 	    fprintf(stderr, "Multisegments unsupported\n");
 	}
@@ -2368,9 +2369,6 @@ void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
     PCNetState *s = &vs->s1;
 
     trace_vlance_ioport_writew(opaque, addr, val);
-    if (vs->s2.VMXDATA) {
-        vmxnetAsyncTransmit(vs);
-    }
     pcnet_poll_timer(s);
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -2394,9 +2392,6 @@ uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
     PCNetState *s = &vs->s1;
     uint32_t val = -1;
 
-    if (vs->s2.VMXDATA) {
-        vmxnetAsyncTransmit(vs);
-    }
     pcnet_poll_timer(s);
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {

@@ -383,6 +383,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 		if (!!(dd.ifflags & VMXNET_IFF_BROADCAST) ^ CSR_DRCVBC(s))  {
 		    s->csr[15] = !(dd.ifflags & VMXNET_IFF_BROADCAST) ? (s->csr[15] | 0x4000) : (s->csr[15] & ~0x4000);
 		}
+	    } else if (val == VMXNET_CMD_CHECK_TX_DONE) {
 	    } else {
 		if ((val != VMXNET_CMD_GET_FEATURES) && (val != VMXNET_CMD_GET_CAPABILITIES) &&
 		    (val != VMXNET_CMD_GET_NUM_RX_BUFFERS) && (val != VMXNET_CMD_GET_NUM_TX_BUFFERS)) {
@@ -396,18 +397,22 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 		
 	    fprintf(stderr, "vmxnet: VMXDATA=0x%lx rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
 		    (long)val, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
-	    vs->s2.vmxRxRing = val + dd.rxRingOffset;
-	    vs->s2.vmxRxRingLength = dd.rxRingLength;
-	    vs->s2.vmxRxRing2 = val + dd.rxRingOffset2;
-	    vs->s2.vmxRxRing2Length = dd.rxRingLength2;
-	    vs->s2.vmxTxRing = val + dd.txRingOffset;
-	    vs->s2.vmxTxRingLength = dd.txRingLength;
+            if (val) {
+                vs->s2.vmxRxRing = val + dd.rxRingOffset;
+                vs->s2.vmxRxRingLength = dd.rxRingLength;
+                vs->s2.vmxRxRing2 = val + dd.rxRingOffset2;
+                vs->s2.vmxRxRing2Length = dd.rxRingLength2;
+                vs->s2.vmxTxRing = val + dd.txRingOffset;
+                vs->s2.vmxTxRingLength = dd.txRingLength;
+                vs->s2.vmxInterruptEnabled = 1;
+            } else {
+                vs->s2.vmxInterruptEnabled = 0;
+            }
 	    vs->s2.vmxRxRingIndex = 0;
 	    vs->s2.vmxRxLastInterruptIndex = -1;
 	    vs->s2.vmxTxLastInterruptIndex = -1;
 	    vs->s2.vmxRxRing2Index = 0;
 	    vs->s2.vmxTxRingIndex = 0;
-	    vs->s2.vmxInterruptEnabled = 1;
 	    ladrf = (uint16_t *) dd.LADRF;
 	    s->csr[8] = ladrf[0];
 	    s->csr[9] = ladrf[1];
@@ -511,6 +516,10 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
     fprintf(stderr, "%s: addr=%#010lx size=%d fVMXNet=%d\n",
             __func__, (long)addr, size, vs->s2.fVMXNet);
 #endif
+    trace_vlance_ioport_read(opaque, addr, size);
+    if (vs->s2.VMXDATA) {
+        vmxnetAsyncTransmit(vs);
+    }
     if (vs->s2.fVMXNet) {
         if (size == 1) {
             return pcnetIoVmxnetportReadU8(vs, addr);
@@ -520,7 +529,13 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             return pcnetIoVmxnetportReadU32(vs, addr);
         }
     } else if (addr < PCNET_IOPORT_SIZE) {
-        return pcnet_ioport_read(opaque, addr, size);
+        if (addr < 0x10 || size == 1) {
+            return pcnet_ioport_read(opaque, addr, size);
+        } else if (size == 2) {
+            return vlance_ioport_readw(vs, addr);
+        } else if (size == 4) {
+            return vlance_ioport_readl(vs, addr);
+        }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
 
@@ -553,11 +568,18 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
 {
     PCNetVState *vs = opaque;
 
+<<<<<<< HEAD
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010lx data=%lx size=%d fVMXNet=%d\n",
             __func__, (long)addr, (long)data, size, vs->s2.fVMXNet);
 #endif
 
+=======
+    trace_vlance_ioport_write(opaque, addr, data, size);
+    if (vs->s2.VMXDATA) {
+        vmxnetAsyncTransmit(vs);
+    }
+>>>>>>> 508d358... Get it sorta working.
     if (vs->s2.fVMXNet) {
         if (size == 1) {
             pcnetIoVmxnetportWriteU8(vs, addr, data);
@@ -567,7 +589,13 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
             pcnetIoVmxnetportWriteU32(vs, addr, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE) {
-        pcnet_ioport_write(opaque, addr, data, size);
+        if (addr < 0x10 || size == 1) {
+            pcnet_ioport_write(opaque, addr, data, size);
+        } else if (size == 2) {
+            vlance_ioport_writew(vs, addr, data);
+        } else if (size == 4) {
+            vlance_ioport_writel(vs, addr, data);
+        }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
 

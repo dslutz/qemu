@@ -147,5 +147,6 @@ int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
 void pcnetPollRxTx(PCNetVState *vs);
 void pcnet_update_irq(PCNetState *s);
 void vmxnetUpdateIrq(PCNetVState *vs);
+void vmxnetAsyncTransmit(PCNetVState *vs);
 extern const VMStateDescription vmstate_pcnet;
 extern const VMStateDescription vmstate_vlance;
