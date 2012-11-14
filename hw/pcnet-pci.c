@@ -136,11 +136,12 @@ static const MemoryRegionOps pcnet_io_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void pcnetIoMorphportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
+    trace_vlance_morph_ioport_writeb(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00:
         vs->s2.aMorph[0] = (vs->s2.aMorph[0] & 0xff00) | (val & 0xff);
@@ -148,7 +149,7 @@ static void pcnetIoMorphportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t val
     }
 }
 
-static uint32_t pcnetIoMorphportReadU8(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readb(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -162,14 +163,16 @@ static uint32_t pcnetIoMorphportReadU8(PCNetVState *vs, uint32_t addr)
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
 #endif
+    trace_vlance_morph_ioport_readb(vs, addr, val);
     return val;
 }
 
-static void pcnetIoMorphportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
 #endif
+    trace_vlance_morph_ioport_writew(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
         vs->s2.aMorph[0] = val;
@@ -177,7 +180,7 @@ static void pcnetIoMorphportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t va
     }
 }
 
-static uint32_t pcnetIoMorphportReadU16(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readw(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -192,21 +195,23 @@ static uint32_t pcnetIoMorphportReadU16(PCNetVState *vs, uint32_t addr)
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
 #endif
+    trace_vlance_morph_ioport_readw(vs, addr, val);
     return val;
 }
 
-static void pcnetIoMorphportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
+    trace_vlance_morph_ioport_writel(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
         vs->s2.aMorph[0] = val;
     }
 }
 
-static uint32_t pcnetIoMorphportReadU32(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readl(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -221,14 +226,13 @@ static uint32_t pcnetIoMorphportReadU32(PCNetVState *vs, uint32_t addr)
 #ifdef PCNET_DEBUG_IO
     fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
 #endif
+    trace_vlance_morph_ioport_readl(vs, addr, val);
     return val;
 }
 
-static void pcnetIoVmxnetportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
-#endif
+    trace_vmxnet_ioport_writeb(vs, addr, val);
     switch (addr & 0x3f) {
     case 0x00:
         vs->s2.aVmxnet[0] = (vs->s2.aVmxnet[0] & 0xff00) | (val & 0xff);
@@ -248,7 +252,7 @@ static void pcnetIoVmxnetportWriteU8(PCNetVState *vs, uint32_t addr, uint32_t va
     }
 }
 
-static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readbtReadU8(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -275,17 +279,13 @@ static uint32_t pcnetIoVmxnetportReadU8(PCNetVState *vs, uint32_t addr)
 
     pcnet_update_irq(&vs->s1);
 
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
-#endif
+    trace_vmxnet_ioport_readb(vs, addr, val);
     return val;
 }
 
-static void pcnetIoVmxnetportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
-#endif
+    trace_vmxnet_ioport_writew(vs, addr, val);
     switch (addr & 0x3f) {
     case 0x00: /* RDP */
         vs->s2.aVmxnet[0] = val;
@@ -296,7 +296,7 @@ static void pcnetIoVmxnetportWriteU16(PCNetVState *vs, uint32_t addr, uint32_t v
     }
 }
 
-static uint32_t pcnetIoVmxnetportReadU16(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readw(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -316,22 +316,17 @@ static uint32_t pcnetIoVmxnetportReadU16(PCNetVState *vs, uint32_t addr)
     }
 
     pcnet_update_irq(&vs->s1);
-
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
-#endif
+    trace_vmxnet_ioport_readw(vs, addr, val & 0xffff);
     return val;
 }
 
-static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
     PCNetState *s = &vs->s1;
     Vmxnet2_DriverData dd;
     uint16_t *ladrf;
 
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
-#endif
+    trace_vmxnet_ioport_writel(vs, addr, val);
     switch (addr & 0x3f) {
     case VMXNET_COMMAND_ADDR:
 	    vs->s2.aVmxnet[VMXNET_COMMAND_ADDR] = val;
@@ -447,7 +442,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	}
 }
 
-static uint32_t pcnetIoVmxnetportReadU32(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -498,9 +493,7 @@ static uint32_t pcnetIoVmxnetportReadU32(PCNetVState *vs, uint32_t addr)
     }
     vmxnetUpdateIrq(vs);
 
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
-#endif
+    trace_vmxnet_ioport_readl(vs, addr, val);
     return val;
 }
 
@@ -519,11 +512,11 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
     }
     if (vs->s2.fVMXNet) {
         if (size == 1) {
-            return pcnetIoVmxnetportReadU8(vs, addr);
+            return vmxnet_ioport_readbtReadU8(vs, addr);
         } else if (size == 2) {
-            return pcnetIoVmxnetportReadU16(vs, addr);
+            return vmxnet_ioport_readw(vs, addr);
         } else if (size == 4) {
-            return pcnetIoVmxnetportReadU32(vs, addr);
+            return vmxnet_ioport_readl(vs, addr);
         }
     } else if (addr < PCNET_IOPORT_SIZE) {
         if (addr < 0x10 || size == 1) {
@@ -537,21 +530,21 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
 
         if (size == 1) {
-            return pcnetIoMorphportReadU8(vs, addr1);
+            return vlance_morph_ioport_readb(vs, addr1);
         } else if (size == 2) {
-            return pcnetIoMorphportReadU16(vs, addr1);
+            return vlance_morph_ioport_readw(vs, addr1);
         } else if (size == 4) {
-            return pcnetIoMorphportReadU32(vs, addr1);
+            return vlance_morph_ioport_readl(vs, addr1);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
-            return pcnetIoVmxnetportReadU8(vs, addr1);
+            return vmxnet_ioport_readbtReadU8(vs, addr1);
         } else if (size == 2) {
-            return pcnetIoVmxnetportReadU16(vs, addr1);
+            return vmxnet_ioport_readw(vs, addr1);
         } else if (size == 4) {
-            return pcnetIoVmxnetportReadU32(vs, addr1);
+            return vmxnet_ioport_readl(vs, addr1);
         }
     } else {
         fprintf(stderr, "%s: Bad read @ %llx,%d\n",
@@ -565,25 +558,17 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
 {
     PCNetVState *vs = opaque;
 
-<<<<<<< HEAD
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010lx data=%lx size=%d fVMXNet=%d\n",
-            __func__, (long)addr, (long)data, size, vs->s2.fVMXNet);
-#endif
-
-=======
     trace_vlance_ioport_write(opaque, addr, data, size);
     if (vs->s2.VMXDATA) {
         vmxnetAsyncTransmit(vs);
     }
->>>>>>> 508d358... Get it sorta working.
     if (vs->s2.fVMXNet) {
         if (size == 1) {
-            pcnetIoVmxnetportWriteU8(vs, addr, data);
+            vmxnet_ioport_writeb(vs, addr, data);
         } else if (size == 2) {
-            pcnetIoVmxnetportWriteU16(vs, addr, data);
+            vmxnet_ioport_writew(vs, addr, data);
         } else if (size == 4) {
-            pcnetIoVmxnetportWriteU32(vs, addr, data);
+            vmxnet_ioport_writel(vs, addr, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE) {
         if (addr < 0x10 || size == 1) {
@@ -597,21 +582,21 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
 
         if (size == 1) {
-            pcnetIoMorphportWriteU8(vs, addr1, data);
+            vlance_morph_ioport_writeb(vs, addr1, data);
         } else if (size == 2) {
-            pcnetIoMorphportWriteU16(vs, addr1, data);
+            vlance_morph_ioport_writew(vs, addr1, data);
         } else if (size == 4) {
-            pcnetIoMorphportWriteU32(vs, addr1, data);
+            vlance_morph_ioport_writel(vs, addr1, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
-            pcnetIoVmxnetportWriteU8(vs, addr1, data);
+            vmxnet_ioport_writeb(vs, addr1, data);
         } else if (size == 2) {
-            pcnetIoVmxnetportWriteU16(vs, addr1, data);
+            vmxnet_ioport_writew(vs, addr1, data);
         } else if (size == 4) {
-            pcnetIoVmxnetportWriteU32(vs, addr1, data);
+            vmxnet_ioport_writel(vs, addr1, data);
         }
     } else {
         fprintf(stderr, "%s: Bad write @ %llx of %llx,%d\n",

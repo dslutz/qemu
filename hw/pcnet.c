@@ -1422,7 +1422,7 @@ static void pcnet_transmit(PCNetState *s)
     s->tx_busy = 0;
 }
 
-static int vmxnetTdtePoll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
+static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
 {
     PCNetState *s = &vs->s1;
     target_phys_addr_t cxda;
@@ -1435,7 +1435,7 @@ static int vmxnetTdtePoll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
     s->csr[35] = cxda >> 16;
 
     s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
-    trace_vmxnetTdtePoll(vs, vs->s2.vmxTxRingIndex, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+    trace_vmxnet_tdte_poll(vs, vs->s2.vmxTxRingIndex, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
 
   if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
       if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
@@ -1466,13 +1466,13 @@ static inline void vmxnetTmdStorePassHost(PCNetVState *vs, Vmxnet2_TxRingEntry *
 /**
  * Fails a TMD with a generic error.
  */
-static inline void vmxnetXmitFailTMDGeneric(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
+static inline void vmxnet_xmit_fail_tmd_generic(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
 {
     PCNetState *s = &vs->s1;
 
     /* make carrier error - hope this is correct. */
     s->csr[0] |= 0xa000; /* ERR | CERR */
-    trace_vmxnetXmitFailTMDGeneric(vs, s->bcr[BCR_SWS]);
+    trace_vmxnet_xmit_fail_tmd_generic(vs, s->bcr[BCR_SWS]);
 }
 
 
@@ -1483,7 +1483,7 @@ static inline void vmxnetXmitFailTMDGeneric(PCNetVState *vs, Vmxnet2_TxRingEntry
 static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
 {
     vs->s2.cLinkDownReported++;
-    vmxnetXmitFailTMDGeneric(vs, pTmd);
+    vmxnet_xmit_fail_tmd_generic(vs, pTmd);
 }
 
 void vmxnetAsyncTransmit(PCNetVState *vs)
@@ -1499,7 +1499,7 @@ void vmxnetAsyncTransmit(PCNetVState *vs)
     /*
      * Iterate the transmit descriptors.
      */
-    while (vmxnetTdtePoll(vs, &tmd)) {
+    while (vmxnet_tdte_poll(vs, &tmd)) {
         /* Don't continue sending packets when the link is down. */
         if (UNLIKELY(!pcnetIsLinkUp(vs)
                      &&  vs->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
@@ -1543,7 +1543,7 @@ void vmxnetAsyncTransmit(PCNetVState *vs)
                     /** @todo check if the correct error is generated. */
                     fprintf(stderr, "%s: pcnetAsyncTransmit: illegal %d frame -> signalling error\n",
                             __func__, cb);
-                    vmxnetXmitFailTMDGeneric(vs, &tmd);
+                    vmxnet_xmit_fail_tmd_generic(vs, &tmd);
                 }
             }
             else
@@ -2031,7 +2031,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
     }
 }
 
-static uint32_t pcnetMIIReadU16(PCNetVState *vs, uint32_t miiaddr)
+static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 {
     uint32_t val;
     bool autoneg, duplex, fast;
@@ -2137,10 +2137,7 @@ static uint32_t pcnetMIIReadU16(PCNetVState *vs, uint32_t miiaddr)
             val = 0;
             break;
     }
-
-#ifdef PCNET_DEBUG_MII
-//    Log(("#%d pcnet: mii read %d -> %#x\n", PCNET_INST_NR, miiaddr, val));
-#endif
+    trace_pcnet_mii_readw(vs, miiaddr, val);
     return val;
 }
 
@@ -2170,7 +2167,7 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
         if ((vs->s2.bcr2[BCR_MIIADDR-32] >> 5 & 0x1f) == 0)
         {
             uint32_t miiaddr = vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f;
-            val = pcnetMIIReadU16(vs, miiaddr);
+            val = pcnet_mii_readw(vs, miiaddr);
         }
         else
             val = 0xffff;
