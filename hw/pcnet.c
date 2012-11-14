@@ -112,6 +112,13 @@ struct qemu_ether_header {
 #define UNLIKELY(expr) __builtin_expect(!!(expr), 0)
 #define RT_MIN(Value1, Value2) ( (Value1) <= (Value2) ? (Value1) : (Value2) )
 
+typedef uint64_t PA;
+
+/* Maximum number of times we report a link down to the guest (failure to send frame) */
+#define PCNET_MAX_LINKDOWN_REPORTED     3
+/* Maximum frame size we handle */
+#define MAX_FRAME                       1536
+
 struct pcnet_initblk16 {
     uint16_t mode;
     uint16_t padr[3];
@@ -391,7 +398,7 @@ static inline int vmxnetRmdLoad(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd
 {
     PCNetState *s = &vs->s1;
 
-    s->phys_mem_read(s->dma_opaque, addr, (void *)rmd, sizeof(*rmd), 0);
+    s->phys_mem_read(s->dma_opaque, addr, (void *)rmd, sizeof(*rmd), CSR_BSWP(s));
     return (rmd->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
@@ -824,11 +831,11 @@ void vmxnetUpdateIrq(PCNetVState *vs)
       iISR = 0;
     }
 
-//    Log2(("#%d set irq iISR=%d\n", PCNET_INST_NR, iISR));
+//    Log2(("#%d set irq iISR=%d\n", __func__, iISR));
 
     /* normal path is to _not_ change the IRQ status */
     if (UNLIKELY(iISR != s->isr)) {
-// Log(("#%d INTA=%d (vmxnet) vmxInterruptEnabled %d\n", PCNET_INST_NR, iISR, s2->vmxInterruptEnabled));
+// Log(("#%d INTA=%d (vmxnet) vmxInterruptEnabled %d\n", __func__, iISR, s2->vmxInterruptEnabled));
         qemu_set_irq(s->irq, iISR);
         s->isr = iISR;
     }
@@ -1095,8 +1102,8 @@ static void vmxnetRdtePoll(PCNetVState *vs)
 	{
 #if 0
 	  /* This is not problematic since we don't own the descriptor */
-	  LogRel(("PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
-		  PCNET_INST_NR, addr, vs->vmxRxRingIndex));
+	  fprintf(stderr, "PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
+		  __func__, addr, vs->vmxRxRingIndex);
 #endif
 	  return;
 	}
@@ -1429,6 +1436,167 @@ static void pcnet_transmit(PCNetState *s)
     s->tx_busy = 0;
 }
 
+static int vmxnetTdtePoll(PCNetVState *pThis, Vmxnet2_TxRingEntry *desc)
+{
+    PCNetState *s = &pThis->s1;
+    target_phys_addr_t cxda;
+
+    s->csr[60] = s->csr[34];
+    s->csr[61] = s->csr[35];
+    /* set current trasmit decriptor. */
+    cxda = pThis->s2.vmxTxRing + (pThis->s2.vmxTxRingIndex * sizeof(*desc));
+    s->csr[34] = cxda & 0xffff;
+    s->csr[35] = cxda >> 16;
+
+    s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
+    fprintf(stderr, "tx descriptor index=%d addr=0x%lx flags=0x%x ownership=0x%x extra=0x%x tsoMss=0x%x\n",
+            pThis->s2.vmxTxRingIndex, (long) cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+
+  if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
+      if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
+	  fprintf(stderr, "Unhandled transmit descriptor flag = 0x%x\n", desc->flags);
+      }
+  }
+  
+  return (desc->ownership == VMXNET2_OWNERSHIP_NIC);
+}
+
+static inline int pcnetIsLinkUp(PCNetVState *pThis)
+{
+    return !pThis->s2.fLinkTempDown && pThis->s2.fLinkUp;
+}
+
+/**
+ * Store transmit message descriptor and hand it over to the host (the VM guest).
+ * Make sure that all data are transmitted before we clear the own flag.
+ */
+static inline void vmxnetTmdStorePassHost(PCNetVState *pThis, Vmxnet2_TxRingEntry *tmd, PA addr)
+{
+    PCNetState *s = &pThis->s1;
+
+    tmd->ownership = VMXNET2_OWNERSHIP_DRIVER;
+    s->phys_mem_write(s->dma_opaque, addr, (void*)tmd, 4, 0);
+}
+
+/**
+ * Fails a TMD with a generic error.
+ */
+static inline void vmxnetXmitFailTMDGeneric(PCNetVState *pThis, Vmxnet2_TxRingEntry *pTmd)
+{
+    PCNetState *s = &pThis->s1;
+
+    /* make carrier error - hope this is correct. */
+    s->csr[0] |= 0xa000; /* ERR | CERR */
+    fprintf(stderr, "%s pcnetTransmit: Signaling send error. swstyle=%#x\n",
+         __func__, s->bcr[BCR_SWS]);
+}
+
+
+/**
+ * Fails a TMD with a link down error.
+ */
+
+static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *pThis, Vmxnet2_TxRingEntry *pTmd)
+{
+    pThis->s2.cLinkDownReported++;
+    vmxnetXmitFailTMDGeneric(pThis, pTmd);
+}
+
+static void vmxnetAsyncTransmit(PCNetVState *pThis)
+{
+    PCNetState *s = &pThis->s1;
+    unsigned cFlushIrq = 0;
+    Vmxnet2_TxRingEntry tmd;
+
+    s->xmit_pos = 0;
+
+    s->tx_busy = 1;
+
+    /*
+     * Iterate the transmit descriptors.
+     */
+    while (vmxnetTdtePoll(pThis, &tmd)) {
+#ifdef PCNET_DEBUG_TMD
+        fprintf(stderr, "%s TMDLOAD %#010x\n", __func__, PHYSADDR(pThis, CSR_CXDA(s)));
+        PRINT_TMD(&tmd);
+#endif
+
+        /* Don't continue sending packets when the link is down. */
+        if (UNLIKELY(!pcnetIsLinkUp(pThis)
+                     &&  pThis->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
+            ) {
+            s->csr[0] |= 0xa000; /* ERR | CERR */
+            s->xmit_pos = -1;
+            goto txdone;
+        }
+
+
+        /*
+         * The typical case - a complete packet.
+         */
+	if (tmd.sg.length == 1)
+        {
+	    const unsigned cb = tmd.sg.sg[0].length;
+
+            if (RT_LIKELY(pcnetIsLinkUp(pThis) || CSR_LOOP(s)))
+            {
+                /* From the manual: ``A zero length buffer is acceptable as
+                 * long as it is not the last buffer in a chain (STP = 0 and
+                 * ENP = 1).'' That means that the first buffer might have a
+                 * zero length if it is not the last one in the chain. */
+                if (RT_LIKELY(cb <= MAX_FRAME))
+                {
+                    s->phys_mem_read(s->dma_opaque, NET_SG_MAKE_PA(tmd.sg.sg[0]),
+                                     s->buffer + s->xmit_pos, cb, CSR_BSWP(s));
+                    if (CSR_LOOP(s)) {
+                        s->looptest = PCNET_LOOPTEST_NOCRC;                        
+                        vlance_receive(&s->nic->nc, s->buffer, s->xmit_pos);
+                        s->looptest = 0;
+                    } else {
+                        if (s->nic)
+                            qemu_send_packet(&s->nic->nc, s->buffer, s->xmit_pos);
+                        s->xmit_pos = 0;
+                    }
+                }
+                else
+                {
+                    /* Signal error, as this violates the Ethernet specs. */
+                    /** @todo check if the correct error is generated. */
+                    fprintf(stderr, "%s: pcnetAsyncTransmit: illegal 4kb frame -> signalling error\n", __func__);
+
+                    vmxnetXmitFailTMDGeneric(pThis, &tmd);
+                }
+            }
+            else
+                vmxnetXmitFailTMDLinkDown(pThis, &tmd);
+
+            /* Write back the TMD and pass it to the host (clear own bit). */
+            vmxnetTmdStorePassHost(pThis, &tmd, CSR_CXDA(s));
+
+            /* advance the ring counter register */
+	    VMXNET_INC(pThis->s2.vmxTxRingIndex, pThis->s2.vmxTxRingLength);
+        } else {
+	    fprintf(stderr, "Multisegments unsupported\n");
+	}
+
+        /* Update TDMD, TXSTRT and TINT. */
+        s->csr[0] &= ~0x0008;   /* clear TDMD */
+        s->csr[4] |= 0x0004;    /* set TXSTRT */
+	cFlushIrq++;
+
+        /** @todo should we continue after an error (tmd.tmd1.err) or not? */
+    }
+
+txdone:
+    if (cFlushIrq)
+    {
+        s->csr[0] |= 0x0200;    /* set TINT */
+        pcnet_update_irq(s);
+    }
+
+    s->tx_busy = 0;
+}
+
 /**
  * Poll for changes in RX and TX descriptor rings.
  */
@@ -1461,7 +1629,7 @@ void pcnetPollRxTx(PCNetVState *vs)
 static inline void vmxnetRmdStorePassHost(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
                                           target_phys_addr_t addr)
 {
-    s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, 0);
+    s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, CSR_BSWP(s));
 }
 
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
@@ -1532,29 +1700,26 @@ ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 	   *    forbidden as long as it is owned by the device
 	   *  - we don't cache any register state beyond this point
 	   */
-          s->phys_mem_write(s->dma_opaque, rbadr, src, cbBuf, 0);
+          s->phys_mem_write(s->dma_opaque, rbadr, src, cbBuf, CSR_BSWP(s));
 
 	  src += cbBuf;
 	  size -= cbBuf;
 
-	  if (RT_LIKELY(size == 0))
-            {
+	  if (RT_LIKELY(size == 0)) {
 	      rmd.ownership = VMXNET2_OWNERSHIP_DRIVER;
 	      rmd.actualLength = cbPacket;
 	      rmd.flags = 0;
-            }
-	  else
-            {
-//	      Log(("#%d: Overflow by %ubytes\n", PCNET_INST_NR, size));
-            }
+          } else {
+              fprintf(stderr, "%s: Overflow by %ubytes\n", __func__, size);
+          }
 
 	  /* write back, clear the own bit */
 	  vmxnetRmdStorePassHost(s, &rmd, vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
 
 
 #if 0
-	  Log(("#%d RCVRC=%d CRDA=%#010x\n", PCNET_INST_NR,
-	       CSR_RCVRC(s), vmxnetRdraAddr(vs, s2->vmxRxRingIndex)));
+	  frintf(stderr, "%s RCVRC=%d CRDA=%#010x\n", __func__,
+	       CSR_RCVRC(s), vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
 #endif
 #ifdef PCNET_DEBUG_RMD
 	  //	  PRINT_VMXNETRMD(&rmd);
@@ -1879,7 +2044,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
     case BCR_MIIMDR:
         vs->s2.aMII[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
 #ifdef PCNET_DEBUG_MII
-        // Log(("#%d pcnet: mii write %d <- %#x\n", PCNET_INST_NR, vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f, val));
+        printf(stderr, "#%d pcnet: mii write %d <- %#x\n", __func__, vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f, val);
 #endif
         break;
     default:
@@ -2202,10 +2367,11 @@ void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
     PCNetVState *vs = opaque;
     PCNetState *s = &vs->s1;
 
+    trace_vlance_ioport_writew(opaque, addr, val);
+    if (vs->s2.VMXDATA) {
+        vmxnetAsyncTransmit(vs);
+    }
     pcnet_poll_timer(s);
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=0x%08x val=0x%04x\n", __func__, addr, val);
-#endif
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {
         case 0x00: /* RDP */
@@ -2228,6 +2394,9 @@ uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
     PCNetState *s = &vs->s1;
     uint32_t val = -1;
 
+    if (vs->s2.VMXDATA) {
+        vmxnetAsyncTransmit(vs);
+    }
     pcnet_poll_timer(s);
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {

@@ -394,8 +394,8 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	    vs->s2.VMXDATA = val;
             s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
 		
-	    fprintf(stderr, "vmxnet: rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
-		    dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
+	    fprintf(stderr, "vmxnet: VMXDATA=0x%lx rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
+		    (long)val, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
 	    vs->s2.vmxRxRing = val + dd.rxRingOffset;
 	    vs->s2.vmxRxRingLength = dd.rxRingLength;
 	    vs->s2.vmxRxRing2 = val + dd.rxRingOffset2;
