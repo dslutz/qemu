@@ -383,7 +383,6 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 		if (!!(dd.ifflags & VMXNET_IFF_BROADCAST) ^ CSR_DRCVBC(s))  {
 		    s->csr[15] = !(dd.ifflags & VMXNET_IFF_BROADCAST) ? (s->csr[15] | 0x4000) : (s->csr[15] & ~0x4000);
 		}
-	    } else if (val == VMXNET_CMD_CHECK_TX_DONE) {
 	    } else {
 		if ((val != VMXNET_CMD_GET_FEATURES) && (val != VMXNET_CMD_GET_CAPABILITIES) &&
 		    (val != VMXNET_CMD_GET_NUM_RX_BUFFERS) && (val != VMXNET_CMD_GET_NUM_TX_BUFFERS)) {
@@ -394,9 +393,7 @@ static void pcnetIoVmxnetportWriteU32(PCNetVState *vs, uint32_t addr, uint32_t v
 	case VMXNET_INIT_ADDR:
 	    vs->s2.VMXDATA = val;
             s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
-		
-	    fprintf(stderr, "vmxnet: VMXDATA=0x%lx rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d\n",
-		    (long)val, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
+            trace_vmxnet_init_addr(vs->s2.VMXDATA, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
             if (val) {
                 vs->s2.vmxRxRing = val + dd.rxRingOffset;
                 vs->s2.vmxRxRingLength = dd.rxRingLength;

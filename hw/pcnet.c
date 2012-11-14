@@ -705,9 +705,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val);
 
 static void pcnet_s_reset(PCNetState *s)
 {
-#ifdef PCNET_DEBUG
-    fprintf(stderr, "%s\n", __func__);
-#endif
+    trace_pcnet_s_reset(s);
 
     s->rdra = 0;
     s->tdra = 0;
@@ -781,9 +779,7 @@ void pcnet_update_irq(PCNetState *s)
         s->csr[4] |= 0x0040;
         s->csr[0] |= 0x0080;
         isr = 1;
-#ifdef PCNET_DEBUG
-        fprintf(stderr, "pcnet user int\n");
-#endif
+        trace_pcnet_user_int(s);
     }
 
 #if 1
@@ -798,9 +794,7 @@ void pcnet_update_irq(PCNetState *s)
     }
 
     if (isr != s->isr) {
-#ifdef PCNET_DEBUG
-        fprintf(stderr, "pcnet: INTA=%d\n", isr);
-#endif
+        trace_pcnet_isr_change(s, isr, s->isr);
     }
     qemu_set_irq(s->irq, isr);
     s->isr = isr;
@@ -847,9 +841,7 @@ static void pcnet_init(PCNetState *s)
     uint16_t padr[3], ladrf[4], mode;
     uint32_t rdra, tdra;
 
-#ifdef PCNET_DEBUG
-    fprintf(stderr, "%s: init_addr=0x%08x\n", __func__, PHYSADDR(s,CSR_IADR(s)));
-#endif
+    trace_pcnet_init(s, PHYSADDR(s,CSR_IADR(s)));
 
     if (BCR_SSIZE32(s)) {
         struct pcnet_initblk32 initblk;
@@ -887,9 +879,7 @@ static void pcnet_init(PCNetState *s)
         tdra &= 0x00ffffff;
     }
 
-#if defined(PCNET_DEBUG)
-    fprintf(stderr, "rlen=%d tlen=%d\n", rlen, tlen);
-#endif
+    trace_pcnet_rlen_tlen(s, rlen, tlen);
 
     CSR_RCVRL(s) = (rlen < 9) ? (1 << rlen) : 512;
     CSR_XMTRL(s) = (tlen < 9) ? (1 << tlen) : 512;
@@ -908,11 +898,8 @@ static void pcnet_init(PCNetState *s)
     CSR_RCVRC(s) = CSR_RCVRL(s);
     CSR_XMTRC(s) = CSR_XMTRL(s);
 
-#ifdef PCNET_DEBUG
-    fprintf(stderr, "pcnet ss32=%d rdra=0x%08x[%d] tdra=0x%08x[%d]\n",
-        BCR_SSIZE32(s),
-        s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
-#endif
+    trace_pcnet_ss32_rdra_tdra(s, BCR_SSIZE32(s),
+                               s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
 
     s->csr[0] |= 0x0101;
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
@@ -1003,7 +990,6 @@ static void pcnet_rdte_poll(PCNetState *s)
 #ifdef PCNET_DEBUG_RMD_X
         fprintf(stderr, "CRDA=0x%08x CRST=0x%04x RCVRC=%d RMDL=0x%04x RMDS=0x%04x RMDM=0x%08x\n",
                 PHYSADDR(s,CSR_CRDA(s)), CSR_CRST(s), CSR_RCVRC(s),
-                rmd.buf_length, rmd.status, rmd.msg_length);
         PRINT_RMD(&rmd);
 #endif
     } else {
@@ -1449,8 +1435,7 @@ static int vmxnetTdtePoll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
     s->csr[35] = cxda >> 16;
 
     s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
-    fprintf(stderr, "tx descriptor index=%d addr=0x%lx flags=0x%x ownership=0x%x extra=0x%x tsoMss=0x%x\n",
-            vs->s2.vmxTxRingIndex, (long) cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+    trace_vmxnetTdtePoll(vs, vs->s2.vmxTxRingIndex, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
 
   if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
       if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
@@ -1487,8 +1472,7 @@ static inline void vmxnetXmitFailTMDGeneric(PCNetVState *vs, Vmxnet2_TxRingEntry
 
     /* make carrier error - hope this is correct. */
     s->csr[0] |= 0xa000; /* ERR | CERR */
-    fprintf(stderr, "%s pcnetTransmit: Signaling send error. swstyle=%#x\n",
-         __func__, s->bcr[BCR_SWS]);
+    trace_vmxnetXmitFailTMDGeneric(vs, s->bcr[BCR_SWS]);
 }
 
 
@@ -1516,11 +1500,6 @@ void vmxnetAsyncTransmit(PCNetVState *vs)
      * Iterate the transmit descriptors.
      */
     while (vmxnetTdtePoll(vs, &tmd)) {
-#ifdef PCNET_DEBUG_TMD
-        fprintf(stderr, "%s TMDLOAD %#010x\n", __func__, PHYSADDR(vs, CSR_CXDA(s)));
-        PRINT_TMD(&tmd);
-#endif
-
         /* Don't continue sending packets when the link is down. */
         if (UNLIKELY(!pcnetIsLinkUp(vs)
                      &&  vs->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
@@ -1529,7 +1508,6 @@ void vmxnetAsyncTransmit(PCNetVState *vs)
             s->xmit_pos = -1;
             goto txdone;
         }
-
 
         /*
          * The typical case - a complete packet.
