@@ -5946,29 +5946,38 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     if (vmware_mode && s->virtual_hw < 7) {
         /* Older defn. has these as zero... */
-        pci_conf[PCI_SUBSYSTEM_VENDOR_ID + 0] = 0;
-        pci_conf[PCI_SUBSYSTEM_VENDOR_ID + 1] = 0;
-        pci_conf[PCI_SUBSYSTEM_ID + 0] = 0;
-        pci_conf[PCI_SUBSYSTEM_ID + 1] = 0;
+        pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0);
+        pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0);
     }
 
-    /* PCI latency timer = 0 */
-    pci_conf[PCI_LATENCY_TIMER] = 0;
+    if (vmware_mode) {
+        /* PCI latency timer = 64 */
+        pci_conf[PCI_LATENCY_TIMER] = 0x40;
+        pci_set_word(dev->config + PCI_STATUS,
+                    PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+    } else {
+        /* PCI latency timer = 0 */
+        pci_conf[PCI_LATENCY_TIMER] = 0;
+    }
     /* Interrupt pin 1 */
     pci_conf[PCI_INTERRUPT_PIN] = 0x01;
 
     memory_region_init_io(&s->port_io, &mpt_port_ops, s,
-                          "lsimpt-io", 256);
+                          "lsimpt-io", 128);
     memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
-                          "lsimpt-mmio", 0x4000);
-    memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
-                          "lsimpt-diag", 0x10000);
+                          "lsimpt-mmio", 0x1000);
+    if (!vmware_mode) {
+        memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
+                              "lsimpt-diag", 0x10000);
+    }
 
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
     pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
                      PCI_BASE_ADDRESS_MEM_TYPE_32, &s->mmio_io);
-    pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
-                     PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
+    if (!vmware_mode) {
+        pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                         PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
+    }
 
     mpt_msi_init(s);
 

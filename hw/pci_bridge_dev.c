@@ -113,6 +113,11 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
         }
     }
     conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
+    pci_word_test_and_set_mask(dev->config + PCI_STATUS,
+                               PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+    conf[PCI_SEC_LATENCY_TIMER] = 0x40; /* sec-latency=64 */
+    pci_set_word(dev->config + PCI_SEC_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
     conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
