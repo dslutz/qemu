@@ -1071,28 +1071,7 @@ static void vmxnetRdtePoll(PCNetVState *vs)
       target_phys_addr_t addr;
 
       addr = vmxnetRdraAddr(vs, s2->vmxRxRingIndex);
-      if (!vmxnetRmdLoad(vs, &rmd, addr))
-	{
-	  return;
-	}
-      if (1) // || (RT_LIKELY((!IS_RMD_BAD(rmd)))))
-	{
-	  if (s2->fMaybeOutOfSpace)
-	    {
-#if 0
-	      pcnetWakeupReceive(PCNETSTATE_2_DEVINS(vs));
-#endif
-	    }
-	}
-      else
-	{
-#if 0
-	  /* This is not problematic since we don't own the descriptor */
-	  fprintf(stderr, "PCNet#%d: BAD RMD ENTRIES AT %#010x (i=%d)\n",
-		  __func__, addr, vs->vmxRxRingIndex);
-#endif
-	  return;
-	}
+      vmxnetRmdLoad(vs, &rmd, addr);
     }
 }
 
@@ -1109,15 +1088,11 @@ int vlance_can_receive(NetClientState *nc)
     vmxnetRdtePoll(vs);
 
     addr = vmxnetRdraAddr(vs, vs->s2.vmxRxRingIndex);
-    if (!vmxnetRmdLoad(vs, &rmd, addr))
-    {
-	/** @todo Notify the guest _now_. Will potentially increase the interrupt load */
-	if (vs->s2.fSignalRxMiss)
-	    vs->s1.csr[0] |= 0x1000; /* Set MISS flag */
+    if (!vmxnetRmdLoad(vs, &rmd, addr)) {
         return 0;
-    }
-    else
+    } else {
         return sizeof(s->buffer)-16;
+    }
 }
 
 #define MIN_BUF_SIZE 60
@@ -1316,7 +1291,6 @@ void vlance_set_link_status(NetClientState *nc)
     PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
-    vs->s2.fLinkTempDown = 0;
     vs->s2.cLinkDownReported = 0;
     vs->s2.fLinkUp = !nc->link_down;
 }
@@ -1448,7 +1422,7 @@ static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
 
 static inline int pcnetIsLinkUp(PCNetVState *vs)
 {
-    return !vs->s2.fLinkTempDown && vs->s2.fLinkUp;
+    return vs->s2.fLinkUp;
 }
 
 /**
@@ -1591,8 +1565,7 @@ void pcnetPollRxTx(PCNetVState *vs)
              * true but pcnetCanReceive() returned false for some other reason we need to check
              * _now_ if we have to wakeup pcnetWaitReceiveAvail().
              */
-            if (HOST_IS_OWNER(CSR_CRST(s))  /* only poll RDTEs if none available or ... */
-                || s2->fMaybeOutOfSpace) {  /* ... for waking up pcnetWaitReceiveAvail() */
+            if (HOST_IS_OWNER(CSR_CRST(s))) {
                 pcnet_rdte_poll(s);
             }
         }
@@ -2061,7 +2034,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
                 | 0x0008    /* Able to do auto-negotiation. */
                 | 0x0004    /* Link up. */
                 | 0x0001;   /* Extended Capability, i.e. registers 4+ valid. */
-            if (!vs->s2.fLinkUp || vs->s2.fLinkTempDown) {
+            if (!vs->s2.fLinkUp) {
                 val &= ~(0x0020 | 0x0004);
                 vs->s2.cLinkDownReported++;
             }
@@ -2107,7 +2080,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 
         case 5:
             /* Link partner ability register. */
-            if (vs->s2.fLinkUp && !vs->s2.fLinkTempDown)
+            if (vs->s2.fLinkUp)
                 val =   0x8000  /* Next page bit. */
                       | 0x4000  /* Link partner acked us. */
                       | 0x0400  /* Can do flow control. */
@@ -2122,7 +2095,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 
         case 6:
             /* Auto negotiation expansion register. */
-            if (vs->s2.fLinkUp && !vs->s2.fLinkTempDown)
+            if (vs->s2.fLinkUp)
                 val =   0x0008  /* Link partner supports npage. */
                       | 0x0004  /* Enable npage words. */
                       | 0x0001; /* Can do N-way auto-negotiation. */
@@ -2154,7 +2127,7 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
     case BCR_LED3:
         val = s->bcr[rap] & ~0x8000;
         /* Clear LNKSTE if we're not connected. */
-        if (vs->s2.fLinkTempDown || !vs->s2.fLinkUp)
+        if (!vs->s2.fLinkUp)
         {
             if (rap == BCR_LNKST) {
                 vs->s2.cLinkDownReported++;
@@ -2504,9 +2477,8 @@ const VMStateDescription vmstate_vlance = {
         VMSTATE_UINT16(vmxTxLastInterruptIndex, PCNetState2),
         VMSTATE_UINT16(vmxTxRingLength, PCNetState2),
         VMSTATE_UINT16(vmxInterruptEnabled, PCNetState2),
-        VMSTATE_INT32(fVMXNet, PCNetState2),
-        VMSTATE_INT32(fSignalRxMiss, PCNetState2),
-        VMSTATE_INT32(fMaybeOutOfSpace, PCNetState2),
+        VMSTATE_BOOL(fVMXNet, PCNetState2),
+        VMSTATE_BOOL(fLinkUp, PCNetState2),
         VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
         VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
         VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),
