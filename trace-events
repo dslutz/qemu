@@ -1141,3 +1141,8 @@ pcnet_mmio_readb(void *opaque, uint64_t addr, uint32_t val) "opaque=%p addr=0x%"
 pcnet_mmio_readw(void *opaque, uint64_t addr, uint32_t val) "opaque=%p addr=0x%"PRIx64" val=0x%x"
 pcnet_mmio_readl(void *opaque, uint64_t addr, uint32_t val) "opaque=%p addr=0x%"PRIx64" val=0x%x"
 vmxnet_init_addr(uint64_t VMXDATA, uint32_t rxRingLength, uint32_t rxRingOffset, uint32_t rxRingLength2, uint32_t rxRingOffset2, uint32_t txRingLength, uint32_t txRingOffset) "VMXDATA=0x%"PRIx64" rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d"
+
+# xen-all
+handle_ioreq(void *req, uint32_t type, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O type=%d dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
+cpu_ioreq_pio(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O pio dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
+cpu_ioreq_move(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O copy dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
