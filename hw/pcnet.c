@@ -1292,7 +1292,6 @@ void vlance_set_link_status(NetClientState *nc)
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
     vs->s2.cLinkDownReported = 0;
-    vs->s2.fLinkUp = !nc->link_down;
 }
 
 static void pcnet_transmit(PCNetState *s)
@@ -1422,7 +1421,7 @@ static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
 
 static inline int pcnetIsLinkUp(PCNetVState *vs)
 {
-    return vs->s2.fLinkUp;
+    return vs->s1.lnkst;
 }
 
 /**
@@ -2034,7 +2033,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
                 | 0x0008    /* Able to do auto-negotiation. */
                 | 0x0004    /* Link up. */
                 | 0x0001;   /* Extended Capability, i.e. registers 4+ valid. */
-            if (!vs->s2.fLinkUp) {
+            if (!pcnetIsLinkUp(vs)) {
                 val &= ~(0x0020 | 0x0004);
                 vs->s2.cLinkDownReported++;
             }
@@ -2080,7 +2079,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 
         case 5:
             /* Link partner ability register. */
-            if (vs->s2.fLinkUp)
+            if (pcnetIsLinkUp(vs))
                 val =   0x8000  /* Next page bit. */
                       | 0x4000  /* Link partner acked us. */
                       | 0x0400  /* Can do flow control. */
@@ -2095,7 +2094,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 
         case 6:
             /* Auto negotiation expansion register. */
-            if (vs->s2.fLinkUp)
+            if (pcnetIsLinkUp(vs))
                 val =   0x0008  /* Link partner supports npage. */
                       | 0x0004  /* Enable npage words. */
                       | 0x0001; /* Can do N-way auto-negotiation. */
@@ -2127,7 +2126,7 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
     case BCR_LED3:
         val = s->bcr[rap] & ~0x8000;
         /* Clear LNKSTE if we're not connected. */
-        if (!vs->s2.fLinkUp)
+        if (!pcnetIsLinkUp(vs))
         {
             if (rap == BCR_LNKST) {
                 vs->s2.cLinkDownReported++;
@@ -2478,7 +2477,6 @@ const VMStateDescription vmstate_vlance = {
         VMSTATE_UINT16(vmxTxRingLength, PCNetState2),
         VMSTATE_UINT16(vmxInterruptEnabled, PCNetState2),
         VMSTATE_BOOL(fVMXNet, PCNetState2),
-        VMSTATE_BOOL(fLinkUp, PCNetState2),
         VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
         VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
         VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),

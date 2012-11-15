@@ -477,11 +477,13 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
         }
         break;
     case VMXNET_STATUS_ADDR:
-        val = ((vs->s2.fLinkUp) ? VMXNET_STATUS_CONNECTED:0);
-        val |= VMXNET_STATUS_ENABLED;
-        if (!vs->s2.fLinkUp) {
+        if (vs->s1.lnkst) {
+            val = VMXNET_STATUS_CONNECTED;
+        } else {
+            val = 0;
             vs->s2.cLinkDownReported++;
         }
+        val |= VMXNET_STATUS_ENABLED;
         break;
     case VMXNET_TX_ADDR:
         val = 0;
@@ -850,7 +852,6 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
 static void vlance_common_init(PCNetState2 *s2)
 {
     memset(s2, 0, sizeof(s2));
-    s2->fLinkUp = 1;
 }
 
 static int pci_vmxnet_init(PCIDevice *pci_dev)

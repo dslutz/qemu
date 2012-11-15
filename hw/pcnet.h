@@ -107,7 +107,6 @@ struct PCNetState2_st {
     uint16_t vmxTxRingLength;
     uint16_t vmxInterruptEnabled;
     bool fVMXNet;
-    bool fLinkUp;
     uint32_t cLinkDownReported;
     uint16_t bcr2[50-32];
     uint16_t aMII[16];
