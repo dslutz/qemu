@@ -3231,6 +3231,7 @@ typedef struct MptState {
     MPTSTATE state;
     MPTWHOINIT who_init;
     uint16_t next_handle;
+    uint32_t virtual_hw;
     uint32_t ports;
     uint32_t flags;
     uint32_t intr_mask;
@@ -5943,6 +5944,14 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     pci_conf = s->dev.config;
 
+    if (vmware_mode && s->virtual_hw < 7) {
+        /* Older defn. has these as zero... */
+        pci_conf[PCI_SUBSYSTEM_VENDOR_ID + 0] = 0;
+        pci_conf[PCI_SUBSYSTEM_VENDOR_ID + 1] = 0;
+        pci_conf[PCI_SUBSYSTEM_ID + 0] = 0;
+        pci_conf[PCI_SUBSYSTEM_ID + 1] = 0;
+    }
+
     /* PCI latency timer = 0 */
     pci_conf[PCI_LATENCY_TIMER] = 0;
     /* Interrupt pin 1 */
@@ -6019,6 +6028,7 @@ static int mpt_scsi_sas_init(PCIDevice *dev)
 }
 
 static Property mptscsi_properties[] = {
+    DEFINE_PROP_UINT32("virtual_hw", MptState, virtual_hw, 3),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
@@ -6027,6 +6037,7 @@ static Property mptscsi_properties[] = {
 };
 
 static Property mptsas_properties[] = {
+    DEFINE_PROP_UINT32("virtual_hw", MptState, virtual_hw, 3),
     DEFINE_PROP_UINT32("ports", MptState, ports,
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
