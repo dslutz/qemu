@@ -3238,6 +3238,7 @@ typedef struct MptState {
     uint32_t intr_status;
     uint32_t doorbell;
     uint32_t busy;
+    bool     msi_used;
     bool     event_notification_enabled;
     bool     diagnostic_enabled;
     uint32_t diagnostic_access_idx;
@@ -5769,6 +5770,7 @@ static const VMStateDescription vmstate_mpt = {
         VMSTATE_UINT32(intr_status, MptState),
         VMSTATE_UINT32(doorbell, MptState),
         VMSTATE_UINT32(busy, MptState),
+        VMSTATE_BOOL(msi_used, MptState),
         VMSTATE_BOOL(event_notification_enabled, MptState),
         VMSTATE_BOOL(diagnostic_enabled, MptState),
         VMSTATE_UINT32(diagnostic_access_idx, MptState),
@@ -5814,27 +5816,30 @@ mpt_msi_init(MptState *s) {
 #define LSISAS_PER_VECTOR_MASK   (false)
 
     int res;
+
+    if (vmware_mode) {
+        s->msi_used = false;
+        return s->msi_used;
+    }
+
     res = msi_init(&s->dev, LSISAS_MSI_OFFSET, LSISAS_MSI_NUM_VECTORS,
                    LSISAS_USE_64BIT, LSISAS_PER_VECTOR_MASK);
-#if 0
     if (0 > res) {
-        //VMW_WRPRN("Failed to initialize MSI, error %d", res);
+        fprintf(stderr, "%s: Failed to initialize MSI, error %d\n", __func__, res);
 	s->msi_used = false;
     } else {
-        //VMW_CFPRN("Using MSI");
         s->msi_used = true;
     }
-#endif
 
-    return (res >= 0);//s->msi_used;
+    return s->msi_used;
 }
 
 static void
 mpt_cleanup_msi(MptState *s)
 {
-    //    if (s->msi_used) {
+    if (s->msi_used) {
         msi_uninit(&s->dev);
-	//    }
+    }
 }
 
 
@@ -5846,15 +5851,16 @@ mpt_msix_init(MptState *s) {
                         &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0x800,
                         0x90);
     if (0 > res) {
-        //VMW_WRPRN("Failed to initialize MSI-X, error %d", res);
+        fprintf(stderr, "%s: Failed to initialize MSI-X, error %d\n",
+                __func__, res);
         s->msix_used = false;
     } else {
         if (!xxx_use_msix_vectors(s, LSISAS_MAX_INTRS)) {
-            //VMW_WRPRN("Failed to use MSI-X vectors, error %d", res);
+            fprintf(stderr, "%s: Failed to use MSI-X vectors, error %d\n",
+                    __func__, res);
             msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
             s->msix_used = false;
         } else {
-            //VMW_CFPRN("Using MSI-X vectors");
             s->msix_used = true;
         }
     }
@@ -5946,15 +5952,15 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     if (vmware_mode && s->virtual_hw < 7) {
         /* Older defn. has these as zero... */
-        pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0);
-        pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0);
+        pci_set_word(pci_conf + PCI_SUBSYSTEM_VENDOR_ID, 0);
+        pci_set_word(pci_conf + PCI_SUBSYSTEM_ID, 0);
     }
 
     if (vmware_mode) {
         /* PCI latency timer = 64 */
         pci_conf[PCI_LATENCY_TIMER] = 0x40;
-        pci_set_word(dev->config + PCI_STATUS,
-                    PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+        pci_set_word(pci_conf + PCI_STATUS,
+                     PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
     } else {
         /* PCI latency timer = 0 */
         pci_conf[PCI_LATENCY_TIMER] = 0;

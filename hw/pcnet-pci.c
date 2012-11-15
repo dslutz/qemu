@@ -906,7 +906,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
 
     pci_set_word(pci_conf + PCI_STATUS,
                  PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM);
-
+    pci_conf[PCI_LATENCY_TIMER] = 0x40;
     pci_conf[PCI_INTERRUPT_PIN] = 1; /* interrupt pin A */
     pci_conf[PCI_MIN_GNT] = 0x06;
     pci_conf[PCI_MAX_LAT] = 0xff;
