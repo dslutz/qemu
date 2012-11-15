@@ -1199,6 +1199,10 @@ static int pci_vmsvga_initfn(PCIDevice *dev)
     s->card.config[PCI_CACHE_LINE_SIZE] = 0x08;         /* Cache line size */
     s->card.config[PCI_LATENCY_TIMER] = 0x40;           /* Latency timer */
     s->card.config[PCI_INTERRUPT_LINE] = 0xff;          /* End */
+    if (vmware_mode) {
+        pci_set_word(s->card.config + PCI_STATUS,
+                     PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM);
+    }
 
     memory_region_init_io(&s->io_bar, &vmsvga_io_ops, &s->chip,
                           "vmsvga-io", 0x10);

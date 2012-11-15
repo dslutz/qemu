@@ -205,6 +205,10 @@ static int i440fx_initfn(PCIDevice *dev)
     d->dev.config[I440FX_SMRAM] = 0x02;
 
     cpu_smm_register(&i440fx_set_smm, d);
+    if (vmware_mode) {
+        pci_word_test_and_set_mask(dev->config + PCI_STATUS,
+                                   PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+    }
     return 0;
 }
 

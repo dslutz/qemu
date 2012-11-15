@@ -154,6 +154,7 @@ static int pci_piix_ide_initfn(PCIDevice *dev)
 
     if (vmware_mode) {
         pci_conf[PCI_CLASS_PROG] = 0x8a; /* legacy ATA mode */
+        pci_conf[PCI_LATENCY_TIMER] = 0x40; /* latency=64 */
     } else {
         pci_conf[PCI_CLASS_PROG] = 0x80; /* legacy ATA mode */
     }
