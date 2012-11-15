@@ -1459,7 +1459,7 @@ static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *vs, Vmxnet2_TxRingEntr
     vmxnet_xmit_fail_tmd_generic(vs, pTmd);
 }
 
-void vmxnetAsyncTransmit(PCNetVState *vs)
+void vmxnet_transmit(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     unsigned cFlushIrq = 0;

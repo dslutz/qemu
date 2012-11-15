@@ -510,7 +510,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
 #endif
     trace_vlance_ioport_read(opaque, addr, size);
     if (vs->s2.VMXDATA) {
-        vmxnetAsyncTransmit(vs);
+        vmxnet_transmit(vs);
     }
     if (vs->s2.fVMXNet) {
         if (size == 1) {
@@ -562,7 +562,7 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
 
     trace_vlance_ioport_write(opaque, addr, data, size);
     if (vs->s2.VMXDATA) {
-        vmxnetAsyncTransmit(vs);
+        vmxnet_transmit(vs);
     }
     if (vs->s2.fVMXNet) {
         if (size == 1) {
