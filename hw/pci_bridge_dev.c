@@ -113,7 +113,13 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
         }
     }
     conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
-    conf[PCI_COMMAND] |= PCI_COMMAND_SPECIAL | PCI_COMMAND_INVALIDATE;
+    /* Special bits */
+    pci_set_word(conf + PCI_COMMAND,
+                 PCI_COMMAND_SPECIAL | PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
+    /* Write protect SERR. Should be the same as                                                                    
+     * command_serr_enable=0 */
+    pci_word_test_and_clear_mask(dev->wmask + PCI_COMMAND,
+                                 PCI_COMMAND_SERR);
     pci_set_word(conf + PCI_STATUS,
                  PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
     conf[PCI_SEC_LATENCY_TIMER] = 0x40; /* sec-latency=64 */
