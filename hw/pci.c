@@ -623,6 +623,10 @@ static void pci_init_wmask(PCIDevice *dev)
                  PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER |
                  PCI_COMMAND_INTX_DISABLE);
     if (dev->cap_present & QEMU_PCI_CAP_SERR) {
+        fprintf(stderr, "%s: %02x.%x cap=%x & %x, wm=%x\n", __func__,
+                dev->devfn >> 3, dev->devfn & 0x7,
+                dev->cap_present, QEMU_PCI_CAP_SERR,
+                pci_get_word(dev->wmask + PCI_COMMAND));
         pci_word_test_and_set_mask(dev->wmask + PCI_COMMAND, PCI_COMMAND_SERR);
     }
 

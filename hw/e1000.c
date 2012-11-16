@@ -1284,6 +1284,11 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         pci_set_word(pci_conf + cfg_offset + PCI_PM_CTRL, 0x2000);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
                      0x2800);
+        fprintf(stderr, "%s: %02x.%x pe0=%x pe1=%x pe=%x\n", __func__,
+                d->dev.devfn >> 3, d->dev.devfn & 0x7,
+                pci_conf[cfg_offset + PCI_PM_PPB_EXTENSIONS],
+                pci_conf[cfg_offset + PCI_PM_PPB_EXTENSIONS + 1],
+                pci_get_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS));
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
