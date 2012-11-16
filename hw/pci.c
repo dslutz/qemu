@@ -1069,7 +1069,7 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val, int l)
         assert(!(wmask & w1cmask));
         d->config[addr + i] = (d->config[addr + i] & ~wmask) | (val & wmask);
         d->config[addr + i] &= ~(val & w1cmask); /* W1C: Write 1 to Clear */
-        if ((addr + i == PCI_COMMAND) || (addr + i == PCI_COMMAND)) {
+        if ((addr + i == PCI_COMMAND) || (addr + i == PCI_COMMAND + 1)) {
             fprintf(stderr, "%s: %04x:%02x:%02x.%x cmd(%d)=%x<=%x"
                     " val=%x wm=%x w1c=%x\n", __func__,
                     pci_find_domain(d->bus), pci_bus_num(d->bus),
