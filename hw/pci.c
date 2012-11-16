@@ -1075,7 +1075,8 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val, int l)
                     pci_find_domain(d->bus), pci_bus_num(d->bus),
                     PCI_SLOT(d->devfn), PCI_FUNC(d->devfn),
                     addr + i, d->config[addr + i], old, val, wmask, w1cmask);
-                    
+            fprintf(stderr, "    cmd(4)=%x cmd(5)=%x\n",
+                    d->config[PCI_COMMAND], d->config[PCI_COMMAND + 1]);
         }
     }
     if (ranges_overlap(addr, l, PCI_BASE_ADDRESS_0, 24) ||
