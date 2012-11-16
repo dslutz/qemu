@@ -706,12 +706,23 @@ static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
 {
     VncDisplay *vd = vs->vd;
 
-    assert(x >= 0);
-    assert(y >= 0);
-    assert(w >= 0);
-    assert(h >= 0);
-    assert(x <= 3000);
-    assert(y <= 3000);
+    if (x < 0) {
+        fprintf(stderr, "%s: x=%d\n", __func__, x);
+        x = 0;
+    } else if (x >= ds_get_width(vs->ds)) {
+        fprintf(stderr, "%s: x=%d>=%d\n", __func__,
+                x, ds_get_width(vs->ds));
+        x = ds_get_width(vs->ds) - 1;
+    }
+    if (y < 0) {
+        fprintf(stderr, "%s: y=%d\n", __func__, y);
+        y = 0;
+    } else if (y >= ds_get_height(vs->ds)) {
+        fprintf(stderr, "%s: y=%d>=%d\n", __func__,
+                y, ds_get_height(vs->ds));
+        y = ds_get_height(vs->ds) - 1;
+    }
+
     switch(vd->server->pf.bytes_per_pixel) {
     case 4:
         return check_solid_tile32(vs, x, y, w, h, color, samecolor);
