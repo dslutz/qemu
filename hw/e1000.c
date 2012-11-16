@@ -1292,8 +1292,11 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
-        fprintf(stderr, "%s: set SERR @ %p=%x\n", __func__,
-                &pci_conf[PCI_COMMAND+1], pci_conf[PCI_COMMAND+1]);
+        /* Write protect SERR. Should be the same as command_serr_enable=0 */
+        pci_word_test_and_clear_mask(pci_dev->wmask + PCI_COMMAND, PCI_COMMAND_SERR);
+        fprintf(stderr, "%s: set SERR @ %p=%x wm=%x\n", __func__,
+                &pci_conf[PCI_COMMAND+1], pci_conf[PCI_COMMAND+1],
+                pci_get_word(pci_dev->wmask + PCI_COMMAND));
     }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
