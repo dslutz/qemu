@@ -509,7 +509,7 @@ static int piix3_initfn(PCIDevice *dev)
     if (vmware_mode) {
         pci_set_word(d->dev.config + PCI_STATUS,
                      PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
-        fprintf(stderr, "%s: cmd@%p=%x wm=%x w1c=%x\n", __func__,
+        fprintf(stderr, "%s: sts@%p=%x wm=%x w1c=%x\n", __func__,
                 &dev->config[PCI_STATUS], dev->config[PCI_STATUS],
                 pci_get_word(dev->wmask + PCI_STATUS),
                 pci_get_word(dev->w1cmask + PCI_STATUS));
