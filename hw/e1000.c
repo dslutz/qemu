@@ -1271,7 +1271,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     if (vmware_mode) {
         /* Power Management Capabilities */
         int cfg_offset = 0xe4;
-        int cfg_size = 0xdc - 0xe4;
+        int cfg_size = 8;
         int r;
 
         pci_set_word(pci_conf + PCI_STATUS,
@@ -1285,7 +1285,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         pci_set_long(pci_conf + cfg_offset + PCI_X_STATUS,
                      PCI_X_STATUS_64BIT | PCI_X_STATUS_133MHZ | 0x0440fff8);
 
-        cfg_offset += cfg_size;
+        cfg_offset -= cfg_size;
         cfg_size = PCI_PM_SIZEOF;
         assert(cfg_offset + cfg_size < 0xff);
         r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
