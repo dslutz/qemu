@@ -5960,6 +5960,8 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
         pci_conf[PCI_LATENCY_TIMER] = 0x40;
         pci_set_word(pci_conf + PCI_STATUS,
                      PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+        pci_conf[PCI_MIN_GNT] = 0x06;
+        pci_conf[PCI_MAX_LAT] = 0xff;
     } else {
         /* PCI latency timer = 0 */
         pci_conf[PCI_LATENCY_TIMER] = 0;

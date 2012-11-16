@@ -132,6 +132,7 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
      * devices attached to the bus is unaffected.
      */
     conf[PCI_INTERRUPT_PIN] = 0x00;
+    conf[PCI_MIN_GNT] = 0x84;
     return 0;
 msi_error:
     pci_bridge_exitfn(dev);

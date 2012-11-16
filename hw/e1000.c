@@ -1304,6 +1304,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
          * command_serr_enable=0 */
         pci_word_test_and_clear_mask(pci_dev->wmask + PCI_COMMAND,
                                      PCI_COMMAND_SERR);
+        pci_conf[PCI_MIN_GNT] = 0xff;
     }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
