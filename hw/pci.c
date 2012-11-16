@@ -1911,6 +1911,7 @@ int pci_add_capability(PCIDevice *pdev, uint8_t cap_id,
             return -ENOSPC;
         }
     } else {
+        assert((int)offset + (int)size < pci_config_size(pdev));
         /* Verify that capabilities don't overlap.  Note: device assignment
          * depends on this check to verify that the device is not broken.
          * Should never trigger for emulated devices, but it's helpful

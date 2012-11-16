@@ -1271,7 +1271,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     if (vmware_mode) {
         /* Power Management Capabilities */
         int cfg_offset = 0xe4;
-        int cfg_size = 8;
+        int cfg_size = 0xdc - 0xe4;
         int r;
 
         pci_set_word(pci_conf + PCI_STATUS,
