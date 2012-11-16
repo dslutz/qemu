@@ -252,7 +252,7 @@ static void vmxnet_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
     }
 }
 
-static uint32_t vmxnet_ioport_readbtReadU8(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readb(PCNetVState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -513,7 +513,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
     }
     if (vs->s2.vmxnet2) {
         if (size == 1) {
-            return vmxnet_ioport_readbtReadU8(vs, addr);
+            return vmxnet_ioport_readb(vs, addr);
         } else if (size == 2) {
             return vmxnet_ioport_readw(vs, addr);
         } else if (size == 4) {
@@ -541,7 +541,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
         target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
-            return vmxnet_ioport_readbtReadU8(vs, addr1);
+            return vmxnet_ioport_readb(vs, addr1);
         } else if (size == 2) {
             return vmxnet_ioport_readw(vs, addr1);
         } else if (size == 4) {
@@ -611,6 +611,58 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
 static const MemoryRegionOps vlance_io_ops = {
     .read = vlance_ioport_read,
     .write = vlance_ioport_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
+static uint64_t vmxnet_ioport_read(void *opaque, target_phys_addr_t addr,
+                                  unsigned size)
+{
+    PCNetVState *vs = opaque;
+
+    trace_vmxnet_ioport_read(opaque, addr, size);
+    if (vs->s2.vmxdata_addr) {
+        vmxnet_transmit(vs);
+    }
+    if (size == 1) {
+        return vmxnet_ioport_readb(vs, addr);
+    } else if (size == 2) {
+        return vmxnet_ioport_readw(vs, addr);
+    } else if (size == 4) {
+        return vmxnet_ioport_readl(vs, addr);
+    } else {
+        fprintf(stderr, "%s: Bad read @ %llx,%d\n",
+               __func__, (long long unsigned int)addr, size);
+    }
+    return ((uint64_t)1 << (size * 8)) - 1;
+}
+
+static void vmxnet_ioport_write(void *opaque, target_phys_addr_t addr,
+                               uint64_t data, unsigned size)
+{
+    PCNetVState *vs = opaque;
+
+    trace_vmxnet_ioport_write(opaque, addr, data, size);
+    if (vs->s2.vmxdata_addr) {
+        vmxnet_transmit(vs);
+    }
+    if (size == 1) {
+        vmxnet_ioport_writeb(vs, addr, data);
+    } else if (size == 2) {
+        vmxnet_ioport_writew(vs, addr, data);
+    } else if (size == 4) {
+        vmxnet_ioport_writel(vs, addr, data);
+    } else {
+        fprintf(stderr, "%s: Bad write @ %llx of %llx,%d\n",
+               __func__,
+               (long long unsigned int)addr,
+               (long long unsigned int)data,
+               size);
+    }
+}
+
+static const MemoryRegionOps vmxnet_io_ops = {
+    .read = vmxnet_ioport_read,
+    .write = vmxnet_ioport_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -869,7 +921,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
 
     pci_set_word(pci_conf + PCI_STATUS,
                  PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM);
-
+    pci_conf[PCI_LATENCY_TIMER] = 0x40;
     pci_conf[PCI_INTERRUPT_PIN] = 1; /* interrupt pin A */
     pci_conf[PCI_MIN_GNT] = 0x06;
     pci_conf[PCI_MAX_LAT] = 0xff;
@@ -877,7 +929,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
     memset(&s->mmio, 0, sizeof (s->mmio));
 
     memory_region_init_io(&d->io_bar, &vlance_io_ops, s, "vmxnet-io",
-                          PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE + 28);
+                          VMXNET_CHIP_IO_RESV_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
     s->irq = pci_dev->irq[0];
