@@ -919,6 +919,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
 
     pci_conf = pci_dev->config;
 
+    pci_conf[PCI_COMMAND] = PCI_COMMAND_MASTER;
     pci_set_word(pci_conf + PCI_STATUS,
                  PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM);
     pci_conf[PCI_LATENCY_TIMER] = 0x40;

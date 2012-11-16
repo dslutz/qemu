@@ -1268,6 +1268,12 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     pci_conf = d->dev.config;
 
+    if (vmware_mode) {
+        pci_set_word(pci_conf + PCI_COMMAND,
+                 PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
+        pci_set_word(pci_conf + PCI_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM);
+    }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
 
@@ -1277,8 +1283,11 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
-    pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
-
+    if (vmware_mode) {
+        pci_register_bar(&d->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    } else {
+        pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    }
     if (PCI_DEVICE_GET_CLASS(pci_dev)->device_id == E1000_VMW_DEVID) {
         memmove(d->eeprom_data, e1000_vmw_eeprom_template,
                 sizeof e1000_vmw_eeprom_template);
