@@ -1282,8 +1282,8 @@ static int pci_e1000_init(PCIDevice *pci_dev)
                      PCI_PM_CAP_PME_D0 | PCI_PM_CAP_PME_D3 | PCI_PM_CAP_PME_D3cold |
                      PCI_PM_CAP_DSI | 0x2);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_CTRL, 0x2000);
-        pci_set_byte(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
-                     0x28);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
+                     0x2800);
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
