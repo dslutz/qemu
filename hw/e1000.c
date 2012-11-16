@@ -1269,6 +1269,18 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     pci_conf = d->dev.config;
 
     if (vmware_mode) {
+        /* Power Management Capabilities */
+        int cfg_offset = 0xdc;
+        int r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
+                                   cfg_offset, PCI_PM_SIZEOF);
+        assert(r >= 0);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_PMC,
+                     PCI_PM_CAP_PME_D0 | PCI_PM_CAP_PME_D3 | PCI_PM_CAP_PME_D3cold |
+                     PCI_PM_CAP_DSI | 0x2);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_CTRL, 0x2000);
+        pci_set_byte(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
+                     0x28);
+        /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
         pci_set_word(pci_conf + PCI_STATUS,
