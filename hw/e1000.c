@@ -1287,6 +1287,8 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
+        fprintf(stderr, "%s: set SERR @ %p=%x\n", __func__,
+                &pci_conf[PCI_COMMAND+1], pci_conf[PCI_COMMAND+1]);
     }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
