@@ -434,7 +434,11 @@ static void piix3_reset(void *opaque)
 
     pci_conf[0x04] = 0x07; // master, memory and I/O
     pci_conf[0x05] = 0x00;
-    pci_conf[0x06] = 0x00;
+    if (vmware_mode) {
+        pci_conf[0x06] = PCI_STATUS_FAST_BACK;
+    } else {
+        pci_conf[0x06] = 0x00;
+    }
     pci_conf[0x07] = 0x02; // PCI_status_devsel_medium
     pci_conf[0x4c] = 0x4d;
     pci_conf[0x4e] = 0x03;
