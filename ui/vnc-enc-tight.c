@@ -714,6 +714,14 @@ static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
                 x, ds_get_width(vs->ds));
         x = ds_get_width(vs->ds) - 1;
     }
+    if (w < 0) {
+        fprintf(stderr, "%s: w=%d\n", __func__, w);
+        w = 0;
+    } else if (x + w >= ds_get_width(vs->ds)) {
+        fprintf(stderr, "%s: w=%d+%d>=%d\n", __func__,
+                w, x, ds_get_width(vs->ds));
+        w = ds_get_width(vs->ds) - 1 - x;
+    }
     if (y < 0) {
         fprintf(stderr, "%s: y=%d\n", __func__, y);
         y = 0;
@@ -721,6 +729,14 @@ static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
         fprintf(stderr, "%s: y=%d>=%d\n", __func__,
                 y, ds_get_height(vs->ds));
         y = ds_get_height(vs->ds) - 1;
+    }
+    if (h < 0) {
+        fprintf(stderr, "%s: h=%d\n", __func__, h);
+        h = 0;
+    } else if (y + h >= ds_get_height(vs->ds)) {
+        fprintf(stderr, "%s: h=%d+%d>=%d\n", __func__,
+                h, y, ds_get_height(vs->ds));
+        h = ds_get_height(vs->ds) - 1 - y;
     }
 
     switch(vd->server->pf.bytes_per_pixel) {
