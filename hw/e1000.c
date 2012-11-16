@@ -1271,7 +1271,11 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     if (vmware_mode) {
         /* Power Management Capabilities */
         int cfg_offset = 0xdc;
-        int r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
+        int r;
+
+        pci_set_word(pci_conf + PCI_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM);
+        r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
                                    cfg_offset, PCI_PM_SIZEOF);
         assert(r >= 0);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_PMC,
@@ -1283,8 +1287,6 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
-        pci_set_word(pci_conf + PCI_STATUS,
-                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM);
     }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
