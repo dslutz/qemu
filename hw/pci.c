@@ -178,19 +178,9 @@ void pci_device_reset(PCIDevice *dev)
     pci_update_irq_status(dev);
     pci_device_deassert_intx(dev);
     /* Clear all writable bits */
-    if (vmware_mode && (dev->devfn == (0x13 << 3))) {
-        fprintf(stderr, "%s: cmd@%p=%x wm=%x w1c=%x\n", __func__,
-                &dev->config[PCI_COMMAND + 1], dev->config[PCI_COMMAND + 1],
-                pci_get_word(dev->wmask + PCI_COMMAND),
-                pci_get_word(dev->w1cmask + PCI_COMMAND));
-    }
     pci_word_test_and_clear_mask(dev->config + PCI_COMMAND,
                                  pci_get_word(dev->wmask + PCI_COMMAND) |
                                  pci_get_word(dev->w1cmask + PCI_COMMAND));
-    if (vmware_mode && (dev->devfn == (0x13 << 3))) {
-        fprintf(stderr, "%s: after cmd@%p=%x\n", __func__,
-                &dev->config[PCI_COMMAND + 1], dev->config[PCI_COMMAND + 1]);
-    }
     pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
                                  pci_get_word(dev->wmask + PCI_STATUS) |
                                  pci_get_word(dev->w1cmask + PCI_STATUS));
@@ -622,13 +612,6 @@ static void pci_init_wmask(PCIDevice *dev)
     pci_set_word(dev->wmask + PCI_COMMAND,
                  PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER |
                  PCI_COMMAND_INTX_DISABLE);
-    if (dev->cap_present & QEMU_PCI_CAP_SERR) {
-        fprintf(stderr, "%s: %02x.%x cap=%x & %x, wm=%x\n", __func__,
-                dev->devfn >> 3, dev->devfn & 0x7,
-                dev->cap_present, QEMU_PCI_CAP_SERR,
-                pci_get_word(dev->wmask + PCI_COMMAND));
-        pci_word_test_and_set_mask(dev->wmask + PCI_COMMAND, PCI_COMMAND_SERR);
-    }
 
     memset(dev->wmask + PCI_CONFIG_HEADER_SIZE, 0xff,
            config_size - PCI_CONFIG_HEADER_SIZE);
