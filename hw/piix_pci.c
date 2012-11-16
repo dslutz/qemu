@@ -506,10 +506,8 @@ static int piix3_initfn(PCIDevice *dev)
 
     isa_bus_new(&d->dev.qdev, pci_address_space_io(dev));
     qemu_register_reset(piix3_reset, d);
-    if (vmware_mode) {
-        pci_set_word(d->dev.config + PCI_STATUS,
-                     PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
-    }
+    pci_set_word(d->dev.config + PCI_STATUS,
+                 PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
     return 0;
 }
 
