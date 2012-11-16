@@ -710,8 +710,8 @@ static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
     assert(y >= 0);
     assert(w >= 0);
     assert(h >= 0);
-    assert(x <= w);
-    assert(y <= h);
+    assert(x <= 3000);
+    assert(y <= 3000);
     switch(vd->server->pf.bytes_per_pixel) {
     case 4:
         return check_solid_tile32(vs, x, y, w, h, color, samecolor);
