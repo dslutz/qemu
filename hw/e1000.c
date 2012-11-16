@@ -1271,7 +1271,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     if (vmware_mode) {
         /* Power Management Capabilities */
         int cfg_offset = 0xe4;
-        int cfg_size = 0xdc - 0xe4;
+        int cfg_size = 8;
         int r;
 
         pci_set_word(pci_conf + PCI_STATUS,
@@ -1286,28 +1286,24 @@ static int pci_e1000_init(PCIDevice *pci_dev)
                      PCI_X_STATUS_64BIT | PCI_X_STATUS_133MHZ | 0x0440fff8);
 
         cfg_offset += cfg_size;
+        cfg_size = PCI_PM_SIZEOF;
+        assert(cfg_offset + cfg_size < 0xff);
         r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
-                               cfg_offset, PCI_PM_SIZEOF);
+                               cfg_offset, cfg_size);
         assert(r >= 0);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_PMC,
-                     PCI_PM_CAP_PME_D0 | PCI_PM_CAP_PME_D3 | PCI_PM_CAP_PME_D3cold |
-                     PCI_PM_CAP_DSI | 0x2);
+                     PCI_PM_CAP_PME_D0 | PCI_PM_CAP_PME_D3 |
+                     PCI_PM_CAP_PME_D3cold | PCI_PM_CAP_DSI | 0x2);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_CTRL, 0x2000);
         pci_set_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
                      0x2800);
-        fprintf(stderr, "%s: %02x.%x pe0=%x pe1=%x pe=%x\n", __func__,
-                d->dev.devfn >> 3, d->dev.devfn & 0x7,
-                pci_conf[cfg_offset + PCI_PM_PPB_EXTENSIONS],
-                pci_conf[cfg_offset + PCI_PM_PPB_EXTENSIONS + 1],
-                pci_get_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS));
         /* Special bits */
         pci_set_word(pci_conf + PCI_COMMAND,
                  PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
-        /* Write protect SERR. Should be the same as command_serr_enable=0 */
-        pci_word_test_and_clear_mask(pci_dev->wmask + PCI_COMMAND, PCI_COMMAND_SERR);
-        fprintf(stderr, "%s: set SERR @ %p=%x wm=%x\n", __func__,
-                &pci_conf[PCI_COMMAND+1], pci_conf[PCI_COMMAND+1],
-                pci_get_word(pci_dev->wmask + PCI_COMMAND));
+        /* Write protect SERR. Should be the same as 
+         * command_serr_enable=0 */
+        pci_word_test_and_clear_mask(pci_dev->wmask + PCI_COMMAND,
+                                     PCI_COMMAND_SERR);
     }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
@@ -1316,11 +1312,15 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     e1000_mmio_setup(d);
 
-    pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
-
     if (vmware_mode) {
+        pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                         PCI_BASE_ADDRESS_MEM_TYPE_64,
+                         &d->mmio);
+
         pci_register_bar(&d->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
     } else {
+        pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+
         pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
     }
     if (PCI_DEVICE_GET_CLASS(pci_dev)->device_id == E1000_VMW_DEVID) {
