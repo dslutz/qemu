@@ -1150,3 +1150,6 @@ vmxnet_init_addr(uint64_t VMXDATA, uint32_t rxRingLength, uint32_t rxRingOffset,
 handle_ioreq(void *req, uint32_t type, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O type=%d dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
 cpu_ioreq_pio(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O pio dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
 cpu_ioreq_move(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O copy dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
+
+# ui/vnc-enc-tight.c
+check_solid_tile(void *vs, int x, int y, int w, int h, int max_w, int max_h) "BAD vs=%p x=%d y=%d w=%d h=%d max_w=%d max_h=%d"

@@ -707,36 +707,29 @@ static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
     VncDisplay *vd = vs->vd;
 
     if (x < 0) {
-        fprintf(stderr, "%s: x=%d\n", __func__, x);
-        x = 0;
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
     } else if (x >= ds_get_width(vs->ds)) {
-        fprintf(stderr, "%s: x=%d>=%d\n", __func__,
-                x, ds_get_width(vs->ds));
-        x = ds_get_width(vs->ds) - 1;
-    }
-    if (w < 0) {
-        fprintf(stderr, "%s: w=%d\n", __func__, w);
-        w = 0;
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
+    } else if (w < 0) {
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
     } else if (x + w >= ds_get_width(vs->ds)) {
-        fprintf(stderr, "%s: w=%d+%d>=%d\n", __func__,
-                w, x, ds_get_width(vs->ds));
-        w = ds_get_width(vs->ds) - 1 - x;
-    }
-    if (y < 0) {
-        fprintf(stderr, "%s: y=%d\n", __func__, y);
-        y = 0;
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
+    } else if (y < 0) {
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
     } else if (y >= ds_get_height(vs->ds)) {
-        fprintf(stderr, "%s: y=%d>=%d\n", __func__,
-                y, ds_get_height(vs->ds));
-        y = ds_get_height(vs->ds) - 1;
-    }
-    if (h < 0) {
-        fprintf(stderr, "%s: h=%d\n", __func__, h);
-        h = 0;
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
+    } else if (h < 0) {
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
     } else if (y + h >= ds_get_height(vs->ds)) {
-        fprintf(stderr, "%s: h=%d+%d>=%d\n", __func__,
-                h, y, ds_get_height(vs->ds));
-        h = ds_get_height(vs->ds) - 1 - y;
+        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
+        return false;
     }
 
     switch(vd->server->pf.bytes_per_pixel) {
