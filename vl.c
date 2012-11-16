@@ -269,7 +269,7 @@ static NotifierList machine_init_done_notifiers =
 static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
-int vmware_mode = 0;
+int vmware_hw = 0;
 int xen_platform_pci = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
@@ -3716,10 +3716,12 @@ int main(int argc, char **argv, char **envp)
         kernel_filename = qemu_opt_get(machine_opts, "kernel");
         initrd_filename = qemu_opt_get(machine_opts, "initrd");
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
-        vmware_mode = qemu_opt_get_bool(machine_opts, "vmware", vmware_mode);
-        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci", xen_enabled());
-        printf("%s: vmware_mode=%d xen_platform_pci=%d\n",
-               __func__, vmware_mode, xen_platform_pci);
+        vmware_hw = qemu_opt_get_number(machine_opts, "vmware_hw",
+                                          vmware_hw);
+        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci",
+                                             xen_enabled());
+        printf("%s: vmware_hw=%d xen_platform_pci=%d\n",
+               __func__, vmware_hw, xen_platform_pci);
     } else {
         kernel_filename = initrd_filename = kernel_cmdline = NULL;
     }

@@ -267,7 +267,7 @@ void pci_bridge_reset(DeviceState *qdev)
     conf[PCI_PRIMARY_BUS] = 0;
     conf[PCI_SECONDARY_BUS] = 0;
     conf[PCI_SUBORDINATE_BUS] = 0;
-    if (!vmware_mode) {
+    if (!vmware_hw) {
         conf[PCI_SEC_LATENCY_TIMER] = 0;
     }
 

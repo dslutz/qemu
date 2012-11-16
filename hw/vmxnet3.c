@@ -2413,7 +2413,7 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
     c->exit = vmxnet3_pci_uninit;
     c->vendor_id = PCI_VENDOR_ID_VMWARE;
     c->device_id = PCI_DEVICE_ID_VMWARE_VMXNET3;
-    if (vmware_mode) {
+    if (vmware_hw) {
         c->revision = 0x01;
     } else {
         c->revision = PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION;

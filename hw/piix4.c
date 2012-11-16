@@ -112,7 +112,7 @@ static void piix4_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB_0;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->revision = 0x08;
     }
     dc->desc = "ISA bridge";

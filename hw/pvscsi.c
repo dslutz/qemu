@@ -912,7 +912,7 @@ pvscsi_init(PCIDevice *dev)
 
     trace_pvscsi_state("init");
 
-    if (!vmware_mode) {
+    if (!vmware_hw) {
         /* PCI subsystem ID */
         s->dev.config[PCI_SUBSYSTEM_ID] = 0x00;
         s->dev.config[PCI_SUBSYSTEM_ID + 1] = 0x10;
@@ -1031,7 +1031,7 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
     k->exit = pvscsi_uninit;
     k->vendor_id = PCI_VENDOR_ID_VMWARE;
     k->device_id = PCI_DEVICE_ID_VMWARE_PVSCSI;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = PCI_DEVICE_ID_VMWARE_PVSCSI;
         k->class_id = PCI_CLASS_STORAGE_SAS;

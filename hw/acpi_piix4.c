@@ -487,7 +487,7 @@ i2c_bus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
     s->smi_irq = smi_irq;
     s->kvm_enabled = kvm_enabled;
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         dev->cap_present |= QEMU_PCI_CAP_MULTIFUNCTION;
     }
 
@@ -522,7 +522,7 @@ static void piix4_pm_class_init(ObjectClass *klass, void *data)
     k->config_write = pm_write_config;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB_3;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = 0x1976;
         k->revision = 0x08;

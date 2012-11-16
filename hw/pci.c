@@ -185,7 +185,7 @@ void pci_device_reset(PCIDevice *dev)
     pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
                                  pci_get_word(dev->wmask + PCI_STATUS) |
                                  pci_get_word(dev->w1cmask + PCI_STATUS));
-    if (!vmware_mode) {
+    if (!vmware_hw) {
         dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
         dev->config[PCI_INTERRUPT_LINE] = 0x0;
     }

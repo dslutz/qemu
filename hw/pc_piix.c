@@ -164,8 +164,8 @@ static void pc_init1(MemoryRegion *system_memory,
 
     pc_vga_init(isa_bus, pci_enabled ? pci_bus : NULL);
     if (xen_enabled() && xen_platform_pci) {
-        printf("%s: vmware_mode=%d xen_platform_pci=%d\n",
-               __func__, vmware_mode, xen_platform_pci);
+        printf("%s: vmware_hw=%d xen_platform_pci=%d\n",
+               __func__, vmware_hw, xen_platform_pci);
         pci_create_simple(pci_bus, -1, "xen-platform");
     }
 
@@ -177,7 +177,7 @@ static void pc_init1(MemoryRegion *system_memory,
     ide_drive_get(hd, MAX_IDE_BUS);
     if (pci_enabled) {
         PCIDevice *dev;
-        if (vmware_mode)  {
+        if (vmware_hw)  {
             dev = pci_piix4_ide_init(pci_bus, hd, piix3_devfn + 1);
         } else if (xen_enabled()) {
             dev = pci_piix3_xen_ide_init(pci_bus, hd, piix3_devfn + 1);

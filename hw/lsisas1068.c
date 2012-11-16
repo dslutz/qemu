@@ -5817,7 +5817,7 @@ mpt_msi_init(MptState *s) {
 
     int res;
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         s->msi_used = false;
         return s->msi_used;
     }
@@ -5903,7 +5903,7 @@ mpt_pcie_init(MptState *s) {
 	    return false;
 	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
 	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	if (vmware_mode) {
+	if (vmware_hw) {
 	    lanes = 32; /* vmware lies */
 	}
 	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
@@ -5950,13 +5950,14 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     pci_conf = s->dev.config;
 
-    if (vmware_mode && s->virtual_hw < 7) {
+    if (vmware_hw &&
+        (s->virtual_hw < 7 && vmware_hw < 7)) {
         /* Older defn. has these as zero... */
         pci_set_word(pci_conf + PCI_SUBSYSTEM_VENDOR_ID, 0);
         pci_set_word(pci_conf + PCI_SUBSYSTEM_ID, 0);
     }
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         /* PCI latency timer = 64 */
         pci_conf[PCI_LATENCY_TIMER] = 0x40;
         pci_set_word(pci_conf + PCI_STATUS,
@@ -5972,7 +5973,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
                           "lsimpt-io", 128);
     memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
                           "lsimpt-mmio", 0x1000);
-    if (!vmware_mode) {
+    if (!vmware_hw) {
         memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
                               "lsimpt-diag", 0x10000);
     }
@@ -5980,7 +5981,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
     pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
                      PCI_BASE_ADDRESS_MEM_TYPE_32, &s->mmio_io);
-    if (!vmware_mode) {
+    if (!vmware_hw) {
         pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
                          PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
     }
@@ -6078,7 +6079,7 @@ static void mptscsi_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_53C1030;
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
@@ -6107,7 +6108,7 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
@@ -6132,7 +6133,7 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
 	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;

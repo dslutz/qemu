@@ -1268,7 +1268,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     pci_conf = d->dev.config;
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         /* Power Management Capabilities */
         int cfg_offset = 0xe4;
         int cfg_size = 8;
@@ -1312,7 +1312,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     e1000_mmio_setup(d);
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY |
                          PCI_BASE_ADDRESS_MEM_TYPE_64,
                          &d->mmio);
@@ -1419,7 +1419,7 @@ static void e1000_vmw_class_init(ObjectClass *klass, void *data)
     k->device_id = E1000_VMW_DEVID;
     k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     k->subsystem_id = PCI_DEVICE_ID_VMWARE_NET2;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->revision = 0x01;
     } else {
         k->revision = 0x03;

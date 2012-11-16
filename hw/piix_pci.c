@@ -205,7 +205,7 @@ static int i440fx_initfn(PCIDevice *dev)
     d->dev.config[I440FX_SMRAM] = 0x02;
 
     cpu_smm_register(&i440fx_set_smm, d);
-    if (vmware_mode) {
+    if (vmware_hw) {
         pci_word_test_and_set_mask(dev->config + PCI_STATUS,
                                    PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
     }
@@ -274,7 +274,7 @@ static PCIBus *i440fx_common_init(const char *device_name,
                  PAM_EXPAN_SIZE);
     }
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         *piix3_devfn = PCI_DEVFN(0x7, 0);
 #if 0
 /* DCS: Does not yet work... */
@@ -434,7 +434,7 @@ static void piix3_reset(void *opaque)
 
     pci_conf[0x04] = 0x07; // master, memory and I/O
     pci_conf[0x05] = 0x00;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pci_conf[0x06] = PCI_STATUS_FAST_BACK;
     } else {
         pci_conf[0x06] = 0x00;
@@ -510,7 +510,7 @@ static int piix3_initfn(PCIDevice *dev)
 
     isa_bus_new(&d->dev.qdev, pci_address_space_io(dev));
     qemu_register_reset(piix3_reset, d);
-    if (vmware_mode) {
+    if (vmware_hw) {
         pci_set_word(d->dev.config + PCI_STATUS,
                      PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
     }
@@ -529,7 +529,7 @@ static void piix3_class_init(ObjectClass *klass, void *data)
     k->init         = piix3_initfn;
     k->config_write = piix3_write_config;
     k->vendor_id    = PCI_VENDOR_ID_INTEL;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->device_id = PCI_DEVICE_ID_INTEL_82371AB_0; // 82371AB PIIX4 PCI-to-ISA bridge
         k->revision = 0x08;
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
@@ -559,7 +559,7 @@ static void piix3_xen_class_init(ObjectClass *klass, void *data)
     k->init         = piix3_initfn;
     k->config_write = piix3_write_config_xen;
     k->vendor_id    = PCI_VENDOR_ID_INTEL;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->device_id = PCI_DEVICE_ID_INTEL_82371AB_0; // 82371AB PIIX4 PCI-to-ISA bridge
         k->revision = 0x08;
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
@@ -588,7 +588,7 @@ static void i440fx_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     /* Either PCI_DEVICE_ID_INTEL_82441 or PCI_DEVICE_ID_INTEL_82443BX_0 */
     k->device_id = hostbridge_device_id;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = 0x1976;
     }
