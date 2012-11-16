@@ -1064,20 +1064,9 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val, int l)
     for (i = 0; i < l; val >>= 8, ++i) {
         uint8_t wmask = d->wmask[addr + i];
         uint8_t w1cmask = d->w1cmask[addr + i];
-        uint8_t old = d->config[addr + i];
-
         assert(!(wmask & w1cmask));
         d->config[addr + i] = (d->config[addr + i] & ~wmask) | (val & wmask);
         d->config[addr + i] &= ~(val & w1cmask); /* W1C: Write 1 to Clear */
-        if ((addr + i == PCI_COMMAND) || (addr + i == PCI_COMMAND + 1)) {
-            fprintf(stderr, "%s: %04x:%02x:%02x.%x cmd(%d)=%x<=%x"
-                    " val=%x wm=%x w1c=%x\n", __func__,
-                    pci_find_domain(d->bus), pci_bus_num(d->bus),
-                    PCI_SLOT(d->devfn), PCI_FUNC(d->devfn),
-                    addr + i, d->config[addr + i], old, val, wmask, w1cmask);
-            fprintf(stderr, "    cmd(4)=%x cmd(5)=%x\n",
-                    d->config[PCI_COMMAND], d->config[PCI_COMMAND + 1]);
-        }
     }
     if (ranges_overlap(addr, l, PCI_BASE_ADDRESS_0, 24) ||
         ranges_overlap(addr, l, PCI_ROM_ADDRESS, 4) ||

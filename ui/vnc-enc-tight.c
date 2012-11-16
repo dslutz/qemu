@@ -704,7 +704,15 @@ check_solid_tile32(VncState *vs, int x, int y, int w, int h,
 static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
                              uint32_t* color, bool samecolor)
 {
-    switch (VNC_SERVER_FB_BYTES) {
+    VncDisplay *vd = vs->vd;
+
+    assert(x >= 0);
+    assert(y >= 0);
+    assert(w >= 0);
+    assert(h >= 0);
+    assert(x <= w);
+    assert(y <= h);
+    switch(vd->server->pf.bytes_per_pixel) {
     case 4:
         return check_solid_tile32(vs, x, y, w, h, color, samecolor);
     }
