@@ -93,26 +93,26 @@ struct PCNetState_st {
 };
 
 struct PCNetState2_st {
-    uint64_t VMXDATA;
-    uint64_t vmxRxRing;
-    uint64_t vmxRxRing2;
-    uint64_t vmxTxRing;
-    uint16_t vmxRxRingIndex;
-    uint16_t vmxRxLastInterruptIndex;
-    uint16_t vmxRxRingLength;
-    uint16_t vmxRxRing2Index;
-    uint16_t vmxRxRing2Length;
-    uint16_t vmxTxRingIndex;
-    uint16_t vmxTxLastInterruptIndex;
-    uint16_t vmxTxRingLength;
-    uint16_t vmxInterruptEnabled;
-    bool fVMXNet;
-    uint32_t cLinkDownReported;
+    uint64_t vmxdata_addr;
+    uint64_t vmx_rx_ring;
+    uint64_t vmx_rx_ring2;
+    uint64_t vmx_tx_ring;
+    uint32_t vmxdata_length;
+    uint32_t link_down_reported;
+    uint16_t vmx_rx_ring_index;
+    uint16_t vmx_rx_last_interrupt_index;
+    uint16_t vmx_rx_ring_length;
+    uint16_t vmx_rx_ring2_index;
+    uint16_t vmx_rx_ring2_length;
+    uint16_t vmx_tx_ring_index;
+    uint16_t vmx_tx_last_interrupt_index;
+    uint16_t vmx_tx_ring_length;
+    bool vmx_interrupt_enabled;
+    bool vmxnet2;
     uint16_t bcr2[50-32];
-    uint16_t aMII[16];
-    uint16_t aMorph[1];
-    uint32_t VMXDATALENGTH;
-    uint32_t aVmxnet[VMXNET_CHIP_IO_RESV_SIZE];
+    uint16_t mii[16];
+    uint16_t morph[1];
+    uint32_t vmxnet_reg[VMXNET_CHIP_IO_RESV_SIZE];
 };
 
 struct PCNetVState_st {
@@ -140,9 +140,9 @@ int vlance_can_receive(NetClientState *nc);
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
-void pcnetPollRxTx(PCNetVState *vs);
+void vmxnet_poll_rx_tx(PCNetVState *vs);
 void pcnet_update_irq(PCNetState *s);
-void vmxnetUpdateIrq(PCNetVState *vs);
+void vmxnet_update_irq(PCNetVState *vs);
 void vmxnet_transmit(PCNetVState *vs);
 extern const VMStateDescription vmstate_pcnet;
 extern const VMStateDescription vmstate_vlance;

@@ -393,7 +393,7 @@ static inline void pcnet_rmd_load(PCNetState *s, struct pcnet_RMD *rmd,
     }
 }
 
-static inline int vmxnetRmdLoad(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
+static inline int vmxnet_rmd_load(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
                                  target_phys_addr_t addr)
 {
     PCNetState *s = &vs->s1;
@@ -680,9 +680,9 @@ static inline hwaddr pcnet_rdra_addr(PCNetState *s, int idx)
     return s->rdra + ((CSR_RCVRL(s) - idx) * (BCR_SWSTYLE(s) ? 16 : 8));
 }
 
-static inline target_phys_addr_t vmxnetRdraAddr(PCNetVState *vs, int idx)
+static inline target_phys_addr_t vmxnet_rdra_addr(PCNetVState *vs, int idx)
 {
-    return vs->s2.vmxRxRing + (idx * sizeof(Vmxnet2_RxRingEntry));
+    return vs->s2.vmx_rx_ring + (idx * sizeof(Vmxnet2_RxRingEntry));
 }
 
 static inline int64_t pcnet_get_next_poll_time(PCNetState *s, int64_t current_time)
@@ -800,36 +800,35 @@ void pcnet_update_irq(PCNetState *s)
     s->isr = isr;
 }
 
-void vmxnetUpdateIrq(PCNetVState *vs)
+void vmxnet_update_irq(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     PCNetState2 *s2 = &vs->s2;
     int iISR = 0;
 
-    if (s2->vmxRxLastInterruptIndex != s2->vmxRxRingIndex) {
-      /* (jbp) don't interrupt immediatly out of reset */
-      if (s2->vmxRxLastInterruptIndex != 0xffff)
+    if (s2->vmx_rx_last_interrupt_index != s2->vmx_rx_ring_index) {
+        if (s2->vmx_rx_last_interrupt_index != 0xffff) {
 	      iISR = 1;
-      s2->vmxRxLastInterruptIndex = s2->vmxRxRingIndex;
+        }
+        s2->vmx_rx_last_interrupt_index = s2->vmx_rx_ring_index;
     }
 
-    if (s2->vmxTxLastInterruptIndex != s2->vmxTxRingIndex) {
-      /* (jbp) don't interrupt immediatly out of reset */
-      if (s2->vmxTxLastInterruptIndex != 0xffff) {
-          iISR = 1;
-      }
-      s2->vmxTxLastInterruptIndex = s2->vmxTxRingIndex;
+    if (s2->vmx_tx_last_interrupt_index != s2->vmx_tx_ring_index) {
+        if (s2->vmx_tx_last_interrupt_index != 0xffff) {
+            iISR = 1;
+        }
+        s2->vmx_tx_last_interrupt_index = s2->vmx_tx_ring_index;
     }
 
-    if (!s2->vmxInterruptEnabled) {
-      iISR = 0;
+    if (!s2->vmx_interrupt_enabled) {
+        iISR = 0;
     }
 
-//    Log2(("#%d set irq iISR=%d\n", __func__, iISR));
+    trace_vmxnet_update_irq(vs, iISR);
 
     /* normal path is to _not_ change the IRQ status */
     if (UNLIKELY(iISR != s->isr)) {
-// Log(("#%d INTA=%d (vmxnet) vmxInterruptEnabled %d\n", __func__, iISR, s2->vmxInterruptEnabled));
+        trace_vmxnet_update_irq_change(vs, iISR,  s->isr, s2->vmx_interrupt_enabled);
         qemu_set_irq(s->irq, iISR);
         s->isr = iISR;
     }
@@ -1054,7 +1053,7 @@ int pcnet_can_receive(NetClientState *nc)
     return sizeof(s->buffer)-16;
 }
 
-static void vmxnetRdtePoll(PCNetVState *vs)
+static void vmxnet_rdte_poll(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     PCNetState2 *s2 = &vs->s2;
@@ -1062,16 +1061,15 @@ static void vmxnetRdtePoll(PCNetVState *vs)
     /* assume lack of a next receive descriptor */
     CSR_NRST(s) = 0;
 
-    if (RT_LIKELY(s2->VMXDATA))
-    {
+    if (RT_LIKELY(s2->vmxdata_addr)) {
       /*
        * The current receive message descriptor.
        */
       Vmxnet2_RxRingEntry  rmd;
       target_phys_addr_t addr;
 
-      addr = vmxnetRdraAddr(vs, s2->vmxRxRingIndex);
-      vmxnetRmdLoad(vs, &rmd, addr);
+      addr = vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index);
+      vmxnet_rmd_load(vs, &rmd, addr);
     }
 }
 
@@ -1082,13 +1080,13 @@ int vlance_can_receive(NetClientState *nc)
     Vmxnet2_RxRingEntry  rmd;
     target_phys_addr_t addr;
 
-    if (!vs->s2.VMXDATA)
+    if (!vs->s2.vmxdata_addr)
         return pcnet_can_receive(nc);
 
-    vmxnetRdtePoll(vs);
+    vmxnet_rdte_poll(vs);
 
-    addr = vmxnetRdraAddr(vs, vs->s2.vmxRxRingIndex);
-    if (!vmxnetRmdLoad(vs, &rmd, addr)) {
+    addr = vmxnet_rdra_addr(vs, vs->s2.vmx_rx_ring_index);
+    if (!vmxnet_rmd_load(vs, &rmd, addr)) {
         return 0;
     } else {
         return sizeof(s->buffer)-16;
@@ -1291,7 +1289,7 @@ void vlance_set_link_status(NetClientState *nc)
     PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
-    vs->s2.cLinkDownReported = 0;
+    vs->s2.link_down_reported = 0;
 }
 
 static void pcnet_transmit(PCNetState *s)
@@ -1403,12 +1401,12 @@ static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
     s->csr[60] = s->csr[34];
     s->csr[61] = s->csr[35];
     /* set current trasmit decriptor. */
-    cxda = vs->s2.vmxTxRing + (vs->s2.vmxTxRingIndex * sizeof(*desc));
+    cxda = vs->s2.vmx_tx_ring + (vs->s2.vmx_tx_ring_index * sizeof(*desc));
     s->csr[34] = cxda & 0xffff;
     s->csr[35] = cxda >> 16;
 
     s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
-    trace_vmxnet_tdte_poll(vs, vs->s2.vmxTxRingIndex, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+    trace_vmxnet_tdte_poll(vs, vs->s2.vmx_tx_ring_index, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
 
   if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
       if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
@@ -1419,7 +1417,7 @@ static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
   return (desc->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
-static inline int pcnetIsLinkUp(PCNetVState *vs)
+static inline int pcnet_is_link_up(PCNetVState *vs)
 {
     return vs->s1.lnkst;
 }
@@ -1428,7 +1426,7 @@ static inline int pcnetIsLinkUp(PCNetVState *vs)
  * Store transmit message descriptor and hand it over to the host (the VM guest).
  * Make sure that all data are transmitted before we clear the own flag.
  */
-static inline void vmxnetTmdStorePassHost(PCNetVState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
+static inline void vmxnet_tmd_store_pass_host(PCNetVState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
 {
     PCNetState *s = &vs->s1;
 
@@ -1448,17 +1446,6 @@ static inline void vmxnet_xmit_fail_tmd_generic(PCNetVState *vs, Vmxnet2_TxRingE
     trace_vmxnet_xmit_fail_tmd_generic(vs, s->bcr[BCR_SWS]);
 }
 
-
-/**
- * Fails a TMD with a link down error.
- */
-
-static inline void vmxnetXmitFailTMDLinkDown(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
-{
-    vs->s2.cLinkDownReported++;
-    vmxnet_xmit_fail_tmd_generic(vs, pTmd);
-}
-
 void vmxnet_transmit(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
@@ -1474,8 +1461,8 @@ void vmxnet_transmit(PCNetVState *vs)
      */
     while (vmxnet_tdte_poll(vs, &tmd)) {
         /* Don't continue sending packets when the link is down. */
-        if (UNLIKELY(!pcnetIsLinkUp(vs)
-                     &&  vs->s2.cLinkDownReported > PCNET_MAX_LINKDOWN_REPORTED)
+        if (UNLIKELY(!pcnet_is_link_up(vs)
+                     &&  vs->s2.link_down_reported > PCNET_MAX_LINKDOWN_REPORTED)
             ) {
             s->csr[0] |= 0xa000; /* ERR | CERR */
             s->xmit_pos = -1;
@@ -1489,7 +1476,7 @@ void vmxnet_transmit(PCNetVState *vs)
         {
 	    const unsigned cb = tmd.sg.sg[0].length;
 
-            if (RT_LIKELY(pcnetIsLinkUp(vs) || CSR_LOOP(s)))
+            if (RT_LIKELY(pcnet_is_link_up(vs) || CSR_LOOP(s)))
             {
                 /* From the manual: ``A zero length buffer is acceptable as
                  * long as it is not the last buffer in a chain (STP = 0 and
@@ -1518,15 +1505,16 @@ void vmxnet_transmit(PCNetVState *vs)
                             __func__, cb);
                     vmxnet_xmit_fail_tmd_generic(vs, &tmd);
                 }
+            } else {
+                vs->s2.link_down_reported++;
+                vmxnet_xmit_fail_tmd_generic(vs, &tmd);
             }
-            else
-                vmxnetXmitFailTMDLinkDown(vs, &tmd);
 
             /* Write back the TMD and pass it to the host (clear own bit). */
-            vmxnetTmdStorePassHost(vs, &tmd, CSR_CXDA(s));
+            vmxnet_tmd_store_pass_host(vs, &tmd, CSR_CXDA(s));
 
             /* advance the ring counter register */
-	    VMXNET_INC(vs->s2.vmxTxRingIndex, vs->s2.vmxTxRingLength);
+	    VMXNET_INC(vs->s2.vmx_tx_ring_index, vs->s2.vmx_tx_ring_length);
         } else {
 	    fprintf(stderr, "Multisegments unsupported\n");
 	}
@@ -1552,12 +1540,12 @@ txdone:
 /**
  * Poll for changes in RX and TX descriptor rings.
  */
-void pcnetPollRxTx(PCNetVState *vs)
+void vmxnet_poll_rx_tx(PCNetVState *vs)
 {
     PCNetState *s = &vs->s1;
     PCNetState2 *s2 = &vs->s2;
 
-    if (!s2->VMXDATA) {
+    if (!s2->vmxdata_addr) {
         if (CSR_RXON(s)) {
             /*
              * The second case is important for pcnetWaitReceiveAvail(): If CSR_CRST(s) was
@@ -1572,12 +1560,12 @@ void pcnetPollRxTx(PCNetVState *vs)
         if (CSR_TDMD(s) || (CSR_TXON(s) && !CSR_DPOLL(s)))
             pcnet_transmit(s);
     } else {
-        vmxnetRdtePoll(vs); // ###################### not always need could be optimized.
+        vmxnet_rdte_poll(vs); // ###################### not always need could be optimized.
         pcnet_transmit(s);
     }
 }
 
-static inline void vmxnetRmdStorePassHost(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
+static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
                                           target_phys_addr_t addr)
 {
     s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, CSR_BSWP(s));
@@ -1593,7 +1581,8 @@ ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
     int size = size_;
     int cbPacket;
 
-    if (!vs->s2.VMXDATA)
+    trace_vlance_receive(vs, buf, size_);
+    if (!vs->s2.vmxdata_addr)
         return pcnet_receive(nc, buf, size_);
 
 #ifdef PCNET_DEBUG
@@ -1637,7 +1626,7 @@ ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 	  PRINT_PKTHDR(buf);
 #endif
 
-	  vmxnetRmdLoad(vs, &rmd, vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
+	  vmxnet_rmd_load(vs, &rmd, vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
 
 	  size_t cbBuf = RT_MIN(rmd.bufferLength, size);
 	  target_phys_addr_t rbadr = rmd.paddr;
@@ -1665,25 +1654,25 @@ ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
           }
 
 	  /* write back, clear the own bit */
-	  vmxnetRmdStorePassHost(s, &rmd, vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
+	  vmxnet_rmd_store_pass_host(s, &rmd, vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
 
 
 #if 0
 	  frintf(stderr, "%s RCVRC=%d CRDA=%#010x\n", __func__,
-	       CSR_RCVRC(s), vmxnetRdraAddr(vs, s2->vmxRxRingIndex));
+	       CSR_RCVRC(s), vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
 #endif
 #ifdef PCNET_DEBUG_RMD
 	  //	  PRINT_VMXNETRMD(&rmd);
 #endif
-	  VMXNET_INC(s2->vmxRxRingIndex, s2->vmxRxRingLength);
+	  VMXNET_INC(s2->vmx_rx_ring_index, s2->vmx_rx_ring_length);
 	  
         }
     }
 
     /* see description of TXDPOLL:
      * ``transmit polling will take place following receive activities'' */
-    pcnetPollRxTx(vs);
-    vmxnetUpdateIrq(vs);
+    vmxnet_poll_rx_tx(vs);
+    vmxnet_update_irq(vs);
 
     return size_;
 }
@@ -1993,7 +1982,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
         break;
 #endif
     case BCR_MIIMDR:
-        vs->s2.aMII[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
+        vs->s2.mii[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
 #ifdef PCNET_DEBUG_MII
         printf(stderr, "#%d pcnet: mii write %d <- %#x\n", __func__, vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f, val);
 #endif
@@ -2033,9 +2022,9 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
                 | 0x0008    /* Able to do auto-negotiation. */
                 | 0x0004    /* Link up. */
                 | 0x0001;   /* Extended Capability, i.e. registers 4+ valid. */
-            if (!pcnetIsLinkUp(vs)) {
+            if (!pcnet_is_link_up(vs)) {
                 val &= ~(0x0020 | 0x0004);
-                vs->s2.cLinkDownReported++;
+                vs->s2.link_down_reported++;
             }
             if (!autoneg) {
                 /* Auto-negotiation disabled. */
@@ -2079,7 +2068,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
 
         case 5:
             /* Link partner ability register. */
-            if (pcnetIsLinkUp(vs))
+            if (pcnet_is_link_up(vs))
                 val =   0x8000  /* Next page bit. */
                       | 0x4000  /* Link partner acked us. */
                       | 0x0400  /* Can do flow control. */
@@ -2088,20 +2077,20 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
             else
             {
                 val = 0;
-                vs->s2.cLinkDownReported++;
+                vs->s2.link_down_reported++;
             }
             break;
 
         case 6:
             /* Auto negotiation expansion register. */
-            if (pcnetIsLinkUp(vs))
+            if (pcnet_is_link_up(vs))
                 val =   0x0008  /* Link partner supports npage. */
                       | 0x0004  /* Enable npage words. */
                       | 0x0001; /* Can do N-way auto-negotiation. */
             else
             {
                 val = 0;
-                vs->s2.cLinkDownReported++;
+                vs->s2.link_down_reported++;
             }
             break;
 
@@ -2126,10 +2115,10 @@ uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
     case BCR_LED3:
         val = s->bcr[rap] & ~0x8000;
         /* Clear LNKSTE if we're not connected. */
-        if (!pcnetIsLinkUp(vs))
+        if (!pcnet_is_link_up(vs))
         {
             if (rap == BCR_LNKST) {
-                vs->s2.cLinkDownReported++;
+                vs->s2.link_down_reported++;
             }
             val &= ~0x40;
         }
@@ -2194,9 +2183,9 @@ void vlance_h_reset(void *opaque, uint16_t vid, uint16_t sid, uint16_t svid)
     s->bcr[BCR_PCISID] = sid;
     s->bcr[BCR_PCISVID] = svid;
 
-    vs->s2.aMorph[0] = 0x2934;
-    vs->s2.aVmxnet[VMXNET_LOW_VERSION] = 0xBABE864F;
-    vs->s2.aVmxnet[VMXNET_HIGH_VERSION] = 0xBABE864F;
+    vs->s2.morph[0] = 0x2934;
+    vs->s2.vmxnet_reg[VMXNET_LOW_VERSION] = 0xBABE864F;
+    vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION] = 0xBABE864F;
 }
 
 void pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
@@ -2463,24 +2452,26 @@ const VMStateDescription vmstate_vlance = {
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
     .fields      = (VMStateField []) {
-        VMSTATE_UINT64(VMXDATA, PCNetState2),
-        VMSTATE_UINT64(vmxRxRing, PCNetState2),
-        VMSTATE_UINT64(vmxRxRing2, PCNetState2),
-        VMSTATE_UINT64(vmxTxRing, PCNetState2),
-        VMSTATE_UINT16(vmxRxRingIndex, PCNetState2),
-        VMSTATE_UINT16(vmxRxLastInterruptIndex, PCNetState2),
-        VMSTATE_UINT16(vmxRxRingLength, PCNetState2),
-        VMSTATE_UINT16(vmxRxRing2Index, PCNetState2),
-        VMSTATE_UINT16(vmxRxRing2Length, PCNetState2),
-        VMSTATE_UINT16(vmxTxRingIndex, PCNetState2),
-        VMSTATE_UINT16(vmxTxLastInterruptIndex, PCNetState2),
-        VMSTATE_UINT16(vmxTxRingLength, PCNetState2),
-        VMSTATE_UINT16(vmxInterruptEnabled, PCNetState2),
-        VMSTATE_BOOL(fVMXNet, PCNetState2),
+        VMSTATE_UINT64(vmxdata_addr, PCNetState2),
+        VMSTATE_UINT64(vmx_rx_ring, PCNetState2),
+        VMSTATE_UINT64(vmx_rx_ring2, PCNetState2),
+        VMSTATE_UINT64(vmx_tx_ring, PCNetState2),
+        VMSTATE_UINT32(vmxdata_length, PCNetState2),
+        VMSTATE_UINT32(link_down_reported, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_last_interrupt_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring_length, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring2_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring2_length, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_ring_index, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_last_interrupt_index, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_ring_length, PCNetState2),
+        VMSTATE_BOOL(vmx_interrupt_enabled, PCNetState2),
+        VMSTATE_BOOL(vmxnet2, PCNetState2),
         VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
-        VMSTATE_UINT16_ARRAY(aMII, PCNetState2, 16),
-        VMSTATE_UINT16_ARRAY(aMorph, PCNetState2, 1),
-        VMSTATE_UINT32_ARRAY(aVmxnet, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
+        VMSTATE_UINT16_ARRAY(mii, PCNetState2, 16),
+        VMSTATE_UINT16_ARRAY(morph, PCNetState2, 1),
+        VMSTATE_UINT32_ARRAY(vmxnet_reg, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
         VMSTATE_END_OF_LIST()
     }
 };

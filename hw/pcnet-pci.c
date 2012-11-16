@@ -144,7 +144,7 @@ static void vlance_morph_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t 
     trace_vlance_morph_ioport_writeb(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00:
-        vs->s2.aMorph[0] = (vs->s2.aMorph[0] & 0xff00) | (val & 0xff);
+        vs->s2.morph[0] = (vs->s2.morph[0] & 0xff00) | (val & 0xff);
         break;
     }
 }
@@ -155,7 +155,7 @@ static uint32_t vlance_morph_ioport_readb(PCNetVState *vs, uint32_t addr)
 
     switch (addr & 0x03) {
 	case 0x00: /* RESET */
-	    val = vs->s2.aMorph[0] & 0xff;
+	    val = vs->s2.morph[0] & 0xff;
 	    break;
 	}
 
@@ -175,7 +175,7 @@ static void vlance_morph_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t 
     trace_vlance_morph_ioport_writew(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
-        vs->s2.aMorph[0] = val;
+        vs->s2.morph[0] = val;
         break;
     }
 }
@@ -186,7 +186,7 @@ static uint32_t vlance_morph_ioport_readw(PCNetVState *vs, uint32_t addr)
 
     switch (addr & 0x03) {
     case 0x00:
-        val = vs->s2.aMorph[0];
+        val = vs->s2.morph[0];
         break;
     }
 
@@ -207,7 +207,7 @@ static void vlance_morph_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t 
     trace_vlance_morph_ioport_writel(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
-        vs->s2.aMorph[0] = val;
+        vs->s2.morph[0] = val;
     }
 }
 
@@ -217,7 +217,7 @@ static uint32_t vlance_morph_ioport_readl(PCNetVState *vs, uint32_t addr)
 
     switch (addr & 0x03) {
     case 0x00:
-        val = vs->s2.aMorph[0];
+        val = vs->s2.morph[0];
         break;
     }
 
@@ -235,7 +235,7 @@ static void vmxnet_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
     trace_vmxnet_ioport_writeb(vs, addr, val);
     switch (addr & 0x3f) {
     case 0x00:
-        vs->s2.aVmxnet[0] = (vs->s2.aVmxnet[0] & 0xff00) | (val & 0xff);
+        vs->s2.vmxnet_reg[0] = (vs->s2.vmxnet_reg[0] & 0xff00) | (val & 0xff);
         break;
     case VMXNET_MAC_ADDR:
     case VMXNET_MAC_ADDR+1:
@@ -266,10 +266,10 @@ static uint32_t vmxnet_ioport_readbtReadU8(PCNetVState *vs, uint32_t addr)
 	    val = vs->s1.prom[(addr-VMXNET_MAC_ADDR) & 0x0f] & 0xff;
 	    break;
 	case VMXNET_LOW_VERSION:
-	    val = vs->s2.aVmxnet[VMXNET_LOW_VERSION] & 0xff;
+	    val = vs->s2.vmxnet_reg[VMXNET_LOW_VERSION] & 0xff;
 	    break;
 	case VMXNET_HIGH_VERSION:
-	    val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xff;
+	    val = vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION] & 0xff;
 	    break;
 	default: 
             fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x \n",
@@ -288,7 +288,7 @@ static void vmxnet_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
     trace_vmxnet_ioport_writew(vs, addr, val);
     switch (addr & 0x3f) {
     case 0x00: /* RDP */
-        vs->s2.aVmxnet[0] = val;
+        vs->s2.vmxnet_reg[0] = val;
         break;
     default:
         fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val);
@@ -302,13 +302,13 @@ static uint32_t vmxnet_ioport_readw(PCNetVState *vs, uint32_t addr)
 
     switch (addr & 0x3f) {
     case 0x00:
-        val = vs->s2.aVmxnet[0];
+        val = vs->s2.vmxnet_reg[0];
         break;
     case VMXNET_LOW_VERSION:
-        val = vs->s2.aVmxnet[VMXNET_LOW_VERSION] & 0xFFFF;
+        val = vs->s2.vmxnet_reg[VMXNET_LOW_VERSION] & 0xFFFF;
         break;
     case VMXNET_HIGH_VERSION:
-        val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION] & 0xFFFF;
+        val = vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION] & 0xFFFF;
         break;
     default:
         fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
@@ -329,17 +329,17 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
     trace_vmxnet_ioport_writel(vs, addr, val);
     switch (addr & 0x3f) {
     case VMXNET_COMMAND_ADDR:
-	    vs->s2.aVmxnet[VMXNET_COMMAND_ADDR] = val;
+	    vs->s2.vmxnet_reg[VMXNET_COMMAND_ADDR] = val;
 	    if (val == VMXNET_CMD_INTR_DISABLE) {
-		vs->s2.vmxInterruptEnabled = 0;
-		vmxnetUpdateIrq(vs);
+		vs->s2.vmx_interrupt_enabled = false;
+		vmxnet_update_irq(vs);
 	    } else if (val == VMXNET_CMD_INTR_ENABLE) {
-		vs->s2.vmxInterruptEnabled = 1;
-		vmxnetUpdateIrq(vs);
+		vs->s2.vmx_interrupt_enabled = true;
+		vmxnet_update_irq(vs);
 	    } else if (val == VMXNET_CMD_INTR_ACK) {
-		vmxnetUpdateIrq(vs);
+		vmxnet_update_irq(vs);
 	    } else if (val == VMXNET_CMD_UPDATE_LADRF) {
-		s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
+		s->phys_mem_read(s->dma_opaque, vs->s2.vmxdata_addr, (void *) &dd, sizeof(dd), 0);
 		ladrf = (uint16_t *) dd.LADRF;
 		if ((dd.ifflags & VMXNET_IFF_MULTICAST)) {
 		    s->csr[8] = ladrf[0];
@@ -348,7 +348,7 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 		    s->csr[11] = ladrf[3];
 		}
 	    } else if (val == VMXNET_CMD_UPDATE_IFF) {
-                s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
+                s->phys_mem_read(s->dma_opaque, vs->s2.vmxdata_addr, (void *) &dd, sizeof(dd), 0);
 		ladrf = (uint16_t *) dd.LADRF;
 		s->csr[8] = ladrf[0];
 		s->csr[9] = ladrf[1];
@@ -386,25 +386,25 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 	    }
 	    break;
 	case VMXNET_INIT_ADDR:
-	    vs->s2.VMXDATA = val;
-            s->phys_mem_read(s->dma_opaque, vs->s2.VMXDATA, (void *) &dd, sizeof(dd), 0);
-            trace_vmxnet_init_addr(vs->s2.VMXDATA, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
+	    vs->s2.vmxdata_addr = val;
+            s->phys_mem_read(s->dma_opaque, vs->s2.vmxdata_addr, (void *) &dd, sizeof(dd), 0);
+            trace_vmxnet_init_addr(vs->s2.vmxdata_addr, dd.rxRingLength, dd.rxRingOffset, dd.rxRingLength2, dd.rxRingOffset2, dd.txRingLength, dd.txRingOffset);
             if (val) {
-                vs->s2.vmxRxRing = val + dd.rxRingOffset;
-                vs->s2.vmxRxRingLength = dd.rxRingLength;
-                vs->s2.vmxRxRing2 = val + dd.rxRingOffset2;
-                vs->s2.vmxRxRing2Length = dd.rxRingLength2;
-                vs->s2.vmxTxRing = val + dd.txRingOffset;
-                vs->s2.vmxTxRingLength = dd.txRingLength;
-                vs->s2.vmxInterruptEnabled = 1;
+                vs->s2.vmx_rx_ring = val + dd.rxRingOffset;
+                vs->s2.vmx_rx_ring_length = dd.rxRingLength;
+                vs->s2.vmx_rx_ring2 = val + dd.rxRingOffset2;
+                vs->s2.vmx_rx_ring2_length = dd.rxRingLength2;
+                vs->s2.vmx_tx_ring = val + dd.txRingOffset;
+                vs->s2.vmx_tx_ring_length = dd.txRingLength;
+                vs->s2.vmx_interrupt_enabled = true;
             } else {
-                vs->s2.vmxInterruptEnabled = 0;
+                vs->s2.vmx_interrupt_enabled = false;
             }
-	    vs->s2.vmxRxRingIndex = 0;
-	    vs->s2.vmxRxLastInterruptIndex = -1;
-	    vs->s2.vmxTxLastInterruptIndex = -1;
-	    vs->s2.vmxRxRing2Index = 0;
-	    vs->s2.vmxTxRingIndex = 0;
+	    vs->s2.vmx_rx_ring_index = 0;
+	    vs->s2.vmx_rx_last_interrupt_index = -1;
+	    vs->s2.vmx_tx_last_interrupt_index = -1;
+	    vs->s2.vmx_rx_ring2_index = 0;
+	    vs->s2.vmx_tx_ring_index = 0;
 	    ladrf = (uint16_t *) dd.LADRF;
 	    s->csr[8] = ladrf[0];
 	    s->csr[9] = ladrf[1];
@@ -433,8 +433,8 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 	    }
 	    break;
 	case VMXNET_INIT_LENGTH:
-	    vs->s2.VMXDATALENGTH = val;
-	    vs->s2.aVmxnet[VMXNET_INIT_LENGTH] = val;
+	    vs->s2.vmxdata_length = val;
+	    vs->s2.vmxnet_reg[VMXNET_INIT_LENGTH] = val;
 	    break;
 	default:
             fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
@@ -448,16 +448,16 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
 
     switch (addr & 0x3f) {
     case 0x00:
-        val = vs->s2.aVmxnet[0];
+        val = vs->s2.vmxnet_reg[0];
         break;
     case VMXNET_LOW_VERSION:
-        val = vs->s2.aVmxnet[VMXNET_LOW_VERSION];
+        val = vs->s2.vmxnet_reg[VMXNET_LOW_VERSION];
         break;
     case VMXNET_HIGH_VERSION:
-        val = vs->s2.aVmxnet[VMXNET_HIGH_VERSION];
+        val = vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION];
         break;
     case VMXNET_COMMAND_ADDR:
-        switch (vs->s2.aVmxnet[VMXNET_COMMAND_ADDR])
+        switch (vs->s2.vmxnet_reg[VMXNET_COMMAND_ADDR])
         {
         case VMXNET_CMD_GET_FEATURES:
             val = 0;
@@ -481,20 +481,19 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
             val = VMXNET_STATUS_CONNECTED;
         } else {
             val = 0;
-            vs->s2.cLinkDownReported++;
+            vs->s2.link_down_reported++;
         }
         val |= VMXNET_STATUS_ENABLED;
         break;
     case VMXNET_TX_ADDR:
         val = 0;
-        pcnetPollRxTx(vs);
+        vmxnet_poll_rx_tx(vs);
         break;
     default:
         fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
         break;
     }
-    vmxnetUpdateIrq(vs);
-
+    vmxnet_update_irq(vs);
     trace_vmxnet_ioport_readl(vs, addr, val);
     return val;
 }
@@ -509,10 +508,10 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             __func__, (long)addr, size, vs->s2.fVMXNet);
 #endif
     trace_vlance_ioport_read(opaque, addr, size);
-    if (vs->s2.VMXDATA) {
+    if (vs->s2.vmxdata_addr) {
         vmxnet_transmit(vs);
     }
-    if (vs->s2.fVMXNet) {
+    if (vs->s2.vmxnet2) {
         if (size == 1) {
             return vmxnet_ioport_readbtReadU8(vs, addr);
         } else if (size == 2) {
@@ -561,10 +560,10 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
     PCNetVState *vs = opaque;
 
     trace_vlance_ioport_write(opaque, addr, data, size);
-    if (vs->s2.VMXDATA) {
+    if (vs->s2.vmxdata_addr) {
         vmxnet_transmit(vs);
     }
-    if (vs->s2.fVMXNet) {
+    if (vs->s2.vmxnet2) {
         if (size == 1) {
             vmxnet_ioport_writeb(vs, addr, data);
         } else if (size == 2) {
@@ -887,7 +886,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
     s->dma_opaque = pci_dev;
 
     vlance_common_init(&vs->s2);
-    vs->s2.fVMXNet = true;
+    vs->s2.vmxnet2 = true;
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_vlance_info);
 }
 

@@ -1114,6 +1114,8 @@ pcnet_init(void *s, uint64_t init_addr) "s=%p init_addr=0x%"PRIx64
 pcnet_rlen_tlen(void *s, uint32_t rlen, uint32_t tlen) "s=%p rlen=%d tlen=%d"
 pcnet_ss32_rdra_tdra(void *s, uint32_t ss32, uint32_t rdra, uint32_t rcvrl, uint32_t tdra, uint32_t xmtrl) "s=%p ss32=%d rdra=0x%08x[%d] tdra=0x%08x[%d]"
 vmxnet_xmit_fail_tmd_generic(void *s, uint32_t swstyle) "s=%p pcnetTransmit: Signaling send error. swstyle=%#x"
+vmxnet_update_irq(void *vs, uint32_t iISR) "vs=%p set irq iISR=%d"
+vmxnet_update_irq_change(void *vs, uint32_t inta, uint32_t old_isr, uint32_t vmx_interrupt_enabled) "vs=%p change INTA=%d<=%d vmx_interrupt_enabled=%d"
 
 # hw/pcnet-pci.c
 pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val) "opaque=%p addr=0x%08x val=0x%02x"
