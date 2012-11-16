@@ -487,6 +487,10 @@ i2c_bus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
     s->smi_irq = smi_irq;
     s->kvm_enabled = kvm_enabled;
 
+    if (vmware_mode) {
+        dev->cap_present |= QEMU_PCI_CAP_MULTIFUNCTION;
+    }
+
     qdev_init_nofail(&dev->qdev);
 
     if (fw_cfg) {

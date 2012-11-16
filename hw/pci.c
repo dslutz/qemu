@@ -171,7 +171,6 @@ void pci_device_deassert_intx(PCIDevice *dev)
 void pci_device_reset(PCIDevice *dev)
 {
     int r;
-    uint16_t old;
 
     qdev_reset_all(&dev->qdev);
 
@@ -183,15 +182,9 @@ void pci_device_reset(PCIDevice *dev)
                                  pci_get_word(dev->wmask + PCI_COMMAND) |
                                  pci_get_word(dev->w1cmask + PCI_COMMAND));
 
-    old = pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
+    pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
                                  pci_get_word(dev->wmask + PCI_STATUS) |
                                  pci_get_word(dev->w1cmask + PCI_STATUS));
-    fprintf(stderr, "%s: sts@%p=%x wm=%x w1c=%x old=%x\n", __func__,
-            &dev->config[PCI_STATUS], dev->config[PCI_STATUS],
-            pci_get_word(dev->wmask + PCI_STATUS),
-            pci_get_word(dev->w1cmask + PCI_STATUS),
-            old);
-    
     if (!vmware_mode) {
         dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
         dev->config[PCI_INTERRUPT_LINE] = 0x0;
