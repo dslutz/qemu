@@ -501,6 +501,10 @@ i2c_bus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
         fw_cfg_add_file(fw_cfg, "etc/system-states", g_memdup(suspend, 6), 6);
     }
 
+    if (vmware_hw && dev->config) {
+        /* Interrupt pin 2 */
+        dev->config[PCI_INTERRUPT_PIN] = 0x02;
+    }
     return s->smb.smbus;
 }
 
