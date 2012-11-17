@@ -129,6 +129,8 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
     /* Write protect these. */                                                    
     pci_word_test_and_clear_mask(dev->wmask + PCI_BRIDGE_CONTROL,
                                  PCI_BRIDGE_CTL_ISA | PCI_BRIDGE_CTL_FAST_BACK);
+    conf[PCI_PREF_MEMORY_BASE] = 0;
+    conf[PCI_PREF_MEMORY_LIMIT] = 0;
     conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from
