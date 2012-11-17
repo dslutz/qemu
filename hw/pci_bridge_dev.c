@@ -126,6 +126,9 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
     pci_set_word(conf + PCI_SEC_STATUS,
                  PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM | PCI_STATUS_FAST_BACK);
     conf[PCI_BRIDGE_CONTROL] = PCI_BRIDGE_CTL_ISA | PCI_BRIDGE_CTL_FAST_BACK;
+    /* Write protect these. */                                                    
+    pci_word_test_and_clear_mask(dev->wmask + PCI_BRIDGE_CONTROL,
+                                 PCI_BRIDGE_CTL_ISA | PCI_BRIDGE_CTL_FAST_BACK);
     conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from

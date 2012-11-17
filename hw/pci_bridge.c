@@ -269,7 +269,6 @@ void pci_bridge_reset(DeviceState *qdev)
     conf[PCI_SUBORDINATE_BUS] = 0;
     if (!vmware_hw) {
         conf[PCI_SEC_LATENCY_TIMER] = 0;
-        pci_set_word(conf + PCI_BRIDGE_CONTROL, 0);
     }
 
     /*
@@ -296,6 +295,11 @@ void pci_bridge_reset(DeviceState *qdev)
                                  PCI_PREF_RANGE_MASK & 0xffff);
     pci_set_long(conf + PCI_PREF_BASE_UPPER32, 0);
     pci_set_long(conf + PCI_PREF_LIMIT_UPPER32, 0);
+
+    /* Clear all writable bits */
+    pci_word_test_and_clear_mask(conf + PCI_BRIDGE_CONTROL,
+                                 pci_get_word(dev->wmask + PCI_BRIDGE_CONTROL) |
+                                 pci_get_word(dev->w1cmask + PCI_BRIDGE_CONTROL));
 }
 
 /* default qdev initialization function for PCI-to-PCI bridge */
