@@ -2421,9 +2421,23 @@ int monitor_handle_fd_param(Monitor *mon, const char *fdname)
     return fd;
 }
 
+static void do_sigsev(Monitor *mon, const QDict *qdict)
+{
+    int *p = NULL;
+
+    *p = 1;
+}
+
 /* mon_cmds and info_cmds would be sorted at runtime */
 static mon_cmd_t mon_cmds[] = {
 #include "hmp-commands.h"
+    {
+        .name       = "sigsev",
+        .args_type  = "",
+        .params     = "",
+        .help       = "Cause a SIGSEV",
+        .mhandler.cmd = do_sigsev,
+    },
     { NULL, NULL, },
 };
 
