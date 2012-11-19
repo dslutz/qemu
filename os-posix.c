@@ -136,7 +136,20 @@ static void bt_sighandler(int sig, siginfo_t *info, void *secret)
     for (i = 1; i < trace_size; ++i) {
         sym_lookup(msg, i, trace[i]);
     }
+    fprintf(stderr, "QEMU: [bt] Done.\n");
     qemu_system_killed(info->si_signo, info->si_pid);
+
+#if defined HOST_I386
+# if defined __GNUC__
+    __asm__ ("int3");
+# elif defined _MSC_VER
+    _asm _emit 0xcc;
+# else
+    abort ();
+# endif
+#else
+    abort ();
+#endif
 }
 #endif
 
