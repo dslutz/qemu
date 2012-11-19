@@ -42,6 +42,13 @@
 
 #ifdef CONFIG_LINUX
 #include <sys/prctl.h>
+#include <execinfo.h>
+#include <ucontext.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <link.h>
+#include <dlfcn.h>
 #endif
 
 #ifdef __FreeBSD__
@@ -67,9 +74,78 @@ static void termsig_handler(int signal, siginfo_t *info, void *c)
     qemu_system_killed(info->si_signo, info->si_pid);
 }
 
+#ifdef CONFIG_LINUX
+static void sym_lookup(const char *msg, int idx, void * retAddr)
+{
+    Dl_info info;
+    int rc;
+
+    rc = dladdr(retAddr, &info);
+    if (!rc) {
+        fprintf(stderr, "%s: retp[%d]=%p\n",
+                msg, idx, retAddr);
+    } else {
+        if (info.dli_sname) {
+            long offset = (long)retAddr - (long)info.dli_saddr;
+
+            fprintf(stderr, "%s: retp[%d]=%p fname='%s' @ %p "
+                    "sym='%s' + %#lx @ %p\n",
+                    msg, idx, retAddr, info.dli_fname, info.dli_fbase,
+                    info.dli_sname, offset, info.dli_saddr);
+        } else {
+            long offset = (long)retAddr - (long)info.dli_fbase;
+
+            fprintf(stderr, "%s: retp[%d]=%p fname='%s' @ %p + %#lx\n",
+                    msg, idx, retAddr, info.dli_fname, info.dli_fbase, offset);
+        }
+    }
+}
+
+/**
+ * the signal handler that prints out a backtrace of the call stack.
+ * the code is taken from http://www.linuxjournal.com/article/6391.
+ */
+static void bt_sighandler(int sig, siginfo_t *info, void *secret)
+{
+    void *trace[16];
+    int i, trace_size = 0;
+    ucontext_t *uc = (ucontext_t *)secret;
+    void *ip = (void*)uc->uc_mcontext.gregs[REG_RIP];
+    const char *msg = "";
+
+    /* Do something useful with siginfo_t */
+    if (sig == SIGSEGV) {
+        msg = "SIGSEGV";
+        fprintf(stderr, "QEMU: Got %s(%d), faulty address is %p, from %p\n",
+                msg, sig, info->si_addr, ip);
+    } else if (sig == SIGBUS) {
+        msg = "SIGBUS";
+        fprintf(stderr, "QEMU: Got %s(%d), faulty address is %p, from %p\n",
+                msg, sig, info->si_addr, ip);
+    } else {
+        msg = "SIG?";
+        fprintf(stderr, "QEMU: Got signal %d\n", sig);
+    }
+
+    trace_size = backtrace (trace, 16);
+    /* overwrite sigaction with caller's address */
+    trace[1] = ip;
+
+    /* skip first stack frame (points here) */
+    fprintf(stderr, "QEMU: [bt] Execution path:\n");
+    for (i = 1; i < trace_size; ++i) {
+        sym_lookup(msg, i, trace[i]);
+    }
+    qemu_system_killed(info->si_signo, info->si_pid);
+}
+#endif
+
 void os_setup_signal_handling(void)
 {
     struct sigaction act;
+#ifdef CONFIG_LINUX
+    struct sigaction sa;
+#endif
 
     memset(&act, 0, sizeof(act));
     act.sa_sigaction = termsig_handler;
@@ -77,6 +153,15 @@ void os_setup_signal_handling(void)
     sigaction(SIGINT,  &act, NULL);
     sigaction(SIGHUP,  &act, NULL);
     sigaction(SIGTERM, &act, NULL);
+
+#ifdef CONFIG_LINUX
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = bt_sighandler;
+    sigemptyset (&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_SIGINFO;
+    sigaction (SIGSEGV, &sa, NULL);
+    sigaction (SIGBUS, &sa, NULL);
+#endif
 }
 
 /* Find a likely location for support files using the location of the binary.
