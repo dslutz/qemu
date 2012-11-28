@@ -6131,14 +6131,14 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->exit = mpt_scsi_uninit;
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
-    pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
     if (vmware_hw) {
         pc->revision = 0x01;
 	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
-        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
+	pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
     }
     pc->is_express = 1;
