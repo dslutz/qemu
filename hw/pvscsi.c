@@ -32,17 +32,28 @@
 #include "hw/pci.h"
 #include "hw/scsi.h"
 #include "msi.h"
+#include "msix.h"
 #include "qemu-queue.h"
 #include "vmw_pvscsi.h"
 #include "trace.h"
 
 
-#define PVSCSI_MSI_OFFSET        (0x50)
+#define PVSCSI_MSI_OFFSET        (0x7c)
 #define PVSCSI_USE_64BIT         (true)
 #define PVSCSI_PER_VECTOR_MASK   (false)
 
-#define PVSCSI_MAX_DEVS                   (64)
-#define PVSCSI_MSIX_NUM_VECTORS           (1)
+#define PVSCSI_MAX_DEVS          (64)
+#define PVSCSI_MSI_NUM_VECTORS   (1)
+
+#define USE_MSIX
+#define USE_PCIE
+#define PVSCSI_MSIX_NUM_VECTORS  24
+#define PVSCSI_MSIX_BAR_IDX      1
+#define PVSCSI_MSIX_BAR_SIZE     0x2000
+#define PVSCSI_MSIX_VEC_OFFSET   0x0000
+#define PVSCSI_MSIX_PBA_OFFSET   0x1000
+
+#define PVSCSI_PCI_SAS_PORTS_DEFAULT    128
 
 #define PVSCSI_MAX_CMD_DATA_WORDS \
     (sizeof(struct PVSCSICmdDescSetupRings)/sizeof(uint32_t))
@@ -85,6 +96,7 @@ typedef QTAILQ_HEAD(, PVSCSIRequest) PVSCSIRequestList;
 typedef struct PVSCSI_State {
     PCIDevice dev;
     MemoryRegion io_space;
+    MemoryRegion msix_bar;
     SCSIBus bus;
     QEMUBH *completion_worker;
     PVSCSIRequestList pending_queue;
@@ -104,6 +116,7 @@ typedef struct PVSCSI_State {
     uint8_t rings_info_valid;            /* Whether rings are initialized    */
 
     uint8_t msi_used;    /* Whether MSI support was installed successfully   */
+    uint8_t msix_used;   /* Whether MSI-X support was installed successfully */
 
     PVSCSIRingsMgr rings;                /* Data transfer rings manager      */
 } PVSCSI_State;
@@ -276,6 +289,12 @@ pvscsi_update_irq_status(PVSCSI_State *s)
     trace_pvscsi_update_irq_level(should_raise, s->reg_interrupt_enabled,
                                   s->reg_interrupt_status);
 
+    if (s->msix_used && msix_enabled(&s->dev)) {
+	if (should_raise) {
+	    msix_notify(&s->dev, PVSCSI_VECTOR_COMPLETION);
+	}
+        return;
+    }
     if (s->msi_used && msi_enabled(&s->dev)) {
         if (should_raise) {
             trace_pvscsi_update_irq_msi();
@@ -480,6 +499,7 @@ pvscsi_convert_sglist(PVSCSIRequest *r)
     int chunk_size;
     uint64_t data_length = r->req.dataLen;
     PVSCSISGState sg = r->sg;
+
     while (data_length) {
         while (!sg.resid) {
             pvscsi_get_next_sg_elem(&sg);
@@ -864,7 +884,7 @@ static bool
 pvscsi_init_msi(PVSCSI_State *s)
 {
     int res;
-    res = msi_init(&s->dev, PVSCSI_MSI_OFFSET, PVSCSI_MSIX_NUM_VECTORS,
+    res = msi_init(&s->dev, PVSCSI_MSI_OFFSET, PVSCSI_MSI_NUM_VECTORS,
                    PVSCSI_USE_64BIT, PVSCSI_PER_VECTOR_MASK);
     if (res < 0) {
         trace_pvscsi_init_msi_fail(res);
@@ -882,6 +902,104 @@ pvscsi_cleanup_msi(PVSCSI_State *s)
     if (s->msi_used) {
         msi_uninit(&s->dev);
     }
+}
+
+#ifdef USE_MSIX
+static void
+pvscsi_unuse_msix_vectors(PVSCSI_State *s, int num_vectors)
+{
+    int i;
+    for (i = 0; i < num_vectors; i++) {
+        msix_vector_unuse(&s->dev, i);
+    }
+}
+
+static bool
+pvscsi_use_msix_vectors(PVSCSI_State *s, int num_vectors)
+{
+    int i;
+    for (i = 0; i < num_vectors; i++) {
+        int res = msix_vector_use(&s->dev, i);
+        if (res < 0) {
+            pvscsi_unuse_msix_vectors(s, i);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+pvscsi_init_msix(PVSCSI_State *s) {
+    memory_region_init(&s->msix_bar, "pvscsi-msix-bar",
+                       PVSCSI_MSIX_BAR_SIZE);
+    pci_register_bar(&s->dev, PVSCSI_MSIX_BAR_IDX,
+                     PCI_BASE_ADDRESS_SPACE_MEMORY, &s->msix_bar);
+    int res = msix_init(&s->dev, PVSCSI_MSIX_NUM_VECTORS,
+	                &s->msix_bar, PVSCSI_MSIX_BAR_IDX, PVSCSI_MSIX_VEC_OFFSET,
+                        &s->msix_bar, PVSCSI_MSIX_BAR_IDX, PVSCSI_MSIX_PBA_OFFSET,
+                        0x9c);
+    if (res < 0) {
+         s->msix_used = false;
+	 printf("DMK: msix init failed: %d\n", res); //XXX
+    } else {
+        if (!pvscsi_use_msix_vectors(s, PVSCSI_MAX_INTRS)) {
+	    msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
+            s->msix_used = false;
+	    printf("DMK: msix init failed: vectors\n"); //XXX
+        } else {
+	    s->msix_used = true;
+	    printf("DMK: msix init passed.\n"); //XXX
+        }
+    }
+    return s->msix_used;
+}
+
+static void
+pvscsi_cleanup_msix(PVSCSI_State *s)
+{
+    if (s->msix_used) {
+        msix_vector_unuse(&s->dev, PVSCSI_MAX_INTRS);
+        msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
+    }
+}
+
+static void
+pvscsi_msix_save(QEMUFile *f, void *opaque)
+{
+    msix_save(&((PVSCSI_State *)opaque)->dev, f);
+}
+
+static int
+pvscsi_msix_load(QEMUFile *f, void *opaque, int version_id)
+{
+    msix_load(&((PVSCSI_State *)opaque)->dev, f);
+    return 0;
+}
+#endif
+
+static bool
+pvscsi_init_pcie(PVSCSI_State *s) {
+#ifdef USE_PCIE
+    PCIDevice *dev = &s->dev;
+    uint8_t *conf = dev->config;
+    int lanes = 32;
+
+    if (pci_is_express(dev)) {
+	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+	if (offset < 0) {
+	    printf("DMK: pcie init failed: %d\n", offset); //XXX
+	    return false;
+	}
+	printf("DMK: pcie init passed.\n"); //XXX
+	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
+    }
+    return true;
+#else
+    return false;
+#endif
 }
 
 static int
@@ -928,11 +1046,23 @@ pvscsi_init(PCIDevice *dev)
                           "pvscsi-io", PVSCSI_MEM_SPACE_SIZE);
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->io_space);
 
+    pvscsi_init_pcie(s);
     pvscsi_init_msi(s);
+#ifdef USE_MSIX
+    pvscsi_init_msix(s);
+#endif
+
+#ifdef USE_MSIX
+    register_savevm(&dev->qdev, "pvscsi-msix", -1, 1,
+                    pvscsi_msix_save, pvscsi_msix_load, s);
+#endif
 
     s->completion_worker = qemu_bh_new(pvscsi_process_completion_queue, s);
     if (!s->completion_worker) {
         pvscsi_cleanup_msi(s);
+#ifdef USE_MSIX
+        pvscsi_cleanup_msix(s);
+#endif
         memory_region_destroy(&s->io_space);
         return -ENOMEM;
     }
@@ -1034,6 +1164,7 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
     if (vmware_hw) {
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = PCI_DEVICE_ID_VMWARE_PVSCSI;
+	k->is_express = 1;
         k->class_id = PCI_CLASS_STORAGE_SAS;
         k->revision = 0x02;
     } else {

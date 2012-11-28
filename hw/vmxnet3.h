@@ -581,7 +581,7 @@ enum vmxnet3_intr_type {
 
 #define VMXNET3_MAX_TX_QUEUES  8
 #define VMXNET3_MAX_RX_QUEUES  16
-/* addition 1 for events */
+/* add 1 for events */
 #define VMXNET3_MAX_INTRS      25
 
 /* value of intrCtrl */
