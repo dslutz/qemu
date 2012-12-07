@@ -179,10 +179,12 @@ static int pci_std_vga_initfn(PCIDevice *dev)
     return 0;
 }
 
+#if 0
 DeviceState *pci_vga_init(PCIBus *bus)
 {
     return &pci_create_simple(bus, vmware_hw ? PCI_DEVFN(0xf, 0) : -1, "VGA")->qdev;
 }
+#endif
 
 static Property vga_pci_properties[] = {
     DEFINE_PROP_UINT32("vgamem_mb", PCIVGAState, vga.vram_size_mb, 16),

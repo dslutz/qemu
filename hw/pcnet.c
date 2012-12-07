@@ -40,6 +40,7 @@
 #include "qemu-timer.h"
 #include "qemu_socket.h"
 #include "sysemu.h"
+#include "trace.h"
 
 #include "pcnet.h"
 
@@ -394,7 +395,7 @@ static inline void pcnet_rmd_load(PCNetState *s, struct pcnet_RMD *rmd,
 }
 
 static inline int vmxnet_rmd_load(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
-                                 target_phys_addr_t addr)
+                                 hwaddr addr)
 {
     PCNetState *s = &vs->s1;
 
@@ -680,7 +681,7 @@ static inline hwaddr pcnet_rdra_addr(PCNetState *s, int idx)
     return s->rdra + ((CSR_RCVRL(s) - idx) * (BCR_SWSTYLE(s) ? 16 : 8));
 }
 
-static inline target_phys_addr_t vmxnet_rdra_addr(PCNetVState *vs, int idx)
+static inline hwaddr vmxnet_rdra_addr(PCNetVState *vs, int idx)
 {
     return vs->s2.vmx_rx_ring + (idx * sizeof(Vmxnet2_RxRingEntry));
 }
@@ -1066,7 +1067,7 @@ static void vmxnet_rdte_poll(PCNetVState *vs)
        * The current receive message descriptor.
        */
       Vmxnet2_RxRingEntry  rmd;
-      target_phys_addr_t addr;
+      hwaddr addr;
 
       addr = vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index);
       vmxnet_rmd_load(vs, &rmd, addr);
@@ -1078,7 +1079,7 @@ int vlance_can_receive(NetClientState *nc)
     PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
     PCNetState *s = &vs->s1;
     Vmxnet2_RxRingEntry  rmd;
-    target_phys_addr_t addr;
+    hwaddr addr;
 
     if (!vs->s2.vmxdata_addr)
         return pcnet_can_receive(nc);
@@ -1396,7 +1397,7 @@ static void pcnet_transmit(PCNetState *s)
 static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
 {
     PCNetState *s = &vs->s1;
-    target_phys_addr_t cxda;
+    hwaddr cxda;
 
     s->csr[60] = s->csr[34];
     s->csr[61] = s->csr[35];
@@ -1566,7 +1567,7 @@ void vmxnet_poll_rx_tx(PCNetVState *vs)
 }
 
 static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
-                                          target_phys_addr_t addr)
+                                          hwaddr addr)
 {
     s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, CSR_BSWP(s));
 }
@@ -1629,7 +1630,7 @@ ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 	  vmxnet_rmd_load(vs, &rmd, vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
 
 	  size_t cbBuf = RT_MIN(rmd.bufferLength, size);
-	  target_phys_addr_t rbadr = rmd.paddr;
+	  hwaddr rbadr = rmd.paddr;
 
 	  /* We have to leave the critical section here or we risk deadlocking
 	   * with EMT when the write is to an unallocated page or has an access

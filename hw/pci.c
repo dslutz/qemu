@@ -1537,7 +1537,7 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, const char *default_model,
 
 PCIDevice *pci_vga_init(PCIBus *bus)
 {
-    int devfn = vmware_mode ? PCI_DEVFN(0xf, 0) : -1;
+    int devfn = vmware_hw ? PCI_DEVFN(0xf, 0) : -1;
 
     switch (vga_interface_type) {
     case VGA_CIRRUS:

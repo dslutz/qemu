@@ -32,17 +32,9 @@
 #include "loader.h"
 #include "qemu-timer.h"
 #include "dma.h"
+#include "trace.h"
 
 #include "pcnet.h"
-
-#define PCNET_DEBUG
-#define PCNET_DEBUG_IO
-#define PCNET_DEBUG_BCR
-#define PCNET_DEBUG_CSR
-#define PCNET_DEBUG_RMD
-#define PCNET_DEBUG_TMD
-#define PCNET_DEBUG_MATCH
-
 
 typedef struct {
     PCIDevice pci_dev;
@@ -59,9 +51,8 @@ typedef struct {
 static void pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val)
 {
     PCNetState *s = opaque;
-#ifdef PCNET_DEBUG
-    fprintf(stderr, "pcnet_aprom_writeb addr=0x%08x val=0x%02x\n", addr, val);
-#endif
+
+    trace_pcnet_aprom_writeb(opaque, addr, val);
     if (BCR_APROMWE(s)) {
         s->prom[addr & 15] = val;
     }
@@ -71,9 +62,8 @@ static uint32_t pcnet_aprom_readb(void *opaque, uint32_t addr)
 {
     PCNetState *s = opaque;
     uint32_t val = s->prom[addr & 15];
-#ifdef PCNET_DEBUG
-    fprintf(stderr, "pcnet_aprom_readb addr=0x%08x val=0x%02x\n", addr, val);
-#endif
+
+    trace_pcnet_aprom_readb(opaque, addr, val);
     return val;
 }
 
@@ -82,6 +72,7 @@ static uint64_t pcnet_ioport_read(void *opaque, hwaddr addr,
 {
     PCNetState *d = opaque;
 
+    trace_pcnet_ioport_read(opaque, addr, size);
     if (addr < 0x10) {
         if (!BCR_DWIO(d) && size == 1) {
             return pcnet_aprom_readb(d, addr);
@@ -109,6 +100,7 @@ static void pcnet_ioport_write(void *opaque, hwaddr addr,
 {
     PCNetState *d = opaque;
 
+    trace_pcnet_ioport_write(opaque, addr, data, size);
     if (addr < 0x10) {
         if (!BCR_DWIO(d) && size == 1) {
             pcnet_aprom_writeb(d, addr, data);
@@ -138,9 +130,6 @@ static const MemoryRegionOps pcnet_io_ops = {
 
 static void vlance_morph_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
-#endif
     trace_vlance_morph_ioport_writeb(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00:
@@ -160,18 +149,12 @@ static uint32_t vlance_morph_ioport_readb(PCNetVState *vs, uint32_t addr)
 	}
 
     pcnet_update_irq(&vs->s1);
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xff);
-#endif
     trace_vlance_morph_ioport_readb(vs, addr, val);
     return val;
 }
 
 static void vlance_morph_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val);
-#endif
     trace_vlance_morph_ioport_writew(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
@@ -191,19 +174,12 @@ static uint32_t vlance_morph_ioport_readw(PCNetVState *vs, uint32_t addr)
     }
 
     pcnet_update_irq(&vs->s1);
-
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
-#endif
     trace_vlance_morph_ioport_readw(vs, addr, val);
     return val;
 }
 
 static void vlance_morph_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 {
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
-#endif
     trace_vlance_morph_ioport_writel(vs, addr, val);
     switch (addr & 0x03) {
     case 0x00: /* RDP */
@@ -222,10 +198,6 @@ static uint32_t vlance_morph_ioport_readl(PCNetVState *vs, uint32_t addr)
     }
 
     pcnet_update_irq(&vs->s1);
-
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010x val=%#010x\n", __func__, addr, val);
-#endif
     trace_vlance_morph_ioport_readl(vs, addr, val);
     return val;
 }
@@ -278,7 +250,6 @@ static uint32_t vmxnet_ioport_readb(PCNetVState *vs, uint32_t addr)
 	}
 
     pcnet_update_irq(&vs->s1);
-
     trace_vmxnet_ioport_readb(vs, addr, val);
     return val;
 }
@@ -291,7 +262,8 @@ static void vmxnet_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
         vs->s2.vmxnet_reg[0] = val;
         break;
     default:
-        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val);
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n",
+                __func__, addr, val);
         break;
     }
 }
@@ -311,7 +283,8 @@ static uint32_t vmxnet_ioport_readw(PCNetVState *vs, uint32_t addr)
         val = vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION] & 0xFFFF;
         break;
     default:
-        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n", __func__, addr, val & 0xffff);
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#06x\n",
+                __func__, addr, val & 0xffff);
         break;
     }
 
@@ -437,7 +410,8 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 	    vs->s2.vmxnet_reg[VMXNET_INIT_LENGTH] = val;
 	    break;
 	default:
-            fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+            fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n",
+                    __func__, addr, val);
 	    break;
 	}
 }
@@ -472,7 +446,8 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
             val = 100;
             break;
         default:
-            fprintf(stderr, "Unhandled command %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+            fprintf(stderr, "Unhandled command %s: addr=%#010x val=%#010x\n",
+                    __func__, addr, val);
             break;
         }
         break;
@@ -490,7 +465,8 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
         vmxnet_poll_rx_tx(vs);
         break;
     default:
-        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n", __func__, addr, val);
+        fprintf(stderr, "Unhandled %s: addr=%#010x val=%#010x\n",
+                __func__, addr, val);
         break;
     }
     vmxnet_update_irq(vs);
@@ -498,15 +474,11 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
+static uint64_t vlance_ioport_read(void *opaque, hwaddr addr,
                                   unsigned size)
 {
     PCNetVState *vs = opaque;
 
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "%s: addr=%#010lx size=%d fVMXNet=%d\n",
-            __func__, (long)addr, size, vs->s2.fVMXNet);
-#endif
     trace_vlance_ioport_read(opaque, addr, size);
     if (vs->s2.vmxdata_addr) {
         vmxnet_transmit(vs);
@@ -528,7 +500,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             return vlance_ioport_readl(vs, addr);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
+        hwaddr addr1 = addr - PCNET_IOPORT_SIZE;
 
         if (size == 1) {
             return vlance_morph_ioport_readb(vs, addr1);
@@ -538,7 +510,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
             return vlance_morph_ioport_readl(vs, addr1);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
+        hwaddr addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
             return vmxnet_ioport_readb(vs, addr1);
@@ -554,7 +526,7 @@ static uint64_t vlance_ioport_read(void *opaque, target_phys_addr_t addr,
     return ((uint64_t)1 << (size * 8)) - 1;
 }
 
-static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
+static void vlance_ioport_write(void *opaque, hwaddr addr,
                                uint64_t data, unsigned size)
 {
     PCNetVState *vs = opaque;
@@ -580,7 +552,7 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
             vlance_ioport_writel(vs, addr, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE;
+        hwaddr addr1 = addr - PCNET_IOPORT_SIZE;
 
         if (size == 1) {
             vlance_morph_ioport_writeb(vs, addr1, data);
@@ -590,7 +562,7 @@ static void vlance_ioport_write(void *opaque, target_phys_addr_t addr,
             vlance_morph_ioport_writel(vs, addr1, data);
         }
     } else if (addr < PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE)  {
-        target_phys_addr_t addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
+        hwaddr addr1 = addr - PCNET_IOPORT_SIZE - MORPH_PORT_SIZE;
 
         if (size == 1) {
             vmxnet_ioport_writeb(vs, addr1, data);
@@ -614,7 +586,7 @@ static const MemoryRegionOps vlance_io_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static uint64_t vmxnet_ioport_read(void *opaque, target_phys_addr_t addr,
+static uint64_t vmxnet_ioport_read(void *opaque, hwaddr addr,
                                   unsigned size)
 {
     PCNetVState *vs = opaque;
@@ -636,7 +608,7 @@ static uint64_t vmxnet_ioport_read(void *opaque, target_phys_addr_t addr,
     return ((uint64_t)1 << (size * 8)) - 1;
 }
 
-static void vmxnet_ioport_write(void *opaque, target_phys_addr_t addr,
+static void vmxnet_ioport_write(void *opaque, hwaddr addr,
                                uint64_t data, unsigned size)
 {
     PCNetVState *vs = opaque;
@@ -669,10 +641,8 @@ static const MemoryRegionOps vmxnet_io_ops = {
 static void pcnet_mmio_writeb(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_writeb addr=0x" TARGET_FMT_plx" val=0x%02x\n", addr,
-           val);
-#endif
+
+    trace_pcnet_mmio_writeb(opaque, addr, val);
     if (!(addr & 0x10))
         pcnet_aprom_writeb(d, addr & 0x0f, val);
 }
@@ -681,22 +651,18 @@ static uint32_t pcnet_mmio_readb(void *opaque, hwaddr addr)
 {
     PCNetState *d = opaque;
     uint32_t val = -1;
+
     if (!(addr & 0x10))
         val = pcnet_aprom_readb(d, addr & 0x0f);
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_readb addr=0x" TARGET_FMT_plx " val=0x%02x\n", addr,
-           val & 0xff);
-#endif
+    trace_pcnet_mmio_readb(opaque, addr, val);
     return val;
 }
 
 static void pcnet_mmio_writew(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_writew addr=0x" TARGET_FMT_plx " val=0x%04x\n", addr,
-           val);
-#endif
+
+    trace_pcnet_mmio_writew(opaque, addr, val);
     if (addr & 0x10)
         pcnet_ioport_writew(d, addr & 0x0f, val);
     else {
@@ -710,6 +676,7 @@ static uint32_t pcnet_mmio_readw(void *opaque, hwaddr addr)
 {
     PCNetState *d = opaque;
     uint32_t val = -1;
+
     if (addr & 0x10)
         val = pcnet_ioport_readw(d, addr & 0x0f);
     else {
@@ -718,20 +685,15 @@ static uint32_t pcnet_mmio_readw(void *opaque, hwaddr addr)
         val <<= 8;
         val |= pcnet_aprom_readb(d, addr);
     }
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_readw addr=0x" TARGET_FMT_plx" val = 0x%04x\n", addr,
-           val & 0xffff);
-#endif
+    trace_pcnet_mmio_readw(opaque, addr, val);
     return val;
 }
 
 static void pcnet_mmio_writel(void *opaque, hwaddr addr, uint32_t val)
 {
     PCNetState *d = opaque;
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_writel addr=0x" TARGET_FMT_plx" val=0x%08x\n", addr,
-           val);
-#endif
+
+    trace_pcnet_mmio_writel(opaque, addr, val);
     if (addr & 0x10)
         pcnet_ioport_writel(d, addr & 0x0f, val);
     else {
@@ -747,6 +709,7 @@ static uint32_t pcnet_mmio_readl(void *opaque, hwaddr addr)
 {
     PCNetState *d = opaque;
     uint32_t val;
+
     if (addr & 0x10)
         val = pcnet_ioport_readl(d, addr & 0x0f);
     else {
@@ -759,10 +722,7 @@ static uint32_t pcnet_mmio_readl(void *opaque, hwaddr addr)
         val <<= 8;
         val |= pcnet_aprom_readb(d, addr);
     }
-#ifdef PCNET_DEBUG_IO
-    fprintf(stderr, "pcnet_mmio_readl addr=0x" TARGET_FMT_plx " val=0x%08x\n", addr,
-           val);
-#endif
+    trace_pcnet_mmio_readl(opaque, addr, val);
     return val;
 }
 
@@ -867,7 +827,7 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
 
 #if 0
     fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
-        sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
+            sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
 #endif
 
     pci_conf = pci_dev->config;
@@ -912,11 +872,6 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
     PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
 
-#if 0
-    fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
-        sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
-#endif
-
     pci_conf = pci_dev->config;
 
     pci_conf[PCI_COMMAND] = PCI_COMMAND_MASTER;
@@ -949,11 +904,6 @@ static int pci_vlance_init(PCIDevice *pci_dev)
     PCNetVState *vs = &d->state;
     PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
-
-#if 0
-    fprintf(stderr, "sizeof(RMD)=%d, sizeof(TMD)=%d\n",
-        sizeof(struct pcnet_RMD), sizeof(struct pcnet_TMD));
-#endif
 
     pci_conf = pci_dev->config;
 
