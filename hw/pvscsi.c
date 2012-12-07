@@ -501,7 +501,7 @@ pvscsi_convert_sglist(PVSCSIRequest *r)
 static void
 pvscsi_build_sglist(PVSCSIRequest *r)
 {
-    qemu_sglist_init(&r->sgl, 1, NULL);
+    qemu_sglist_init(&r->sgl, 1, &dma_context_memory);
     if (r->req.flags & PVSCSI_FLAG_CMD_WITH_SG_LIST) {
         pvscsi_convert_sglist(r);
     } else {

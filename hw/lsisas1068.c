@@ -3529,7 +3529,8 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
 
         if (do_mapping) {
             cmd->sge_cnt = iov_count;
-            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+	    //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+            qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memory);
         }
         while (end_of_list == false) {
             bool end_of_seg = false;
