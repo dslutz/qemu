@@ -3200,6 +3200,8 @@ typedef enum MPTWHOINIT {
 
 #define MPT_FLAG_USE_MSIX      0
 #define MPT_MASK_USE_MSIX      (1 << MPT_FLAG_USE_MSIX)
+#define MPT_FLAG_USE_MSI       1
+#define MPT_MASK_USE_MSI       (1 << MPT_FLAG_USE_MSI)
 
 typedef struct MptCmd {
     uint32_t index;
@@ -3289,6 +3291,11 @@ typedef struct MptState {
 
     SCSIBus bus;
 } MptState;
+
+static bool mpt_use_msi(MptState *s)
+{
+    return s->flags & MPT_MASK_USE_MSI;
+}
 
 static bool mpt_use_msix(MptState *s)
 {
@@ -5817,7 +5824,7 @@ mpt_msi_init(MptState *s) {
 
     int res;
 
-    if (vmware_hw) {
+    if (!mpt_use_msi(s) || vmware_hw) {
         s->msi_used = false;
         return s->msi_used;
     }
@@ -5989,8 +5996,9 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     mpt_msi_init(s);
 
-    if (pci_is_express(&s->dev))
+    if (pci_is_express(&s->dev)) {
 	mpt_pcie_init(s);
+    }
 
 #ifdef USE_MSIX
     /* MSI-X support is currently broken */
@@ -6045,6 +6053,8 @@ static int mpt_scsi_sas_init(PCIDevice *dev)
 }
 
 static Property mptscsi_properties[] = {
+    DEFINE_PROP_BIT("use_msi", MptState, flags,
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
@@ -6056,6 +6066,8 @@ static Property mptsas_properties[] = {
     DEFINE_PROP_UINT32("ports", MptState, ports,
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
+    DEFINE_PROP_BIT("use_msi", MptState, flags,
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
