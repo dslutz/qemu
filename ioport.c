@@ -83,7 +83,7 @@ static void ioport_write(int index, uint32_t address, uint32_t data)
     IOPortWriteFunc *func = ioport_write_table[index][address];
     if (!func)
         func = default_func[index];
-    trace_ioport_read(index, address, data, func, ioport_opaque[address]);
+    trace_ioport_write(index, address, data, func, ioport_opaque[address]);
     func(ioport_opaque[address], address, data);
 }
 
