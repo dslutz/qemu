@@ -590,6 +590,8 @@ mpt_scsi_nodata(int cmd) "scmd %d: no data to be transferred"
 mpt_scsi_read_start(int cmd, int len) "scmd %d: transfer %d bytes of data"
 mpt_scsi_write_start(int cmd, int len) "scmd %d: transfer %d bytes of data"
 mpt_unhandled_cmd(int cmd, uint8_t msg_cmd) "scmd %d: Unhandled cmd %x"
+mpt_port_read(void *opaque, uint64_t addr, uint64_t val, uint32_t size) "mpt=%p addr=%"PRIx64" val=%"PRIx64" size=%d"
+mpt_port_write(void *opaque, uint64_t addr, uint64_t val, uint32_t size) "mpt=%p addr=%"PRIx64" val=%"PRIx64" size=%d"
 
 # hw/pvscsi.c
 pvscsi_rings_mgr_init(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"

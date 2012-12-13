@@ -4913,12 +4913,15 @@ static const MemoryRegionOps mpt_mmio_ops = {
 static uint64_t mpt_port_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
-    return mpt_mmio_read(opaque, addr & 0xff, size);
+    uint64_t val = mpt_mmio_read(opaque, addr & 0xff, size);
+    trace_mpt_port_read(opaque, addr, val, size);
+    return val;
 }
 
 static void mpt_port_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size)
 {
+    trace_mpt_port_write(opaque, addr, val, size);
     mpt_mmio_write(opaque, addr & 0xff, val, size);
 }
 
