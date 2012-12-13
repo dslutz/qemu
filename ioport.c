@@ -59,6 +59,7 @@ static IOPortWriteFunc default_ioport_writeb, default_ioport_writew, default_iop
 
 static uint32_t ioport_read(int index, uint32_t address)
 {
+    uint32_t data;
     static IOPortReadFunc * const default_func[3] = {
         default_ioport_readb,
         default_ioport_readw,
@@ -67,7 +68,9 @@ static uint32_t ioport_read(int index, uint32_t address)
     IOPortReadFunc *func = ioport_read_table[index][address];
     if (!func)
         func = default_func[index];
-    return func(ioport_opaque[address], address);
+    data = func(ioport_opaque[address], address);
+    trace_ioport_read(index, address, data, func, ioport_opaque[address]);
+    return data;
 }
 
 static void ioport_write(int index, uint32_t address, uint32_t data)
@@ -80,17 +83,20 @@ static void ioport_write(int index, uint32_t address, uint32_t data)
     IOPortWriteFunc *func = ioport_write_table[index][address];
     if (!func)
         func = default_func[index];
+    trace_ioport_read(index, address, data, func, ioport_opaque[address]);
     func(ioport_opaque[address], address, data);
 }
 
 static uint32_t default_ioport_readb(void *opaque, uint32_t address)
 {
+    trace_default_ioport_readb(opaque, address);
     LOG_UNUSED_IOPORT("unused inb: port=0x%04"PRIx32"\n", address);
     return 0xff;
 }
 
 static void default_ioport_writeb(void *opaque, uint32_t address, uint32_t data)
 {
+    trace_default_ioport_writeb(opaque, address, data);
     LOG_UNUSED_IOPORT("unused outb: port=0x%04"PRIx32" data=0x%02"PRIx32"\n",
                       address, data);
 }
@@ -102,11 +108,13 @@ static uint32_t default_ioport_readw(void *opaque, uint32_t address)
     data = ioport_read(0, address);
     address = (address + 1) & IOPORTS_MASK;
     data |= ioport_read(0, address) << 8;
+    trace_default_ioport_readw(opaque, address, data);
     return data;
 }
 
 static void default_ioport_writew(void *opaque, uint32_t address, uint32_t data)
 {
+    trace_default_ioport_writew(opaque, address, data);
     ioport_write(0, address, data & 0xff);
     address = (address + 1) & IOPORTS_MASK;
     ioport_write(0, address, (data >> 8) & 0xff);
@@ -114,12 +122,14 @@ static void default_ioport_writew(void *opaque, uint32_t address, uint32_t data)
 
 static uint32_t default_ioport_readl(void *opaque, uint32_t address)
 {
+    trace_default_ioport_readl(opaque, address);
     LOG_UNUSED_IOPORT("unused inl: port=0x%04"PRIx32"\n", address);
     return 0xffffffff;
 }
 
 static void default_ioport_writel(void *opaque, uint32_t address, uint32_t data)
 {
+    trace_default_ioport_writel(opaque, address, data);
     LOG_UNUSED_IOPORT("unused outl: port=0x%04"PRIx32" data=0x%02"PRIx32"\n",
                       address, data);
 }
@@ -144,6 +154,7 @@ int register_ioport_read(pio_addr_t start, int length, int size,
 {
     int i, bsize;
 
+    trace_register_ioport_read(start, length, size, func, opaque);
     if (ioport_bsize(size, &bsize)) {
         hw_error("register_ioport_read: invalid size");
         return -1;
@@ -164,6 +175,7 @@ int register_ioport_write(pio_addr_t start, int length, int size,
 {
     int i, bsize;
 
+    trace_register_ioport_write(start, length, size, func, opaque);
     if (ioport_bsize(size, &bsize)) {
         hw_error("register_ioport_write: invalid size");
         return -1;

@@ -109,8 +109,18 @@ paio_complete(void *acb, void *opaque, int ret) "acb %p opaque %p ret %d"
 paio_cancel(void *acb, void *opaque) "acb %p opaque %p"
 
 # ioport.c
+ioport_read(int index, uint32_t address, uint32_t data, void *func, void *opaque) "index=%d address=%#x data=%#x func=%p opaque=%p"
+ioport_write(int index, uint32_t address, uint32_t data, void *func, void *opaque) "index=%d address=%#x data=%#x func=%p opaque=%p"
+register_ioport_read(uint32_t start, int length, int size, void *func, void *opaque) "start=%#x length=%d size=%d func=%p opaque=%p"
+register_ioport_write(uint32_t start, int length, int size, void *func, void *opaque) "start=%#x length=%d size=%d func=%p opaque=%p"
 cpu_in(unsigned int addr, unsigned int val) "addr %#x value %u"
 cpu_out(unsigned int addr, unsigned int val) "addr %#x value %u"
+default_ioport_readb(void *opaque, uint32_t address) "opaque=%p address=%#x"
+default_ioport_readw(void *opaque, uint32_t address, uint32_t data) "opaque=%p address=%#x data=%#x"
+default_ioport_readl(void *opaque, uint32_t address) "opaque=%p address=%#x"
+default_ioport_writeb(void *opaque, uint32_t address, uint32_t data) "opaque=%p address=%#x data=%#x"
+default_ioport_writew(void *opaque, uint32_t address, uint32_t data) "opaque=%p address=%#x data=%#x"
+default_ioport_writel(void *opaque, uint32_t address, uint32_t data) "opaque=%p address=%#x data=%#x"
 
 # balloon.c
 # Since requests are raised via monitor, not many tracepoints are needed.
