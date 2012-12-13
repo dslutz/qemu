@@ -1043,7 +1043,8 @@ pvscsi_init(PCIDevice *dev)
     /* Interrupt pin A */
     pci_config_set_interrupt_pin(s->dev.config, 1);
 
-    name = g_strdup_printf("pvscsi-io-%s", dev->name);
+    name = g_strdup_printf("pvscsi_io-%s",
+                           dev->qdev.id && *dev->qdev.id ? dev->qdev.id : dev->name);
     memory_region_init_io(&s->io_space, &pv_scsi_ops, s,
                           name, PVSCSI_MEM_SPACE_SIZE);
     g_free(name);

@@ -5981,16 +5981,18 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     /* Interrupt pin 1 */
     pci_conf[PCI_INTERRUPT_PIN] = 0x01;
 
-    name = g_strdup_printf("lsimpt-io-%s", dev->name);
+    name = g_strdup_printf("lsimpt_io-%s",
+                           dev->qdev.id && *dev->qdev.id ? dev->qdev.id : dev->name);
     memory_region_init_io(&s->port_io, &mpt_port_ops, s,
                           name, 128);
     g_free(name);
-    name = g_strdup_printf("lsimpt-mmio-%s", dev->name);
+    name = g_strdup_printf("lsimpt_mmio-%s",
+                           dev->qdev.id && *dev->qdev.id ? dev->qdev.id : dev->name);
     memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
                           name, 0x1000);
     g_free(name);
     if (!vmware_hw) {
-        name = g_strdup_printf("lsimpt-diag-%s", dev->name);
+        name = g_strdup_printf("lsimpt_diag-%s", dev->name);
         memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
                               name, 0x10000);
         g_free(name);
