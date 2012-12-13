@@ -686,6 +686,8 @@ static void cpu_ioreq_pio(ioreq_t *req)
 {
     int i, sign;
 
+    trace_cpu_ioreq_pio(req, req->dir, req->df, req->data_is_ptr, req->addr,
+                         req->data, req->count, req->size);
     sign = req->df ? -1 : 1;
 
     if (req->dir == IOREQ_READ) {
@@ -721,6 +723,8 @@ static void cpu_ioreq_move(ioreq_t *req)
 {
     int i, sign;
 
+    trace_cpu_ioreq_move(req, req->dir, req->df, req->data_is_ptr, req->addr,
+                         req->data, req->count, req->size);
     sign = req->df ? -1 : 1;
 
     if (!req->data_is_ptr) {
@@ -768,6 +772,9 @@ static void handle_ioreq(ioreq_t *req)
             (req->size < sizeof (target_ulong))) {
         req->data &= ((target_ulong) 1 << (8 * req->size)) - 1;
     }
+
+    trace_handle_ioreq(req, req->type, req->dir, req->df, req->data_is_ptr, req->addr,
+                       req->data, req->count, req->size);
 
     switch (req->type) {
         case IOREQ_TYPE_PIO:

@@ -1268,6 +1268,44 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     pci_conf = d->dev.config;
 
+    if (vmware_hw) {
+        /* Power Management Capabilities */
+        int cfg_offset = 0xe4;
+        int cfg_size = 8;
+        int r;
+
+        pci_set_word(pci_conf + PCI_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM);
+
+        r = pci_add_capability(&d->dev, PCI_CAP_ID_PCIX,
+                               cfg_offset, cfg_size);
+        assert(r >= 0);
+        pci_set_word(pci_conf + cfg_offset + PCI_X_CMD,
+                     PCI_X_CMD_ERO);
+        pci_set_long(pci_conf + cfg_offset + PCI_X_STATUS,
+                     PCI_X_STATUS_64BIT | PCI_X_STATUS_133MHZ | 0x0440fff8);
+
+        cfg_offset -= cfg_size;
+        cfg_size = PCI_PM_SIZEOF;
+        assert(cfg_offset + cfg_size < 0xff);
+        r = pci_add_capability(&d->dev, PCI_CAP_ID_PM,
+                               cfg_offset, cfg_size);
+        assert(r >= 0);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_PMC,
+                     PCI_PM_CAP_PME_D0 | PCI_PM_CAP_PME_D3 |
+                     PCI_PM_CAP_PME_D3cold | PCI_PM_CAP_DSI | 0x2);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_CTRL, 0x2000);
+        pci_set_word(pci_conf + cfg_offset + PCI_PM_PPB_EXTENSIONS,
+                     0x2800);
+        /* Special bits */
+        pci_set_word(pci_conf + PCI_COMMAND,
+                 PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
+        /* Write protect SERR. Should be the same as 
+         * command_serr_enable=0 */
+        pci_word_test_and_clear_mask(pci_dev->wmask + PCI_COMMAND,
+                                     PCI_COMMAND_SERR);
+        pci_conf[PCI_MIN_GNT] = 0xff;
+    }
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
 
@@ -1275,10 +1313,17 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     e1000_mmio_setup(d);
 
-    pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    if (vmware_hw) {
+        pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                         PCI_BASE_ADDRESS_MEM_TYPE_64,
+                         &d->mmio);
 
-    pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+        pci_register_bar(&d->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    } else {
+        pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
+        pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    }
     if (PCI_DEVICE_GET_CLASS(pci_dev)->device_id == E1000_VMW_DEVID) {
         memmove(d->eeprom_data, e1000_vmw_eeprom_template,
                 sizeof e1000_vmw_eeprom_template);
@@ -1375,7 +1420,7 @@ static void e1000_vmw_class_init(ObjectClass *klass, void *data)
     k->device_id = E1000_VMW_DEVID;
     k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     k->subsystem_id = PCI_DEVICE_ID_VMWARE_NET2;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->revision = 0x01;
     } else {
         k->revision = 0x03;

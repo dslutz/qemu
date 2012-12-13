@@ -113,6 +113,24 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
         }
     }
     conf[PCI_CLASS_PROG] = 0x00; /* Normal decode. */
+    /* Special bits */
+    pci_set_word(conf + PCI_COMMAND,
+                 PCI_COMMAND_SPECIAL | PCI_COMMAND_INVALIDATE | PCI_COMMAND_SERR);
+    /* Write protect SERR. Should be the same as                                                                    
+     * command_serr_enable=0 */
+    pci_word_test_and_clear_mask(dev->wmask + PCI_COMMAND,
+                                 PCI_COMMAND_SERR);
+    pci_set_word(conf + PCI_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+    conf[PCI_SEC_LATENCY_TIMER] = 0x40; /* sec-latency=64 */
+    pci_set_word(conf + PCI_SEC_STATUS,
+                 PCI_STATUS_66MHZ | PCI_STATUS_DEVSEL_MEDIUM | PCI_STATUS_FAST_BACK);
+    conf[PCI_BRIDGE_CONTROL] = PCI_BRIDGE_CTL_ISA | PCI_BRIDGE_CTL_FAST_BACK;
+    /* Write protect these. */                                                    
+    pci_word_test_and_clear_mask(dev->wmask + PCI_BRIDGE_CONTROL,
+                                 PCI_BRIDGE_CTL_ISA | PCI_BRIDGE_CTL_FAST_BACK);
+    conf[PCI_PREF_MEMORY_BASE] = 0;
+    conf[PCI_PREF_MEMORY_LIMIT] = 0;
     conf[PCI_INTERRUPT_LINE] = 0x00; /* This device does not assert interrupts. */
     /*
      * This device does not generate interrupts. Interrupt delivery from

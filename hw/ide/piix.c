@@ -152,8 +152,10 @@ static int pci_piix_ide_initfn(PCIDevice *dev)
     PCIIDEState *d = DO_UPCAST(PCIIDEState, dev, dev);
     uint8_t *pci_conf = d->dev.config;
 
-    if (vmware_mode) {
+    if (vmware_hw) {
         pci_conf[PCI_CLASS_PROG] = 0x8a; /* legacy ATA mode */
+        pci_conf[PCI_LATENCY_TIMER] = 0x40; /* latency=64 */
+        pci_conf[PCI_INTERRUPT_LINE] = 0xff; /* End */
     } else {
         pci_conf[PCI_CLASS_PROG] = 0x80; /* legacy ATA mode */
     }
@@ -293,7 +295,7 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB;
     k->class_id = PCI_CLASS_STORAGE_IDE;
-    if (vmware_mode) {
+    if (vmware_hw) {
         k->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         k->subsystem_id = 0x1976;
         k->revision = 0x01;

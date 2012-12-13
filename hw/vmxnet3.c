@@ -27,7 +27,6 @@
 #include "msix.h"
 #include "msi.h"
 
-#define VMXNET_DEBUG_WARNINGS
 #include "vmxnet3.h"
 #include "vmxnet_debug.h"
 #include "vmware_utils.h"
@@ -35,6 +34,7 @@
 #include "vmxnet_pkt.h"
 
 #define USE_MSIX
+#define USE_PCIE
 
 #define PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION 0x1
 #define VMXNET3_MSIX_BAR_SIZE 0x2000
@@ -310,7 +310,7 @@ typedef struct {
 /* Interrupt management */
 
 /*
- *This function returns sign whether interrupt line is in asserted state
+ * This function returns sign whether interrupt line is in asserted state
  * This depends on the type of interrupt used. For INTX interrupt line will
  * be asserted until explicit deassertion, for MSI(X) interrupt line will
  * be deasserted automatically due to notification semantics of the MSI(X)
@@ -1306,7 +1306,7 @@ static void vmxnet3_activate_device(VMXNET3State *s)
 
     qdescr_table_pa =
         VMXNET3_READ_DRV_SHARED64(s->drv_shmem, devRead.misc.queueDescPA);
-    VMW_CFPRN("TX queues descriptors table is at 0x%" PRIx64, qdescr_table_pa);
+    //    VMW_CFPRN("TX queues descriptors table is at 0x%" PRIx64, qdescr_table_pa);
 
     /*
      * Worst-case scenario is a packet that holds all TX rings space so
@@ -1331,7 +1331,7 @@ static void vmxnet3_activate_device(VMXNET3State *s)
 
         vmxnet3_ring_init(&s->txq_descr[i].tx_ring, pa, size,
                           sizeof(struct Vmxnet3_TxDesc), false);
-        vmxnet3_ring_dump(VMW_CFPRN, "TX", i, &s->txq_descr[i].tx_ring);
+	//        vmxnet3_ring_dump(VMW_CFPRN, "TX", i, &s->txq_descr[i].tx_ring);
 
         s->max_tx_frags += size;
 
@@ -1340,7 +1340,7 @@ static void vmxnet3_activate_device(VMXNET3State *s)
         size = VMXNET3_READ_TX_QUEUE_DESCR32(qdescr_pa, conf.compRingSize);
         vmxnet3_ring_init(&s->txq_descr[i].comp_ring, pa, size,
                           sizeof(struct Vmxnet3_TxCompDesc), true);
-        vmxnet3_ring_dump(VMW_CFPRN, "TXC", i, &s->txq_descr[i].comp_ring);
+	//        vmxnet3_ring_dump(VMW_CFPRN, "TXC", i, &s->txq_descr[i].comp_ring);
 
         s->txq_descr[i].tx_stats_pa =
             qdescr_pa + offsetof(struct Vmxnet3_TxQueueDesc, stats);
@@ -1783,9 +1783,9 @@ vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     if (vmxnet3_rx_filter_may_indicate(s, buf, size)) {
         vmxnet_rx_pkt_attach_data(s->rx_pkt, buf, size, s->rx_vlan_stripping);
         bytes_indicated = vmxnet3_indicate_packet(s) ? size : -1;
-        if (bytes_indicated < size) {
+        //if (bytes_indicated < size) {
             VMW_PKPRN("RX: %lu of %lu bytes indicated", bytes_indicated, size);
-        }
+	    //}
     } else {
         VMW_PKPRN("Packet dropped by RX filter");
         bytes_indicated = size;
@@ -1864,7 +1864,7 @@ static void vmxnet3_net_init(VMXNET3State *s)
 
     s->link_status_and_speed = VMXNET3_LINK_SPEED | VMXNET3_LINK_STATUS_UP;
 
-    VMW_CFPRN("Permanent MAC: " MAC_FMT, MAC_ARG(s->perm_mac.a));
+    VMW_CFPRN("Permanent MAC: " VMXNET_MF, VMXNET_MA(s->perm_mac.a));
 
     s->nic = qemu_new_nic(&net_vmxnet3_info, &s->conf,
                           object_get_typename(OBJECT(s)),
@@ -1913,6 +1913,7 @@ vmxnet3_use_msix_vectors(VMXNET3State *s, int num_vectors)
 static bool
 vmxnet3_init_pci_express(VMXNET3State *s)
 {
+#ifdef USE_PCIE
     PCIDevice *dev = &s->dev;
     uint8_t *conf = dev->config;
 
@@ -1927,6 +1928,9 @@ vmxnet3_init_pci_express(VMXNET3State *s)
 	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, 32);
     }
     return true;
+#else
+    return false;
+#endif
 }
 
 static bool
@@ -1934,9 +1938,9 @@ vmxnet3_init_msix(VMXNET3State *s)
 {
 #ifdef USE_MSIX
     int res = msix_init(&s->dev, VMXNET3_MAX_INTRS,
-                        &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0,
-                       &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0x800,
-                       0x90);
+	                &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0,
+                        &s->msix_bar, VMXNET3_MSIX_BAR_IDX, 0x800,
+                        0x90);
     if (0 > res) {
         VMW_WRPRN("Failed to initialize MSI-X, error %d", res);
         s->msix_used = false;
@@ -1946,6 +1950,7 @@ vmxnet3_init_msix(VMXNET3State *s)
             msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
             s->msix_used = false;
         } else {
+            VMW_CFPRN("Using MSI-X vectors");
             s->msix_used = true;
         }
     }
@@ -1980,6 +1985,7 @@ vmxnet3_init_msi(VMXNET3State *s)
         VMW_WRPRN("Failed to initialize MSI, error %d", res);
         s->msi_used = false;
     } else {
+        VMW_CFPRN("Using MSI");
         s->msi_used = true;
     }
 
@@ -2057,13 +2063,14 @@ static int vmxnet3_pci_init(PCIDevice *dev)
 
     if (!vmxnet3_init_pci_express(s)) {
         VMW_WRPRN("Failed to initialize PCIe, configuration is inconsistent.");
+    }
+    else {
+        VMW_CFPRN("Initialized PCIe.");
 	pci_word_test_and_clear_mask(s->dev.config + PCI_COMMAND, PCI_COMMAND_INTX_DISABLE);
 	pci_word_test_and_clear_mask(s->dev.config + PCI_COMMAND, PCI_COMMAND_MASTER);
     }
-    else {
-	/* Interrupt pin A */
-	s->dev.config[PCI_INTERRUPT_PIN] = 0x01;
-    }
+    /* Interrupt pin A */
+    s->dev.config[PCI_INTERRUPT_PIN] = 0x01;
 
     if (!vmxnet3_init_msix(s)) {
         VMW_WRPRN("Failed to initialize MSI-X, configuration is inconsistent.");
@@ -2413,7 +2420,7 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
     c->exit = vmxnet3_pci_uninit;
     c->vendor_id = PCI_VENDOR_ID_VMWARE;
     c->device_id = PCI_DEVICE_ID_VMWARE_VMXNET3;
-    if (vmware_mode) {
+    if (vmware_hw) {
         c->revision = 0x01;
     } else {
         c->revision = PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION;

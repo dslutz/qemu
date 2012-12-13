@@ -628,9 +628,9 @@ static QemuOptsList qemu_machine_opts = {
             .type = QEMU_OPT_BOOL,
             .help = "Set on/off to enable/disable usb",
         }, {
-            .name = "vmware",
-            .type = QEMU_OPT_BOOL,
-            .help = "enable/disable vmware mode",
+            .name = "vmware_hw",
+            .type = QEMU_OPT_NUMBER,
+            .help = "vmware mode and set virtualHW.version",
         }, {
             .name = "xen_platform_pci",
             .type = QEMU_OPT_BOOL,

@@ -34,6 +34,10 @@ STPFILES=
 ifndef CONFIG_HAIKU
 LIBS+=-lm
 endif
+ifdef CONFIG_POSIX
+LIBS+=-ldl
+endif
+
 
 config-target.h: config-target.h-timestamp
 config-target.h-timestamp: config-target.mak

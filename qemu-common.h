@@ -50,7 +50,7 @@ typedef struct MigrationParams MigrationParams;
 #include <signal.h>
 #include <glib.h>
 
-extern int vmware_mode;
+extern int vmware_hw;
 extern int xen_platform_pci;
 
 #ifdef _WIN32

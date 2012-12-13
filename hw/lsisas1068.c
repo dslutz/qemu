@@ -29,6 +29,7 @@
 #include "hw.h"
 #include "pci.h"
 #include "dma.h"
+#include "msi.h"
 #include "msix.h"
 #include "iov.h"
 #include "scsi.h"
@@ -41,6 +42,8 @@
 
 #define MPTSCSI_MAXIMUM_CHAIN_DEPTH 0x22
 
+#define USE_PCIE
+/* #define USE_MSIX */ /* curent theory is that this chip doesn't do msi-x */
 
 /** SPI SCSI controller (LSI53C1030) */
 #define MPTSCSI_PCI_SPI_CTRLNAME             "lsi53c1030"
@@ -3197,6 +3200,8 @@ typedef enum MPTWHOINIT {
 
 #define MPT_FLAG_USE_MSIX      0
 #define MPT_MASK_USE_MSIX      (1 << MPT_FLAG_USE_MSIX)
+#define MPT_FLAG_USE_MSI       1
+#define MPT_MASK_USE_MSI       (1 << MPT_FLAG_USE_MSI)
 
 typedef struct MptCmd {
     uint32_t index;
@@ -3234,6 +3239,7 @@ typedef struct MptState {
     uint32_t intr_status;
     uint32_t doorbell;
     uint32_t busy;
+    bool     msi_used;
     bool     event_notification_enabled;
     bool     diagnostic_enabled;
     uint32_t diagnostic_access_idx;
@@ -3285,6 +3291,11 @@ typedef struct MptState {
 
     SCSIBus bus;
 } MptState;
+
+static bool mpt_use_msi(MptState *s)
+{
+    return s->flags & MPT_MASK_USE_MSI;
+}
 
 static bool mpt_use_msix(MptState *s)
 {
@@ -3525,7 +3536,8 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
 
         if (do_mapping) {
             cmd->sge_cnt = iov_count;
-            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+	    //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+            qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memory);
         }
         while (end_of_list == false) {
             bool end_of_seg = false;
@@ -5765,6 +5777,7 @@ static const VMStateDescription vmstate_mpt = {
         VMSTATE_UINT32(intr_status, MptState),
         VMSTATE_UINT32(doorbell, MptState),
         VMSTATE_UINT32(busy, MptState),
+        VMSTATE_BOOL(msi_used, MptState),
         VMSTATE_BOOL(event_notification_enabled, MptState),
         VMSTATE_BOOL(diagnostic_enabled, MptState),
         VMSTATE_UINT32(diagnostic_access_idx, MptState),
@@ -5802,6 +5815,113 @@ static const VMStateDescription vmstate_mpt = {
     }
 };
 
+static bool
+mpt_msi_init(MptState *s) {
+#define LSISAS_MSI_NUM_VECTORS   (1)
+#define LSISAS_MSI_OFFSET        (0x80)
+#define LSISAS_USE_64BIT         (true)
+#define LSISAS_PER_VECTOR_MASK   (false)
+
+    int res;
+
+    if (!mpt_use_msi(s) || vmware_hw) {
+        s->msi_used = false;
+        return s->msi_used;
+    }
+
+    res = msi_init(&s->dev, LSISAS_MSI_OFFSET, LSISAS_MSI_NUM_VECTORS,
+                   LSISAS_USE_64BIT, LSISAS_PER_VECTOR_MASK);
+    if (0 > res) {
+        fprintf(stderr, "%s: Failed to initialize MSI, error %d\n", __func__, res);
+	s->msi_used = false;
+    } else {
+        s->msi_used = true;
+    }
+
+    return s->msi_used;
+}
+
+static void
+mpt_cleanup_msi(MptState *s)
+{
+    if (s->msi_used) {
+        msi_uninit(&s->dev);
+    }
+}
+
+
+#ifdef USE_MSIX
+static bool
+mpt_msix_init(MptState *s) {
+    int res = msix_init(&s->dev, LSISAS_MAX_INTRS,
+	                &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0,
+                        &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0x800,
+                        0x90);
+    if (0 > res) {
+        fprintf(stderr, "%s: Failed to initialize MSI-X, error %d\n",
+                __func__, res);
+        s->msix_used = false;
+    } else {
+        if (!xxx_use_msix_vectors(s, LSISAS_MAX_INTRS)) {
+            fprintf(stderr, "%s: Failed to use MSI-X vectors, error %d\n",
+                    __func__, res);
+            msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
+            s->msix_used = false;
+        } else {
+            s->msix_used = true;
+        }
+    }
+}
+
+
+static void
+mpt_cleanup_msix(MptState *s)
+{
+    if (s->msix_used) {
+        msix_vector_unuse(&s->dev, LSISAS_MAX_INTRS);
+        msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
+    }
+}
+
+static void
+mpt_msix_save(QEMUFile *f, void *opaque)
+{
+    msix_save(&((MptState *)opaque)->dev, f);
+}
+
+static int
+mpt_msix_load(QEMUFile *f, void *opaque, int version_id)
+{
+    msix_load(&((MptState *)opaque)->dev, f);
+    return 0;
+}
+#endif
+
+static bool
+mpt_pcie_init(MptState *s) {
+#ifdef USE_PCIE
+    PCIDevice *dev = &s->dev;
+    uint8_t *conf = dev->config;
+    int lanes = 8;
+
+    if (pci_is_express(dev)) {
+	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+	if (offset < 0)
+	    return false;
+	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+	if (vmware_hw) {
+	    lanes = 32; /* vmware lies */
+	}
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
+	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
 static void mpt_scsi_uninit(PCIDevice *d)
 {
     MptState *s = DO_UPCAST(MptState, dev, d);
@@ -5810,6 +5930,8 @@ static void mpt_scsi_uninit(PCIDevice *d)
 #ifdef USE_MSIX
     msix_uninit(&s->dev, &s->mmio_io);
 #endif
+    mpt_cleanup_msi(s);
+
     memory_region_destroy(&s->mmio_io);
     memory_region_destroy(&s->port_io);
     memory_region_destroy(&s->diag_io);
@@ -5835,37 +5957,64 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     pci_conf = s->dev.config;
 
-    /* PCI latency timer = 0 */
-    pci_conf[PCI_LATENCY_TIMER] = 0;
+    if (vmware_hw && vmware_hw < 7) {
+        /* Older defn. has these as zero... */
+        pci_set_word(pci_conf + PCI_SUBSYSTEM_VENDOR_ID, 0);
+        pci_set_word(pci_conf + PCI_SUBSYSTEM_ID, 0);
+    }
+
+    if (vmware_hw) {
+        /* PCI latency timer = 64 */
+        pci_conf[PCI_LATENCY_TIMER] = 0x40;
+        pci_set_word(pci_conf + PCI_STATUS,
+                     PCI_STATUS_FAST_BACK | PCI_STATUS_DEVSEL_MEDIUM); /* medium devsel */
+        pci_conf[PCI_MIN_GNT] = 0x06;
+        pci_conf[PCI_MAX_LAT] = 0xff;
+    } else {
+        /* PCI latency timer = 0 */
+        pci_conf[PCI_LATENCY_TIMER] = 0;
+    }
     /* Interrupt pin 1 */
     pci_conf[PCI_INTERRUPT_PIN] = 0x01;
 
     memory_region_init_io(&s->port_io, &mpt_port_ops, s,
-                          "lsimpt-io", 256);
+                          "lsimpt-io", 128);
     memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
-                          "lsimpt-mmio", 0x4000);
-    memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
-                          "lsimpt-diag", 0x10000);
-
-#ifdef USE_MSIX
-    /* MSI-X support is currently broken */
-    if (mpt_use_msix(s) &&
-        msix_init(&s->dev, 15, &s->mmio_io, 0, 0x2000)) {
-        s->flags &= ~MPT_MASK_USE_MSIX;
+                          "lsimpt-mmio", 0x1000);
+    if (!vmware_hw) {
+        memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
+                              "lsimpt-diag", 0x10000);
     }
-#else
-    s->flags &= ~MPT_MASK_USE_MSIX;
-#endif
 
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
     pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
                      PCI_BASE_ADDRESS_MEM_TYPE_32, &s->mmio_io);
-    pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
-                     PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
+    if (!vmware_hw) {
+        pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                         PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
+    }
 
-    if (mpt_use_msix(s)) {
+    mpt_msi_init(s);
+
+    if (pci_is_express(&s->dev)) {
+	mpt_pcie_init(s);
+    }
+
+#ifdef USE_MSIX
+    /* MSI-X support is currently broken */
+    /*if (mpt_use_msix(s) &&
+        msix_init(&s->dev, 15, &s->mmio_io, 0, 0x2000)) {
+        s->flags &= ~MPT_MASK_USE_MSIX; //???
+	}*/
+    if (mpt_use_msix(s) && mpt_msix_init(s)) {
+	s->flags |= MPT_MASK_USE_MSIX;
         msix_vector_use(&s->dev, 0);
     }
+    else
+	s->flags &= ~MPT_MASK_USE_MSIX;
+#else
+    s->flags &= ~MPT_MASK_USE_MSIX;
+#endif
 
     if (!s->sas_addr) {
         s->sas_addr = ((NAA_LOCALLY_ASSIGNED_ID << 24) |
@@ -5904,6 +6053,8 @@ static int mpt_scsi_sas_init(PCIDevice *dev)
 }
 
 static Property mptscsi_properties[] = {
+    DEFINE_PROP_BIT("use_msi", MptState, flags,
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
@@ -5915,6 +6066,8 @@ static Property mptsas_properties[] = {
     DEFINE_PROP_UINT32("ports", MptState, ports,
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
+    DEFINE_PROP_BIT("use_msi", MptState, flags,
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
@@ -5937,7 +6090,7 @@ static void mptscsi_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_53C1030;
     pc->class_id = PCI_CLASS_STORAGE_SCSI;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
@@ -5966,7 +6119,7 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     pc->device_id = PCI_DEVICE_ID_LSI_SAS1068;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
@@ -5990,13 +6143,14 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->exit = mpt_scsi_uninit;
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
-    pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
-    if (vmware_mode) {
+    if (vmware_hw) {
         pc->revision = 0x01;
+	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
-        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
+	pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
     }
     pc->is_express = 1;

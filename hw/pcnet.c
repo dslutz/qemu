@@ -40,6 +40,7 @@
 #include "qemu-timer.h"
 #include "qemu_socket.h"
 #include "sysemu.h"
+#include "trace.h"
 
 #include "pcnet.h"
 
@@ -73,14 +74,6 @@ struct qemu_ether_header {
 #define CSR_SPND(S)      !!(((S)->csr[5])&0x0001)
 #define CSR_LTINTEN(S)   !!(((S)->csr[5])&0x4000)
 #define CSR_TOKINTD(S)   !!(((S)->csr[5])&0x8000)
-#define CSR_DRX(S)       !!(((S)->csr[15])&0x0001)
-#define CSR_DTX(S)       !!(((S)->csr[15])&0x0002)
-#define CSR_LOOP(S)      !!(((S)->csr[15])&0x0004)
-#define CSR_DXMTFCS(S)   !!(((S)->csr[15])&0x0008)
-#define CSR_INTL(S)      !!(((S)->csr[15])&0x0040)
-#define CSR_DRCVPA(S)    !!(((S)->csr[15])&0x2000)
-#define CSR_DRCVBC(S)    !!(((S)->csr[15])&0x4000)
-#define CSR_PROM(S)      !!(((S)->csr[15])&0x8000)
 
 #define CSR_CRBC(S)      ((S)->csr[40])
 #define CSR_CRST(S)      ((S)->csr[41])
@@ -113,6 +106,19 @@ struct qemu_ether_header {
 
 #define PHYSADDR(S,A) \
   (BCR_SSIZE32(S) ? (A) : (A) | ((0xff00 & (uint32_t)(S)->csr[2])<<16))
+
+#define HOST_IS_OWNER(desc)  (!((desc) & 0x8000))
+
+#define RT_LIKELY(expr) __builtin_expect(!!(expr), 1)
+#define UNLIKELY(expr) __builtin_expect(!!(expr), 0)
+#define RT_MIN(Value1, Value2) ( (Value1) <= (Value2) ? (Value1) : (Value2) )
+
+typedef uint64_t PA;
+
+/* Maximum number of times we report a link down to the guest (failure to send frame) */
+#define PCNET_MAX_LINKDOWN_REPORTED     3
+/* Maximum frame size we handle */
+#define MAX_FRAME                       1536
 
 struct pcnet_initblk16 {
     uint16_t mode;
@@ -238,7 +244,7 @@ struct pcnet_RMD {
 #define GET_FIELD(reg, name, field)                     \
   (((reg) & name ## _ ## field ## _MASK) >> name ## _ ## field ## _SH)
 
-#define PRINT_TMD(T) printf(                            \
+#define PRINT_TMD(T) fprintf(stderr,                    \
         "TMD0 : TBADR=0x%08x\n"                         \
         "TMD1 : OWN=%d, ERR=%d, FCS=%d, LTI=%d, "       \
         "ONE=%d, DEF=%d, STP=%d, ENP=%d,\n"             \
@@ -266,7 +272,7 @@ struct pcnet_RMD {
         GET_FIELD((T)->misc, TMDM, TDR),                \
         GET_FIELD((T)->misc, TMDM, TRC))
 
-#define PRINT_RMD(R) printf(                            \
+#define PRINT_RMD(R) fprintf(stderr,                             \
         "RMD0 : RBADR=0x%08x\n"                         \
         "RMD1 : OWN=%d, ERR=%d, FRAM=%d, OFLO=%d, "     \
         "CRC=%d, BUFF=%d, STP=%d, ENP=%d,\n       "     \
@@ -386,6 +392,15 @@ static inline void pcnet_rmd_load(PCNetState *s, struct pcnet_RMD *rmd,
             rmd->msg_length = tmp;
         }
     }
+}
+
+static inline int vmxnet_rmd_load(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
+                                 hwaddr addr)
+{
+    PCNetState *s = &vs->s1;
+
+    s->phys_mem_read(s->dma_opaque, addr, (void *)rmd, sizeof(*rmd), CSR_BSWP(s));
+    return (rmd->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
 static inline void pcnet_rmd_store(PCNetState *s, struct pcnet_RMD *rmd,
@@ -510,7 +525,7 @@ static inline void pcnet_rmd_store(PCNetState *s, struct pcnet_RMD *rmd,
 
 #define PRINT_PKTHDR(BUF) do {                  \
     struct qemu_ether_header *hdr = (void *)(BUF); \
-    printf("packet dhost=%02x:%02x:%02x:%02x:%02x:%02x, " \
+    fprintf(stderr, "packet dhost=%02x:%02x:%02x:%02x:%02x:%02x, " \
            "shost=%02x:%02x:%02x:%02x:%02x:%02x, " \
            "type=0x%04x\n",                     \
            hdr->ether_dhost[0],hdr->ether_dhost[1],hdr->ether_dhost[2], \
@@ -622,12 +637,12 @@ static inline int padr_match(PCNetState *s, const uint8_t *buf, int size)
     };
     int result = (!CSR_DRCVPA(s)) && !memcmp(hdr->ether_dhost, padr, 6);
 #ifdef PCNET_DEBUG_MATCH
-    printf("packet dhost=%02x:%02x:%02x:%02x:%02x:%02x, "
+    fprintf(stderr, "packet dhost=%02x:%02x:%02x:%02x:%02x:%02x, "
            "padr=%02x:%02x:%02x:%02x:%02x:%02x\n",
            hdr->ether_dhost[0],hdr->ether_dhost[1],hdr->ether_dhost[2],
            hdr->ether_dhost[3],hdr->ether_dhost[4],hdr->ether_dhost[5],
            padr[0],padr[1],padr[2],padr[3],padr[4],padr[5]);
-    printf("padr_match result=%d\n", result);
+    fprintf(stderr, "padr_match result=%d\n", result);
 #endif
     return result;
 }
@@ -638,7 +653,7 @@ static inline int padr_bcast(PCNetState *s, const uint8_t *buf, int size)
     struct qemu_ether_header *hdr = (void *)buf;
     int result = !CSR_DRCVBC(s) && !memcmp(hdr->ether_dhost, BCAST, 6);
 #ifdef PCNET_DEBUG_MATCH
-    printf("padr_bcast result=%d\n", result);
+    fprintf(stderr, "padr_bcast result=%d\n", result);
 #endif
     return result;
 }
@@ -666,6 +681,11 @@ static inline hwaddr pcnet_rdra_addr(PCNetState *s, int idx)
     return s->rdra + ((CSR_RCVRL(s) - idx) * (BCR_SWSTYLE(s) ? 16 : 8));
 }
 
+static inline hwaddr vmxnet_rdra_addr(PCNetVState *vs, int idx)
+{
+    return vs->s2.vmx_rx_ring + (idx * sizeof(Vmxnet2_RxRingEntry));
+}
+
 static inline int64_t pcnet_get_next_poll_time(PCNetState *s, int64_t current_time)
 {
     int64_t next_time = current_time +
@@ -682,12 +702,11 @@ static void pcnet_poll_timer(void *opaque);
 static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap);
 static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value);
 static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val);
+static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val);
 
 static void pcnet_s_reset(PCNetState *s)
 {
-#ifdef PCNET_DEBUG
-    printf("pcnet_s_reset\n");
-#endif
+    trace_pcnet_s_reset(s);
 
     s->rdra = 0;
     s->tdra = 0;
@@ -727,7 +746,7 @@ static void pcnet_s_reset(PCNetState *s)
     s->tx_busy = 0;
 }
 
-static void pcnet_update_irq(PCNetState *s)
+void pcnet_update_irq(PCNetState *s)
 {
     int isr = 0;
     s->csr[0] &= ~0x0080;
@@ -761,9 +780,7 @@ static void pcnet_update_irq(PCNetState *s)
         s->csr[4] |= 0x0040;
         s->csr[0] |= 0x0080;
         isr = 1;
-#ifdef PCNET_DEBUG
-        printf("pcnet user int\n");
-#endif
+        trace_pcnet_user_int(s);
     }
 
 #if 1
@@ -778,12 +795,44 @@ static void pcnet_update_irq(PCNetState *s)
     }
 
     if (isr != s->isr) {
-#ifdef PCNET_DEBUG
-        printf("pcnet: INTA=%d\n", isr);
-#endif
+        trace_pcnet_isr_change(s, isr, s->isr);
     }
     qemu_set_irq(s->irq, isr);
     s->isr = isr;
+}
+
+void vmxnet_update_irq(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+    int iISR = 0;
+
+    if (s2->vmx_rx_last_interrupt_index != s2->vmx_rx_ring_index) {
+        if (s2->vmx_rx_last_interrupt_index != 0xffff) {
+	      iISR = 1;
+        }
+        s2->vmx_rx_last_interrupt_index = s2->vmx_rx_ring_index;
+    }
+
+    if (s2->vmx_tx_last_interrupt_index != s2->vmx_tx_ring_index) {
+        if (s2->vmx_tx_last_interrupt_index != 0xffff) {
+            iISR = 1;
+        }
+        s2->vmx_tx_last_interrupt_index = s2->vmx_tx_ring_index;
+    }
+
+    if (!s2->vmx_interrupt_enabled) {
+        iISR = 0;
+    }
+
+    trace_vmxnet_update_irq(vs, iISR);
+
+    /* normal path is to _not_ change the IRQ status */
+    if (UNLIKELY(iISR != s->isr)) {
+        trace_vmxnet_update_irq_change(vs, iISR,  s->isr, s2->vmx_interrupt_enabled);
+        qemu_set_irq(s->irq, iISR);
+        s->isr = iISR;
+    }
 }
 
 static void pcnet_init(PCNetState *s)
@@ -792,9 +841,7 @@ static void pcnet_init(PCNetState *s)
     uint16_t padr[3], ladrf[4], mode;
     uint32_t rdra, tdra;
 
-#ifdef PCNET_DEBUG
-    printf("pcnet_init init_addr=0x%08x\n", PHYSADDR(s,CSR_IADR(s)));
-#endif
+    trace_pcnet_init(s, PHYSADDR(s,CSR_IADR(s)));
 
     if (BCR_SSIZE32(s)) {
         struct pcnet_initblk32 initblk;
@@ -832,9 +879,7 @@ static void pcnet_init(PCNetState *s)
         tdra &= 0x00ffffff;
     }
 
-#if defined(PCNET_DEBUG)
-    printf("rlen=%d tlen=%d\n", rlen, tlen);
-#endif
+    trace_pcnet_rlen_tlen(s, rlen, tlen);
 
     CSR_RCVRL(s) = (rlen < 9) ? (1 << rlen) : 512;
     CSR_XMTRL(s) = (tlen < 9) ? (1 << tlen) : 512;
@@ -853,11 +898,8 @@ static void pcnet_init(PCNetState *s)
     CSR_RCVRC(s) = CSR_RCVRL(s);
     CSR_XMTRC(s) = CSR_XMTRL(s);
 
-#ifdef PCNET_DEBUG
-    printf("pcnet ss32=%d rdra=0x%08x[%d] tdra=0x%08x[%d]\n",
-        BCR_SSIZE32(s),
-        s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
-#endif
+    trace_pcnet_ss32_rdra_tdra(s, BCR_SSIZE32(s),
+                               s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
 
     s->csr[0] |= 0x0101;
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
@@ -866,7 +908,7 @@ static void pcnet_init(PCNetState *s)
 static void pcnet_start(PCNetState *s)
 {
 #ifdef PCNET_DEBUG
-    printf("pcnet_start\n");
+    fprintf(stderr, "%s\n", __func__);
 #endif
 
     if (!CSR_DTX(s))
@@ -883,7 +925,7 @@ static void pcnet_start(PCNetState *s)
 static void pcnet_stop(PCNetState *s)
 {
 #ifdef PCNET_DEBUG
-    printf("pcnet_stop\n");
+    fprintf(stderr, "%s\n", __func__);
 #endif
     s->csr[0] &= ~0xffeb;
     s->csr[0] |= 0x0014;
@@ -930,11 +972,11 @@ static void pcnet_rdte_poll(PCNetState *s)
             s->csr[37] = nnrd >> 16;
 #ifdef PCNET_DEBUG
             if (bad) {
-                printf("pcnet: BAD RMD RECORDS AFTER 0x" TARGET_FMT_plx "\n",
+                fprintf(stderr, "pcnet: BAD RMD RECORDS AFTER 0x" TARGET_FMT_plx "\n",
                        crda);
             }
         } else {
-            printf("pcnet: BAD RMD RDA=0x" TARGET_FMT_plx "\n",
+            fprintf(stderr, "pcnet: BAD RMD RDA=0x" TARGET_FMT_plx "\n",
                    crda);
 #endif
         }
@@ -946,9 +988,8 @@ static void pcnet_rdte_poll(PCNetState *s)
         CSR_CRBC(s) = GET_FIELD(rmd.buf_length, RMDL, BCNT);
         CSR_CRST(s) = rmd.status;
 #ifdef PCNET_DEBUG_RMD_X
-        printf("CRDA=0x%08x CRST=0x%04x RCVRC=%d RMDL=0x%04x RMDS=0x%04x RMDM=0x%08x\n",
+        fprintf(stderr, "CRDA=0x%08x CRST=0x%04x RCVRC=%d RMDL=0x%04x RMDS=0x%04x RMDM=0x%08x\n",
                 PHYSADDR(s,CSR_CRDA(s)), CSR_CRST(s), CSR_RCVRC(s),
-                rmd.buf_length, rmd.status, rmd.msg_length);
         PRINT_RMD(&rmd);
 #endif
     } else {
@@ -985,7 +1026,7 @@ static int pcnet_tdte_poll(PCNetState *s)
             s->csr[34] = cxda & 0xffff;
             s->csr[35] = cxda >> 16;
 #ifdef PCNET_DEBUG_X
-            printf("pcnet: BAD TMD XDA=0x%08x\n", cxda);
+            fprintf(stderr, "pcnet: BAD TMD XDA=0x%08x\n", cxda);
 #endif
         }
     }
@@ -1013,6 +1054,46 @@ int pcnet_can_receive(NetClientState *nc)
     return sizeof(s->buffer)-16;
 }
 
+static void vmxnet_rdte_poll(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+
+    /* assume lack of a next receive descriptor */
+    CSR_NRST(s) = 0;
+
+    if (RT_LIKELY(s2->vmxdata_addr)) {
+      /*
+       * The current receive message descriptor.
+       */
+      Vmxnet2_RxRingEntry  rmd;
+      hwaddr addr;
+
+      addr = vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index);
+      vmxnet_rmd_load(vs, &rmd, addr);
+    }
+}
+
+int vlance_can_receive(NetClientState *nc)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = &vs->s1;
+    Vmxnet2_RxRingEntry  rmd;
+    hwaddr addr;
+
+    if (!vs->s2.vmxdata_addr)
+        return pcnet_can_receive(nc);
+
+    vmxnet_rdte_poll(vs);
+
+    addr = vmxnet_rdra_addr(vs, vs->s2.vmx_rx_ring_index);
+    if (!vmxnet_rmd_load(vs, &rmd, addr)) {
+        return 0;
+    } else {
+        return sizeof(s->buffer)-16;
+    }
+}
+
 #define MIN_BUF_SIZE 60
 
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
@@ -1029,7 +1110,7 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
         return -1;
     }
 #ifdef PCNET_DEBUG
-    printf("pcnet_receive size=%d\n", size);
+    fprintf(stderr, "%s: size=%d\n", __func__, size);
 #endif
 
     /* if too small buffer, then expand it */
@@ -1060,7 +1141,7 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
                 RMDLOAD(&rmd, nrda);
                 if (GET_FIELD(rmd.status, RMDS, OWN)) {
 #ifdef PCNET_DEBUG_RMD
-                    printf("pcnet - scan buffer: RCVRC=%d PREV_RCVRC=%d\n",
+                    fprintf(stderr, "pcnet - scan buffer: RCVRC=%d PREV_RCVRC=%d\n",
                                 rcvrc, CSR_RCVRC(s));
 #endif
                     CSR_RCVRC(s) = rcvrc;
@@ -1072,7 +1153,7 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 
         if (!(CSR_CRST(s) & 0x8000)) {
 #ifdef PCNET_DEBUG_RMD
-            printf("pcnet - no buffer: RCVRC=%d\n", CSR_RCVRC(s));
+            fprintf(stderr, "pcnet - no buffer: RCVRC=%d\n", CSR_RCVRC(s));
 #endif
             s->csr[0] |= 0x1000; /* Set MISS flag */
             CSR_MISSC(s)++;
@@ -1172,7 +1253,7 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
             s->csr[0] |= 0x0400;
 
 #ifdef PCNET_DEBUG
-            printf("RCVRC=%d CRDA=0x%08x BLKS=%d\n",
+            fprintf(stderr, "RCVRC=%d CRDA=0x%08x BLKS=%d\n",
                 CSR_RCVRC(s), PHYSADDR(s,CSR_CRDA(s)), pktcount);
 #endif
 #ifdef PCNET_DEBUG_RMD
@@ -1204,6 +1285,14 @@ void pcnet_set_link_status(NetClientState *nc)
     d->lnkst = nc->link_down ? 0 : 0x40;
 }
 
+void vlance_set_link_status(NetClientState *nc)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+
+    vs->s1.lnkst = nc->link_down ? 0 : 0x40;
+    vs->s2.link_down_reported = 0;
+}
+
 static void pcnet_transmit(PCNetState *s)
 {
     hwaddr xmit_cxda = 0;
@@ -1226,7 +1315,7 @@ static void pcnet_transmit(PCNetState *s)
         TMDLOAD(&tmd, PHYSADDR(s,CSR_CXDA(s)));
 
 #ifdef PCNET_DEBUG_TMD
-        printf("  TMDLOAD 0x%08x\n", PHYSADDR(s,CSR_CXDA(s)));
+        fprintf(stderr, "  TMDLOAD 0x%08x\n", PHYSADDR(s,CSR_CXDA(s)));
         PRINT_TMD(&tmd);
 #endif
         if (GET_FIELD(tmd.status, TMDS, STP)) {
@@ -1255,7 +1344,7 @@ static void pcnet_transmit(PCNetState *s)
                              s->buffer + s->xmit_pos, bcnt, CSR_BSWP(s));
             s->xmit_pos += bcnt;
 #ifdef PCNET_DEBUG
-            printf("pcnet_transmit size=%d\n", s->xmit_pos);
+            fprintf(stderr, "%s: size=%d\n", __func__, s->xmit_pos);
 #endif
             if (CSR_LOOP(s)) {
                 if (BCR_SWSTYLE(s) == 1)
@@ -1303,6 +1392,290 @@ static void pcnet_transmit(PCNetState *s)
     }
 
     s->tx_busy = 0;
+}
+
+static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
+{
+    PCNetState *s = &vs->s1;
+    hwaddr cxda;
+
+    s->csr[60] = s->csr[34];
+    s->csr[61] = s->csr[35];
+    /* set current trasmit decriptor. */
+    cxda = vs->s2.vmx_tx_ring + (vs->s2.vmx_tx_ring_index * sizeof(*desc));
+    s->csr[34] = cxda & 0xffff;
+    s->csr[35] = cxda >> 16;
+
+    s->phys_mem_read(s->dma_opaque, cxda, (void *) desc, sizeof(*desc), CSR_BSWP(s));
+    trace_vmxnet_tdte_poll(vs, vs->s2.vmx_tx_ring_index, cxda, desc->flags, desc->ownership, desc->extra, desc->tsoMss);
+
+  if (desc->ownership == VMXNET2_OWNERSHIP_NIC) {
+      if (desc->flags & ~(VMXNET2_TX_CAN_KEEP | VMXNET2_TX_RING_LOW | VMXNET2_TX_PINNED_BUFFER)) {
+	  fprintf(stderr, "Unhandled transmit descriptor flag = 0x%x\n", desc->flags);
+      }
+  }
+  
+  return (desc->ownership == VMXNET2_OWNERSHIP_NIC);
+}
+
+static inline int pcnet_is_link_up(PCNetVState *vs)
+{
+    return vs->s1.lnkst;
+}
+
+/**
+ * Store transmit message descriptor and hand it over to the host (the VM guest).
+ * Make sure that all data are transmitted before we clear the own flag.
+ */
+static inline void vmxnet_tmd_store_pass_host(PCNetVState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
+{
+    PCNetState *s = &vs->s1;
+
+    tmd->ownership = VMXNET2_OWNERSHIP_DRIVER;
+    s->phys_mem_write(s->dma_opaque, addr, (void*)tmd, 4, 0);
+}
+
+/**
+ * Fails a TMD with a generic error.
+ */
+static inline void vmxnet_xmit_fail_tmd_generic(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
+{
+    PCNetState *s = &vs->s1;
+
+    /* make carrier error - hope this is correct. */
+    s->csr[0] |= 0xa000; /* ERR | CERR */
+    trace_vmxnet_xmit_fail_tmd_generic(vs, s->bcr[BCR_SWS]);
+}
+
+void vmxnet_transmit(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    unsigned cFlushIrq = 0;
+    Vmxnet2_TxRingEntry tmd;
+
+    s->xmit_pos = 0;
+
+    s->tx_busy = 1;
+
+    /*
+     * Iterate the transmit descriptors.
+     */
+    while (vmxnet_tdte_poll(vs, &tmd)) {
+        /* Don't continue sending packets when the link is down. */
+        if (UNLIKELY(!pcnet_is_link_up(vs)
+                     &&  vs->s2.link_down_reported > PCNET_MAX_LINKDOWN_REPORTED)
+            ) {
+            s->csr[0] |= 0xa000; /* ERR | CERR */
+            s->xmit_pos = -1;
+            goto txdone;
+        }
+
+        /*
+         * The typical case - a complete packet.
+         */
+	if (tmd.sg.length == 1)
+        {
+	    const unsigned cb = tmd.sg.sg[0].length;
+
+            if (RT_LIKELY(pcnet_is_link_up(vs) || CSR_LOOP(s)))
+            {
+                /* From the manual: ``A zero length buffer is acceptable as
+                 * long as it is not the last buffer in a chain (STP = 0 and
+                 * ENP = 1).'' That means that the first buffer might have a
+                 * zero length if it is not the last one in the chain. */
+                if (RT_LIKELY(cb <= MAX_FRAME))
+                {
+                    s->phys_mem_read(s->dma_opaque, NET_SG_MAKE_PA(tmd.sg.sg[0]),
+                                     s->buffer + s->xmit_pos, cb, CSR_BSWP(s));
+                    s->xmit_pos += cb;
+                    if (CSR_LOOP(s)) {
+                        s->looptest = PCNET_LOOPTEST_NOCRC;                        
+                        vlance_receive(&s->nic->nc, s->buffer, s->xmit_pos);
+                        s->looptest = 0;
+                    } else {
+                        if (s->nic)
+                            qemu_send_packet(&s->nic->nc, s->buffer, s->xmit_pos);
+                    }
+                    s->xmit_pos = 0;
+                }
+                else
+                {
+                    /* Signal error, as this violates the Ethernet specs. */
+                    /** @todo check if the correct error is generated. */
+                    fprintf(stderr, "%s: pcnetAsyncTransmit: illegal %d frame -> signalling error\n",
+                            __func__, cb);
+                    vmxnet_xmit_fail_tmd_generic(vs, &tmd);
+                }
+            } else {
+                vs->s2.link_down_reported++;
+                vmxnet_xmit_fail_tmd_generic(vs, &tmd);
+            }
+
+            /* Write back the TMD and pass it to the host (clear own bit). */
+            vmxnet_tmd_store_pass_host(vs, &tmd, CSR_CXDA(s));
+
+            /* advance the ring counter register */
+	    VMXNET_INC(vs->s2.vmx_tx_ring_index, vs->s2.vmx_tx_ring_length);
+        } else {
+	    fprintf(stderr, "Multisegments unsupported\n");
+	}
+
+        /* Update TDMD, TXSTRT and TINT. */
+        s->csr[0] &= ~0x0008;   /* clear TDMD */
+        s->csr[4] |= 0x0004;    /* set TXSTRT */
+	cFlushIrq++;
+
+        /** @todo should we continue after an error (tmd.tmd1.err) or not? */
+    }
+
+txdone:
+    if (cFlushIrq)
+    {
+        s->csr[0] |= 0x0200;    /* set TINT */
+        pcnet_update_irq(s);
+    }
+
+    s->tx_busy = 0;
+}
+
+/**
+ * Poll for changes in RX and TX descriptor rings.
+ */
+void vmxnet_poll_rx_tx(PCNetVState *vs)
+{
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+
+    if (!s2->vmxdata_addr) {
+        if (CSR_RXON(s)) {
+            /*
+             * The second case is important for pcnetWaitReceiveAvail(): If CSR_CRST(s) was
+             * true but pcnetCanReceive() returned false for some other reason we need to check
+             * _now_ if we have to wakeup pcnetWaitReceiveAvail().
+             */
+            if (HOST_IS_OWNER(CSR_CRST(s))) {
+                pcnet_rdte_poll(s);
+            }
+        }
+
+        if (CSR_TDMD(s) || (CSR_TXON(s) && !CSR_DPOLL(s)))
+            pcnet_transmit(s);
+    } else {
+        vmxnet_rdte_poll(vs); // ###################### not always need could be optimized.
+        pcnet_transmit(s);
+    }
+}
+
+static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry *rmd,
+                                          hwaddr addr)
+{
+    s->phys_mem_write(s->dma_opaque, addr, (void*)rmd, 24, CSR_BSWP(s));
+}
+
+ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
+{
+    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = &vs->s1;
+    PCNetState2 *s2 = &vs->s2;
+    int is_padr = 0, is_bcast = 0, is_ladr = 0;
+    uint8_t buf1[MIN_BUF_SIZE];
+    int size = size_;
+    int cbPacket;
+
+    trace_vlance_receive(vs, buf, size_);
+    if (!vs->s2.vmxdata_addr)
+        return pcnet_receive(nc, buf, size_);
+
+#ifdef PCNET_DEBUG
+    fprintf(stderr, "vlance_receive size=%d\n", size);
+#endif
+
+    /* if too small buffer, then expand it */
+    if (size < MIN_BUF_SIZE) {
+        memcpy(buf1, buf, size);
+        memset(buf1 + size, 0, MIN_BUF_SIZE - size);
+        buf = buf1;
+        size = MIN_BUF_SIZE;
+    }
+
+    /*
+     * Perform address matching.
+     */
+    if (CSR_PROM(s)
+        || (is_padr=padr_match(s, buf, size))
+        || (is_bcast=padr_bcast(s, buf, size))
+        || (is_ladr=ladr_match(s, buf, size))) {
+        uint8_t *src = s->buffer;
+        Vmxnet2_RxRingEntry  rmd;
+
+        memcpy(src, buf, size);
+      if (1 || !CSR_ASTRP_RCV(s))
+	{
+	  uint32_t fcs = ~0;
+	  uint8_t *p = src;
+
+	  while (size < 60)
+	    src[size++] = 0;
+	  while (p != &src[size])
+	    CRC(fcs, *p++);
+	  ((uint32_t *)&src[size])[0] = htonl(fcs);
+	  /* FCS at end of packet */
+	  size += 4;
+	  cbPacket = (int)size;
+
+#ifdef PCNET_DEBUG_MATCH
+	  PRINT_PKTHDR(buf);
+#endif
+
+	  vmxnet_rmd_load(vs, &rmd, vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
+
+	  size_t cbBuf = RT_MIN(rmd.bufferLength, size);
+	  hwaddr rbadr = rmd.paddr;
+
+	  /* We have to leave the critical section here or we risk deadlocking
+	   * with EMT when the write is to an unallocated page or has an access
+	   * handler associated with it.
+	   *
+	   * This shouldn't be a problem because:
+	   *  - any modification to the RX descriptor by the driver is
+	   *    forbidden as long as it is owned by the device
+	   *  - we don't cache any register state beyond this point
+	   */
+          s->phys_mem_write(s->dma_opaque, rbadr, src, cbBuf, CSR_BSWP(s));
+
+	  src += cbBuf;
+	  size -= cbBuf;
+
+	  if (RT_LIKELY(size == 0)) {
+	      rmd.ownership = VMXNET2_OWNERSHIP_DRIVER;
+	      rmd.actualLength = cbPacket;
+	      rmd.flags = 0;
+          } else {
+              fprintf(stderr, "%s: Overflow by %ubytes\n", __func__, size);
+          }
+
+	  /* write back, clear the own bit */
+	  vmxnet_rmd_store_pass_host(s, &rmd, vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
+
+
+#if 0
+	  frintf(stderr, "%s RCVRC=%d CRDA=%#010x\n", __func__,
+	       CSR_RCVRC(s), vmxnet_rdra_addr(vs, s2->vmx_rx_ring_index));
+#endif
+#ifdef PCNET_DEBUG_RMD
+	  //	  PRINT_VMXNETRMD(&rmd);
+#endif
+	  VMXNET_INC(s2->vmx_rx_ring_index, s2->vmx_rx_ring_length);
+	  
+        }
+    }
+
+    /* see description of TXDPOLL:
+     * ``transmit polling will take place following receive activities'' */
+    vmxnet_poll_rx_tx(vs);
+    vmxnet_update_irq(vs);
+
+    return size_;
 }
 
 static void pcnet_poll(PCNetState *s)
@@ -1356,7 +1729,7 @@ static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value)
 {
     uint16_t val = new_value;
 #ifdef PCNET_DEBUG_CSR
-    printf("pcnet_csr_writew rap=%d val=0x%04x\n", rap, val);
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     switch (rap) {
     case 0:
@@ -1480,7 +1853,7 @@ static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap)
         val = s->csr[rap];
     }
 #ifdef PCNET_DEBUG_CSR
-    printf("pcnet_csr_readw rap=%d val=0x%04x\n", rap, val);
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     return val;
 }
@@ -1489,7 +1862,7 @@ static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val)
 {
     rap &= 127;
 #ifdef PCNET_DEBUG_BCR
-    printf("pcnet_bcr_writew rap=%d val=0x%04x\n", rap, val);
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     switch (rap) {
     case BCR_SWS:
@@ -1508,12 +1881,12 @@ static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val)
             val |= 0x0300;
             break;
         default:
-            printf("Bad SWSTYLE=0x%02x\n", val & 0xff);
+            fprintf(stderr, "Bad SWSTYLE=0x%02x\n", val & 0xff);
             val = 0x0200;
             break;
         }
 #ifdef PCNET_DEBUG
-       printf("BCR_SWS=0x%04x\n", val);
+       fprintf(stderr, "BCR_SWS=0x%04x\n", val);
 #endif
         /* fall through */
     case BCR_LNKST:
@@ -1549,7 +1922,230 @@ uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap)
         break;
     }
 #ifdef PCNET_DEBUG_BCR
-    printf("pcnet_bcr_readw rap=%d val=0x%04x\n", rap, val);
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
+#endif
+    return val;
+}
+
+static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
+{
+    PCNetState *s = &vs->s1;
+
+    rap &= 127;
+#ifdef PCNET_DEBUG_BCR
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
+#endif
+    switch (rap) {
+    case BCR_SWS:
+        if (!(CSR_STOP(s) || CSR_SPND(s)))
+            return;
+        val &= ~0x0300;
+        switch (val & 0x00ff) {
+        case 0:
+            val |= 0x0200;
+            break;
+        case 1:
+            val |= 0x0100;
+            break;
+        case 2:
+        case 3:
+            val |= 0x0300;
+            break;
+        default:
+            fprintf(stderr, "Bad SWSTYLE=0x%02x\n", val & 0xff);
+            val = 0x0200;
+            break;
+        }
+#ifdef PCNET_DEBUG
+       fprintf(stderr, "BCR_SWS=0x%04x\n", val);
+#endif
+        /* fall through */
+    case BCR_LNKST:
+    case BCR_LED1:
+    case BCR_LED2:
+    case BCR_LED3:
+    case BCR_MC:
+    case BCR_FDC:
+    case BCR_BSBC:
+    case BCR_EECAS:
+    case BCR_PLAT:
+        s->bcr[rap] = val;
+        break;
+    case BCR_MIICAS:
+    case BCR_MIIADDR:
+        vs->s2.bcr2[rap-32] = val;
+    case BCR_STVAL:
+        val &= 0xffff;
+        vs->s2.bcr2[BCR_STVAL-32] = val;
+#if 0
+        if (vs->fAm79C973)
+            TMTimerSetNano(vs->CTX_SUFF(pTimerSoftInt), 12800U * val);
+        break;
+#endif
+    case BCR_MIIMDR:
+        vs->s2.mii[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
+#ifdef PCNET_DEBUG_MII
+        printf(stderr, "#%d pcnet: mii write %d <- %#x\n", __func__, vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f, val);
+#endif
+        break;
+    default:
+        break;
+    }
+}
+
+static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
+{
+    uint32_t val;
+    bool autoneg, duplex, fast;
+
+    autoneg = (vs->s2.bcr2[BCR_MIICAS-32] & 0x20) != 0;
+    duplex  = (vs->s2.bcr2[BCR_MIICAS-32] & 0x10) != 0;
+    fast    = (vs->s2.bcr2[BCR_MIICAS-32] & 0x08) != 0;
+
+    switch (miiaddr)
+    {
+        case 0:
+            /* MII basic mode control register. */
+            val = 0;
+            if (autoneg)
+                val |= 0x1000;  /* Enable auto negotiation. */
+            if (fast)
+                val |= 0x2000;  /* 100 Mbps */
+            if (duplex) /* Full duplex forced */
+                val |= 0x0100;  /* Full duplex */
+            break;
+
+        case 1:
+            /* MII basic mode status register. */
+            val = 0x7800    /* Can do 100mbps FD/HD and 10mbps FD/HD. */
+                | 0x0040    /* Mgmt frame preamble not required. */
+                | 0x0020    /* Auto-negotiation complete. */
+                | 0x0008    /* Able to do auto-negotiation. */
+                | 0x0004    /* Link up. */
+                | 0x0001;   /* Extended Capability, i.e. registers 4+ valid. */
+            if (!pcnet_is_link_up(vs)) {
+                val &= ~(0x0020 | 0x0004);
+                vs->s2.link_down_reported++;
+            }
+            if (!autoneg) {
+                /* Auto-negotiation disabled. */
+                val &= ~(0x0020 | 0x0008);
+                if (duplex)
+                    /* Full duplex forced. */
+                    val &= ~0x2800;
+                else
+                    /* Half duplex forced. */
+                    val &= ~0x5000;
+
+                if (fast)
+                    /* 100 Mbps forced */
+                    val &= ~0x1800;
+                else
+                    /* 10 Mbps forced */
+                    val &= ~0x6000;
+            }
+            break;
+
+        case 2:
+            /* PHY identifier 1. */
+            val = 0x22;     /* Am79C874 PHY */
+            break;
+
+        case 3:
+            /* PHY identifier 2. */
+            val = 0x561b;   /* Am79C874 PHY */
+            break;
+
+        case 4:
+            /* Advertisement control register. */
+            val =   0x01e0  /* Try 100mbps FD/HD and 10mbps FD/HD. */
+#if 0
+                // Advertising flow control is a) not the default, and b) confuses
+                // the link speed detection routine in Windows PCnet driver
+                  | 0x0400  /* Try flow control. */
+#endif
+                  | 0x0001; /* CSMA selector. */
+            break;
+
+        case 5:
+            /* Link partner ability register. */
+            if (pcnet_is_link_up(vs))
+                val =   0x8000  /* Next page bit. */
+                      | 0x4000  /* Link partner acked us. */
+                      | 0x0400  /* Can do flow control. */
+                      | 0x01e0  /* Can do 100mbps FD/HD and 10mbps FD/HD. */
+                      | 0x0001; /* Use CSMA selector. */
+            else
+            {
+                val = 0;
+                vs->s2.link_down_reported++;
+            }
+            break;
+
+        case 6:
+            /* Auto negotiation expansion register. */
+            if (pcnet_is_link_up(vs))
+                val =   0x0008  /* Link partner supports npage. */
+                      | 0x0004  /* Enable npage words. */
+                      | 0x0001; /* Can do N-way auto-negotiation. */
+            else
+            {
+                val = 0;
+                vs->s2.link_down_reported++;
+            }
+            break;
+
+        default:
+            val = 0;
+            break;
+    }
+    trace_pcnet_mii_readw(vs, miiaddr, val);
+    return val;
+}
+
+uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
+{
+    PCNetState *s = &vs->s1;
+    uint32_t val;
+
+    rap &= 127;
+    switch (rap) {
+    case BCR_LNKST:
+    case BCR_LED1:
+    case BCR_LED2:
+    case BCR_LED3:
+        val = s->bcr[rap] & ~0x8000;
+        /* Clear LNKSTE if we're not connected. */
+        if (!pcnet_is_link_up(vs))
+        {
+            if (rap == BCR_LNKST) {
+                vs->s2.link_down_reported++;
+            }
+            val &= ~0x40;
+        }
+        val |= (val & 0x017f & s->lnkst) ? 0x8000 : 0;
+        break;
+    case BCR_MIIMDR:
+        if ((vs->s2.bcr2[BCR_MIIADDR-32] >> 5 & 0x1f) == 0)
+        {
+            uint32_t miiaddr = vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f;
+            val = pcnet_mii_readw(vs, miiaddr);
+        }
+        else
+            val = 0xffff;
+        break;
+    default:
+        if (rap < 32) {
+            val = s->bcr[rap];
+        } else if (rap < 50) {
+            val = vs->s2.bcr2[rap-32];
+        } else {
+            val = 0;
+        }
+        break;
+    }
+#ifdef PCNET_DEBUG_BCR
+    fprintf(stderr, "%s: rap=%d val=0x%04x\n", __func__, rap, val);
 #endif
     return val;
 }
@@ -1576,12 +2172,29 @@ void pcnet_h_reset(void *opaque)
     pcnet_poll_timer(s);
 }
 
+void vlance_h_reset(void *opaque, uint16_t vid, uint16_t sid, uint16_t svid)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
+    pcnet_h_reset(opaque);
+
+    vs->s2.bcr2[BCR_MIIADDR-32] = 0;  /* Internal PHY on Am79C973 would be (0x1e << 5) */
+    vs->s2.bcr2[BCR_PCIVID-32] = vid;
+    s->bcr[BCR_PCISID] = sid;
+    s->bcr[BCR_PCISVID] = svid;
+
+    vs->s2.morph[0] = 0x2934;
+    vs->s2.vmxnet_reg[VMXNET_LOW_VERSION] = 0xBABE864F;
+    vs->s2.vmxnet_reg[VMXNET_HIGH_VERSION] = 0xBABE864F;
+}
+
 void pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
 {
     PCNetState *s = opaque;
     pcnet_poll_timer(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_writew addr=0x%08x val=0x%04x\n", addr, val);
+    fprintf(stderr, "%s: addr=0x%08x val=0x%04x\n", __func__, addr, val);
 #endif
     if (!BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -1623,7 +2236,7 @@ uint32_t pcnet_ioport_readw(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_readw addr=0x%08x val=0x%04x\n", addr, val & 0xffff);
+    fprintf(stderr, "%s: addr=0x%08x val=0x%04x\n", __func__, addr, val & 0xffff);
 #endif
     return val;
 }
@@ -1633,7 +2246,7 @@ void pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
     PCNetState *s = opaque;
     pcnet_poll_timer(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_writel addr=0x%08x val=0x%08x\n", addr, val);
+    fprintf(stderr, "%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
 #endif
     if (BCR_DWIO(s)) {
         switch (addr & 0x0f) {
@@ -1652,7 +2265,7 @@ void pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
         /* switch device to dword i/o mode */
         pcnet_bcr_writew(s, BCR_BSBC, pcnet_bcr_readw(s, BCR_BSBC) | 0x0080);
 #ifdef PCNET_DEBUG_IO
-        printf("device switched into dword i/o mode\n");
+        fprintf(stderr, "device switched into dword i/o mode\n");
 #endif
     }
     pcnet_update_irq(s);
@@ -1682,7 +2295,125 @@ uint32_t pcnet_ioport_readl(void *opaque, uint32_t addr)
     }
     pcnet_update_irq(s);
 #ifdef PCNET_DEBUG_IO
-    printf("pcnet_ioport_readl addr=0x%08x val=0x%08x\n", addr, val);
+    fprintf(stderr, "%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
+#endif
+    return val;
+}
+
+void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
+    trace_vlance_ioport_writew(opaque, addr, val);
+    pcnet_poll_timer(s);
+    if (!BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            pcnet_csr_writew(s, s->rap, val);
+            break;
+        case 0x02:
+            s->rap = val & 0x7f;
+            break;
+        case 0x06:
+            vlance_bcr_writew(vs, s->rap, val);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+}
+
+uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+    uint32_t val = -1;
+
+    pcnet_poll_timer(s);
+    if (!BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            val = pcnet_csr_readw(s, s->rap);
+            break;
+        case 0x02:
+            val = s->rap;
+            break;
+        case 0x04:
+            pcnet_s_reset(s);
+            val = 0;
+            break;
+        case 0x06:
+            val = vlance_bcr_readw(vs, s->rap);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+#ifdef PCNET_DEBUG_IO
+    fprintf(stderr, "%s: addr=0x%08x val=0x%04x\n",
+           __func__, addr, val & 0xffff);
+#endif
+    return val;
+}
+
+void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+
+    pcnet_poll_timer(s);
+#ifdef PCNET_DEBUG_IO
+    fprintf(stderr, "vlance_ioport_writel addr=0x%08x val=0x%08x\n", addr, val);
+#endif
+    if (BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            pcnet_csr_writew(s, s->rap, val & 0xffff);
+            break;
+        case 0x04:
+            s->rap = val & 0x7f;
+            break;
+        case 0x0c:
+            vlance_bcr_writew(vs, s->rap, val & 0xffff);
+            break;
+        }
+    } else
+    if ((addr & 0x0f) == 0) {
+        /* switch device to dword i/o mode */
+        pcnet_bcr_writew(s, BCR_BSBC, pcnet_bcr_readw(s, BCR_BSBC) | 0x0080);
+#ifdef PCNET_DEBUG_IO
+        fprintf(stderr, "device switched into dword i/o mode\n");
+#endif
+    }
+    pcnet_update_irq(s);
+}
+
+uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
+{
+    PCNetVState *vs = opaque;
+    PCNetState *s = &vs->s1;
+    uint32_t val = -1;
+
+    pcnet_poll_timer(s);
+    if (BCR_DWIO(s)) {
+        switch (addr & 0x0f) {
+        case 0x00: /* RDP */
+            val = pcnet_csr_readw(s, s->rap);
+            break;
+        case 0x04:
+            val = s->rap;
+            break;
+        case 0x08:
+            pcnet_s_reset(s);
+            val = 0;
+            break;
+        case 0x0c:
+            val = vlance_bcr_readw(vs, s->rap);
+            break;
+        }
+    }
+    pcnet_update_irq(s);
+#ifdef PCNET_DEBUG_IO
+    fprintf(stderr, "%s: addr=0x%08x val=0x%08x\n", __func__, addr, val);
 #endif
     return val;
 }
@@ -1712,6 +2443,36 @@ const VMStateDescription vmstate_pcnet = {
         VMSTATE_UNUSED_TEST(is_version_2, 4),
         VMSTATE_INT32(tx_busy, PCNetState),
         VMSTATE_TIMER(poll_timer, PCNetState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+const VMStateDescription vmstate_vlance = {
+    .name = "vlance",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
+    .fields      = (VMStateField []) {
+        VMSTATE_UINT64(vmxdata_addr, PCNetState2),
+        VMSTATE_UINT64(vmx_rx_ring, PCNetState2),
+        VMSTATE_UINT64(vmx_rx_ring2, PCNetState2),
+        VMSTATE_UINT64(vmx_tx_ring, PCNetState2),
+        VMSTATE_UINT32(vmxdata_length, PCNetState2),
+        VMSTATE_UINT32(link_down_reported, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_last_interrupt_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring_length, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring2_index, PCNetState2),
+        VMSTATE_UINT16(vmx_rx_ring2_length, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_ring_index, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_last_interrupt_index, PCNetState2),
+        VMSTATE_UINT16(vmx_tx_ring_length, PCNetState2),
+        VMSTATE_BOOL(vmx_interrupt_enabled, PCNetState2),
+        VMSTATE_BOOL(vmxnet2, PCNetState2),
+        VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
+        VMSTATE_UINT16_ARRAY(mii, PCNetState2, 16),
+        VMSTATE_UINT16_ARRAY(morph, PCNetState2, 1),
+        VMSTATE_UINT32_ARRAY(vmxnet_reg, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
         VMSTATE_END_OF_LIST()
     }
 };

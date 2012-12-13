@@ -181,11 +181,14 @@ void pci_device_reset(PCIDevice *dev)
     pci_word_test_and_clear_mask(dev->config + PCI_COMMAND,
                                  pci_get_word(dev->wmask + PCI_COMMAND) |
                                  pci_get_word(dev->w1cmask + PCI_COMMAND));
+
     pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
                                  pci_get_word(dev->wmask + PCI_STATUS) |
                                  pci_get_word(dev->w1cmask + PCI_STATUS));
-    dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
-    dev->config[PCI_INTERRUPT_LINE] = 0x0;
+    if (!vmware_hw) {
+        dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
+        dev->config[PCI_INTERRUPT_LINE] = 0x0;
+    }
     for (r = 0; r < PCI_NUM_REGIONS; ++r) {
         PCIIORegion *region = &dev->io_regions[r];
         if (!region->size) {
@@ -610,9 +613,6 @@ static void pci_init_wmask(PCIDevice *dev)
     pci_set_word(dev->wmask + PCI_COMMAND,
                  PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER |
                  PCI_COMMAND_INTX_DISABLE);
-    if (dev->cap_present & QEMU_PCI_CAP_SERR) {
-        pci_word_test_and_set_mask(dev->wmask + PCI_COMMAND, PCI_COMMAND_SERR);
-    }
 
     memset(dev->wmask + PCI_CONFIG_HEADER_SIZE, 0xff,
            config_size - PCI_CONFIG_HEADER_SIZE);
@@ -1537,7 +1537,7 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, const char *default_model,
 
 PCIDevice *pci_vga_init(PCIBus *bus)
 {
-    int devfn = vmware_mode ? PCI_DEVFN(0xf, 0) : -1;
+    int devfn = vmware_hw ? PCI_DEVFN(0xf, 0) : -1;
 
     switch (vga_interface_type) {
     case VGA_CIRRUS:
@@ -1912,6 +1912,7 @@ int pci_add_capability(PCIDevice *pdev, uint8_t cap_id,
             return -ENOSPC;
         }
     } else {
+        assert((int)offset + (int)size < pci_config_size(pdev));
         /* Verify that capabilities don't overlap.  Note: device assignment
          * depends on this check to verify that the device is not broken.
          * Should never trigger for emulated devices, but it's helpful

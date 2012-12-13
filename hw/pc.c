@@ -71,6 +71,8 @@
 #define FW_CFG_E820_TABLE (FW_CFG_ARCH_LOCAL + 3)
 #define FW_CFG_HPET (FW_CFG_ARCH_LOCAL + 4)
 
+#define MSI_ADDR_BASE 0xfee00000
+
 #define E820_NR_ENTRIES		16
 
 struct e820_entry {
