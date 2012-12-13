@@ -170,7 +170,8 @@ static void pc_init1(MemoryRegion *system_memory,
     }
 
     /* init basic PC hardware */
-    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy, xen_enabled());
+    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
+                         xen_enabled() && !vmware_hw);
 
     pc_nic_init(isa_bus, pci_bus);
 
