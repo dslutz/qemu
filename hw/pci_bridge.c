@@ -32,6 +32,7 @@
 #include "pci_bridge.h"
 #include "pci_internals.h"
 #include "range.h"
+#include "trace.h"
 
 /* PCI bridge subsystem vendor ID helper functions */
 #define PCI_SSVID_SIZEOF        8
@@ -147,6 +148,11 @@ static void pci_bridge_init_alias(PCIBridge *bridge, MemoryRegion *alias,
      * Apparently no way to do this with existing memory APIs. */
     pcibus_t size = enabled && limit >= base ? limit + 1 - base : 0;
 
+    trace_pci_bridge_init_alias(bridge, pci_bus_num(bridge->dev.bus),
+                                PCI_SLOT(bridge->dev.devfn),
+                                PCI_FUNC(bridge->dev.devfn),
+                                name, enabled, base, limit,
+                                size);
     memory_region_init_alias(alias, name, space, base, size);
     memory_region_add_subregion_overlap(parent_space, base, alias, 1);
 }

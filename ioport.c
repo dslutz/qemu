@@ -249,6 +249,7 @@ static void iorange_destructor_thunk(void *opaque)
 
 void ioport_register(IORange *ioport)
 {
+    trace_ioport_register(ioport, ioport->base, ioport->len);
     register_ioport_read(ioport->base, ioport->len, 1,
                          ioport_readb_thunk, ioport);
     register_ioport_read(ioport->base, ioport->len, 2,
