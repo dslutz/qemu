@@ -902,6 +902,7 @@ static void memory_region_dispatch_write(MemoryRegion *mr,
                                          unsigned size)
 {
     if (!memory_region_access_valid(mr, addr, size, true)) {
+        fprintf(stderr, "Invalid write to memory region %s: 0x%lx(%d)\n", mr->name, (long)addr, size);
         return; /* FIXME: better signalling */
     }
 
