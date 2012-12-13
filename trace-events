@@ -809,6 +809,10 @@ xen_unmap_block(void* addr, unsigned long size) "%p, size %#lx"
 
 # exec.c
 qemu_put_ram_ptr(void* addr) "%p"
+address_space_rw_write_not_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
+address_space_rw_write_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
+address_space_rw_read_not_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
+address_space_rw_read_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
 
 # hw/xen_platform.c
 xen_platform_log(char *s) "xen platform: %s"

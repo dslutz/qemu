@@ -3389,6 +3389,8 @@ void address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
             if (!memory_region_is_ram(section->mr)) {
                 hwaddr addr1;
                 addr1 = memory_region_section_addr(section, addr);
+                trace_address_space_rw_write_not_ram(as, addr, buf, len, addr1,
+                                                     l, section->mr->name);
                 /* XXX: could force cpu_single_env to NULL to avoid
                    potential bugs */
                 if (l >= 4 && ((addr1 & 3) == 0)) {
@@ -3411,6 +3413,8 @@ void address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                 ram_addr_t addr1;
                 addr1 = memory_region_get_ram_addr(section->mr)
                     + memory_region_section_addr(section, addr);
+                trace_address_space_rw_write_ram(as, addr, buf, len, addr1,
+                                                 l, section->mr->name);
                 /* RAM case */
                 ptr = qemu_get_ram_ptr(addr1);
                 memcpy(ptr, buf, l);
@@ -3423,6 +3427,8 @@ void address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                 hwaddr addr1;
                 /* I/O case */
                 addr1 = memory_region_section_addr(section, addr);
+                trace_address_space_rw_read_not_ram(as, addr, buf, len, addr1, l,
+                                                    section->mr->name);
                 if (l >= 4 && ((addr1 & 3) == 0)) {
                     /* 32 bit read access */
                     val = io_mem_read(section->mr, addr1, 4);
@@ -3440,10 +3446,13 @@ void address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                     l = 1;
                 }
             } else {
+                hwaddr addr1;
                 /* RAM case */
-                ptr = qemu_get_ram_ptr(section->mr->ram_addr
-                                       + memory_region_section_addr(section,
-                                                                    addr));
+                addr1 = section->mr->ram_addr
+                    + memory_region_section_addr(section, addr);
+                trace_address_space_rw_read_ram(as, addr, buf, len, addr1, l,
+                                                 section->mr->name);
+                ptr = qemu_get_ram_ptr(addr1);
                 memcpy(buf, ptr, l);
                 qemu_put_ram_ptr(ptr);
             }
