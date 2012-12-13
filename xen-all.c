@@ -693,26 +693,36 @@ static void cpu_ioreq_pio(ioreq_t *req)
     if (req->dir == IOREQ_READ) {
         if (!req->data_is_ptr) {
             req->data = do_inp(req->addr, req->size);
+            trace_cpu_ioreq_pio_read_reg(req, req->data, req->addr,
+                                         req->size);
         } else {
             uint32_t tmp;
+            target_phys_addr_t mem_addr;
 
             for (i = 0; i < req->count; i++) {
+                mem_addr = req->data + (sign * i * (int64_t)req->size);
                 tmp = do_inp(req->addr, req->size);
-                cpu_physical_memory_write(
-                        req->data + (sign * i * (int64_t)req->size),
-                        (uint8_t *) &tmp, req->size);
+                trace_cpu_ioreq_pio_read_mem(req, mem_addr, tmp,
+                                             req->addr, req->size);
+                cpu_physical_memory_write(mem_addr,
+                                          (uint8_t *) &tmp, req->size);
             }
         }
     } else if (req->dir == IOREQ_WRITE) {
         if (!req->data_is_ptr) {
+            trace_cpu_ioreq_pio_write_reg(req, req->data, req->addr,
+                                          req->size);
             do_outp(req->addr, req->size, req->data);
         } else {
             for (i = 0; i < req->count; i++) {
                 uint32_t tmp = 0;
+                target_phys_addr_t mem_addr = req->data +
+                    (sign * i * (int64_t)req->size);
 
-                cpu_physical_memory_read(
-                        req->data + (sign * i * (int64_t)req->size),
-                        (uint8_t*) &tmp, req->size);
+                cpu_physical_memory_read(mem_addr,
+                                         (uint8_t*) &tmp, req->size);
+                trace_cpu_ioreq_pio_write_mem(req, mem_addr, tmp,
+                                              req->addr, req->size);
                 do_outp(req->addr, req->size, tmp);
             }
         }
@@ -768,13 +778,17 @@ static void cpu_ioreq_move(ioreq_t *req)
 
 static void handle_ioreq(ioreq_t *req)
 {
+    trace_handle_ioreq(req, req->type, req->dir, req->df, req->data_is_ptr,
+                       req->addr, req->data, req->count, req->size);
+
     if (!req->data_is_ptr && (req->dir == IOREQ_WRITE) &&
             (req->size < sizeof (target_ulong))) {
         req->data &= ((target_ulong) 1 << (8 * req->size)) - 1;
     }
 
-    trace_handle_ioreq(req, req->type, req->dir, req->df, req->data_is_ptr, req->addr,
-                       req->data, req->count, req->size);
+    if (req->dir == IOREQ_WRITE)
+        trace_handle_ioreq_write(req, req->type, req->df, req->data_is_ptr,
+                                 req->addr, req->data, req->count, req->size);
 
     switch (req->type) {
         case IOREQ_TYPE_PIO:
@@ -791,6 +805,9 @@ static void handle_ioreq(ioreq_t *req)
         default:
             hw_error("Invalid ioreq type 0x%x\n", req->type);
     }
+    if (req->dir == IOREQ_READ)
+        trace_handle_ioreq_read(req, req->type, req->df, req->data_is_ptr,
+                                req->addr, req->data, req->count, req->size);
 }
 
 static int handle_buffered_iopage(XenIOState *state)

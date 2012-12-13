@@ -1149,9 +1149,15 @@ pcnet_mmio_readl(void *opaque, uint64_t addr, uint32_t val) "opaque=%p addr=0x%"
 vmxnet_init_addr(uint64_t VMXDATA, uint32_t rxRingLength, uint32_t rxRingOffset, uint32_t rxRingLength2, uint32_t rxRingOffset2, uint32_t txRingLength, uint32_t txRingOffset) "VMXDATA=0x%"PRIx64" rxRingLength=%d rxRingOffset=%d rxRingLength2=%d rxRingOffset2=%d txRingLength=%d txRingOffset=%d"
 
 # xen-all
-handle_ioreq(void *req, uint32_t type, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O type=%d dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
-cpu_ioreq_pio(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O pio dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
-cpu_ioreq_move(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O copy dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%"FMT_ioreq_size" size=%"FMT_ioreq_size
+handle_ioreq(void *req, uint32_t type, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p type=%d dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%d size=%d"
+handle_ioreq_read(void *req, uint32_t type, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p read type=%d df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%d size=%d"
+handle_ioreq_write(void *req, uint32_t type, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p write type=%d df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%d size=%d"
+cpu_ioreq_pio(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p pio dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%d size=%d"
+cpu_ioreq_pio_read_reg(void *req, uint64_t data, uint64_t addr, uint32_t size) "I/O=%p pio read reg data=%"PRIx64" port=%"PRIx64" size=%d"
+cpu_ioreq_pio_read_mem(void *req, uint64_t mem_addr, uint32_t data, uint64_t addr, uint32_t size) "I/O=%p pio read mem_addr=%"PRIx64" data=%x port=%"PRIx64" size=%d"
+cpu_ioreq_pio_write_reg(void *req, uint64_t data, uint64_t addr, uint32_t size) "I/O=%p pio write reg data=%"PRIx64" port=%"PRIx64" size=%d"
+cpu_ioreq_pio_write_mem(void *req, uint64_t mem_addr, uint32_t data, uint64_t addr, uint32_t size) "I/O=%p pio write mem_addr=%"PRIx64" data=%x port=%"PRIx64" size=%d"
+cpu_ioreq_move(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p copy dir=%x df=%x ptr=%x port=%"PRIx64" data=%"PRIx64" count=%d size=%d"
 
 # ui/vnc-enc-tight.c
 check_solid_tile(void *vs, int x, int y, int w, int h, int max_w, int max_h) "BAD vs=%p x=%d y=%d w=%d h=%d max_w=%d max_h=%d"
