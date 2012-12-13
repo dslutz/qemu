@@ -308,6 +308,7 @@ int pci_bridge_initfn(PCIDevice *dev)
     PCIBus *parent = dev->bus;
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
     PCIBus *sec_bus = &br->sec_bus;
+    char *name;
 
     pci_word_test_and_set_mask(dev->config + PCI_STATUS,
                                PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
@@ -333,9 +334,13 @@ int pci_bridge_initfn(PCIDevice *dev)
     sec_bus->parent_dev = dev;
     sec_bus->map_irq = br->map_irq;
     sec_bus->address_space_mem = &br->address_space_mem;
-    memory_region_init(&br->address_space_mem, "pci_bridge_pci", INT64_MAX);
+    name = g_strdup_printf("pci_bridge_pci-%s", br->bus_name);
+    memory_region_init(&br->address_space_mem, name, INT64_MAX);
+    g_free(name);
     sec_bus->address_space_io = &br->address_space_io;
-    memory_region_init(&br->address_space_io, "pci_bridge_io", 65536);
+    name = g_strdup_printf("pci_bridge_io-%s", br->bus_name);
+    memory_region_init(&br->address_space_io, name, 65536);
+    g_free(name);
     br->windows = pci_bridge_region_init(br);
     QLIST_INIT(&sec_bus->child);
     QLIST_INSERT_HEAD(&parent->child, sec_bus, sibling);

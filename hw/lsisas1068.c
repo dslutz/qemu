@@ -5955,6 +5955,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 {
     MptState *s = DO_UPCAST(MptState, dev, dev);
     uint8_t *pci_conf;
+    char *name;
 
     s->ctrl_type = ctrl_type;
 
@@ -5980,13 +5981,19 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     /* Interrupt pin 1 */
     pci_conf[PCI_INTERRUPT_PIN] = 0x01;
 
+    name = g_strdup_printf("lsimpt-io-%s", dev->name);
     memory_region_init_io(&s->port_io, &mpt_port_ops, s,
-                          "lsimpt-io", 128);
+                          name, 128);
+    g_free(name);
+    name = g_strdup_printf("lsimpt-mmio-%s", dev->name);
     memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
-                          "lsimpt-mmio", 0x1000);
+                          name, 0x1000);
+    g_free(name);
     if (!vmware_hw) {
+        name = g_strdup_printf("lsimpt-diag-%s", dev->name);
         memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
-                              "lsimpt-diag", 0x10000);
+                              name, 0x10000);
+        g_free(name);
     }
 
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);

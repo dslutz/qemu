@@ -697,7 +697,7 @@ static void cpu_ioreq_pio(ioreq_t *req)
                                          req->size);
         } else {
             uint32_t tmp;
-            target_phys_addr_t mem_addr;
+            hwaddr mem_addr;
 
             for (i = 0; i < req->count; i++) {
                 mem_addr = req->data + (sign * i * (int64_t)req->size);
@@ -716,7 +716,7 @@ static void cpu_ioreq_pio(ioreq_t *req)
         } else {
             for (i = 0; i < req->count; i++) {
                 uint32_t tmp = 0;
-                target_phys_addr_t mem_addr = req->data +
+                hwaddr mem_addr = req->data +
                     (sign * i * (int64_t)req->size);
 
                 cpu_physical_memory_read(mem_addr,

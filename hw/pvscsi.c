@@ -1027,6 +1027,7 @@ pvscsi_init(PCIDevice *dev)
     };
 
     PVSCSI_State *s = DO_UPCAST(PVSCSI_State, dev, dev);
+    char *name;
 
     trace_pvscsi_state("init");
 
@@ -1042,8 +1043,10 @@ pvscsi_init(PCIDevice *dev)
     /* Interrupt pin A */
     pci_config_set_interrupt_pin(s->dev.config, 1);
 
+    name = g_strdup_printf("pvscsi-io-%s", dev->name);
     memory_region_init_io(&s->io_space, &pv_scsi_ops, s,
-                          "pvscsi-io", PVSCSI_MEM_SPACE_SIZE);
+                          name, PVSCSI_MEM_SPACE_SIZE);
+    g_free(name);
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->io_space);
 
     pvscsi_init_pcie(s);
