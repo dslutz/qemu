@@ -1184,3 +1184,34 @@ pci_update_mappings_add(void *d, uint32_t bus, uint32_t func, uint32_t slot, int
 
 # hw/pci_bridge.c
 pci_bridge_init_alias(void *bridge, uint32_t bus, uint32_t func, uint32_t slot, const char *name, int enabled, uint64_t base, uint64_t limit, uint64_t size) "bridge=%p %02x:%02x.%x %s,%d,%#"PRIx64"-%#"PRIx64";%#"PRIx64
+
+# hw/vmport.c
+vmport_register(unsigned char command, void *func, void *opaque) "command=%#x func=%p opaque=%p"
+vmport_register_bad(unsigned char command, void *func, void *opaque) "command=%#x func=%p opaque=%p"
+vmport_ioport_read(void *opaque, uint64_t addr, uint32_t size) "opaque=%p addr=%#"PRIx64" size=%d"
+vmport_ioport_read_bad(void *opaque, uint64_t addr, uint32_t size, uint32_t eax) "opaque=%p addr=%#"PRIx64" size=%d eax=%#x"
+vmport_ioport_read_big(void *opaque, uint64_t addr, uint32_t size, unsigned char command) "opaque=%p addr=%#"PRIx64" size=%d command=%#x"
+vmport_ioport_read_unknown(void *opaque, uint64_t addr, uint32_t size, unsigned char command) "opaque=%p addr=%#"PRIx64" size=%d command=%#x"
+vmport_ioport_write(void *opaque, uint64_t addr, uint64_t val, uint32_t size) "opaque=%p addr=%#"PRIx64" val=%#"PRIx64" size=%d"
+
+# hw/vmmouse.c
+vmmouse_get_status(void *s, uint16_t status, uint16_t nb_queue) "s=%p status=%#x nb_queue=%#x"
+vmmouse_mouse_event(void *opaque, int x, int y, int dz, int buttons_state, uint16_t nb_queue) "opaque=%p x=%d y=%d dz=%d buttons_state=%#x nb_queue=%#x"
+vmmouse_mouse_event_full(void *opaque, int x, int y, int dz, int buttons_state, uint16_t nb_queue) "opaque=%p x=%d y=%d dz=%d buttons_state=%#x nb_queue=%#x"
+vmmouse_remove_handler(void *s) "s=%p"
+vmmouse_remove_handler_active(void *s, void *entry) "s=%p entry=%p"
+vmmouse_update_handler_status(void *s, uint16_t status) "s=%p status=%#x"
+vmmouse_update_handler_absolute(void *s, int absolute, int absolute_old) "s=%p absolute=%d s->absolute=%d"
+vmmouse_update_handler(void *s, int absolute) "s=%p absolute=%d"
+vmmouse_read_id_full(void *s, uint16_t nb_queue) "s=%p nb_queue=%#x"
+vmmouse_read_id(void *s, uint16_t nb_queue) "s=%p nb_queue=%#x"
+vmmouse_request_relative(void *s) "s=%p"
+vmmouse_request_absolute(void *s) "s=%p"
+vmmouse_disable(void *s) "s=%p"
+vmmouse_data(void *s, uint32_t *data, uint32_t size) "s=%p data=%p size=%d"
+vmmouse_ioport_read(void *opaque, uint32_t addr, uint16_t command) "opaque=%p addr=%#x command=%#x"
+vmmouse_ioport_read_unknown_vmcommand(void *opaque, uint32_t addr, uint32_t command) "opaque=%p addr=%#x command=%#x"
+vmmouse_ioport_read_unknown_command(void *opaque, uint32_t addr, uint16_t command) "opaque=%p addr=%#x command=%#x"
+vmmouse_reset(void *s) "s=%p"
+vmmouse_initfn(void *s, void *dev) "s=%p dev=%p"
+vmmouse_post_load(void *opaque, int version_id) "opaque=%p version_id=%d"

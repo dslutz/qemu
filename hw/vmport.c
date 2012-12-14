@@ -26,6 +26,7 @@
 #include "pc.h"
 #include "kvm.h"
 #include "qdev.h"
+#include "trace.h"
 
 //#define VMPORT_DEBUG
 
@@ -47,9 +48,12 @@ static VMPortState *port_state;
 
 void vmport_register(unsigned char command, IOPortReadFunc *func, void *opaque)
 {
-    if (command >= VMPORT_ENTRIES)
+    if (command >= VMPORT_ENTRIES) {
+        trace_vmport_register_bad(command, func, opaque);
         return;
+    }
 
+    vmport_register(command, func, opaque);
     port_state->func[command] = func;
     port_state->opaque[command] = opaque;
 }
@@ -62,17 +66,23 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
     unsigned char command;
     uint32_t eax;
 
+    trace_vmport_ioport_read(opaque, addr, size);
     cpu_synchronize_state(env);
 
     eax = env->regs[R_EAX];
-    if (eax != VMPORT_MAGIC)
+    if (eax != VMPORT_MAGIC) {
+        trace_vmport_ioport_read_bad(opaque, addr, size, eax);
         return eax;
+    }
 
     command = env->regs[R_ECX];
-    if (command >= VMPORT_ENTRIES)
+    if (command >= VMPORT_ENTRIES) {
+        trace_vmport_ioport_read_big(opaque, addr, size, command);
         return eax;
+    }
     if (!s->func[command])
     {
+        trace_vmport_ioport_read_unknown(opaque, addr, size, command);
 #ifdef VMPORT_DEBUG
         fprintf(stderr, "vmport: unknown command %x\n", command);
 #endif
@@ -87,6 +97,7 @@ static void vmport_ioport_write(void *opaque, hwaddr addr,
 {
     CPUX86State *env = cpu_single_env;
 
+    trace_vmport_ioport_write(opaque, addr, val, size);
     env->regs[R_EAX] = vmport_ioport_read(opaque, addr, 4);
 }
 
