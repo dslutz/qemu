@@ -53,7 +53,7 @@ void vmport_register(unsigned char command, IOPortReadFunc *func, void *opaque)
         return;
     }
 
-    vmport_register(command, func, opaque);
+    trace_vmport_register(command, func, opaque);
     port_state->func[command] = func;
     port_state->opaque[command] = opaque;
 }

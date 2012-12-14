@@ -114,7 +114,7 @@ static void vmmouse_remove_handler(VMMouseState *s)
         qemu_remove_mouse_event_handler(s->entry);
         s->entry = NULL;
     } else {
-        vmmouse_remove_handler(s);
+        trace_vmmouse_remove_handler(s);
     }
 }
 
