@@ -2003,10 +2003,22 @@ int main(int argc, char **argv)
 
     qemu_init_main_loop();
     bdrv_init();
-    if (argc < 2)
+    if (argc < 2) {
         help();
+        return 0;
+    }
     cmdname = argv[1];
     argc--; argv++;
+
+    /* Report pkgversion */
+    if (!strcmp(cmdname, "--pkgversion")) {
+        printf("qemu-img version " QEMU_VERSION " pkgversion " QEMU_PKGVERSION "\n");
+        if (argc < 2) {
+            return 0;
+        }
+        cmdname = argv[1];
+        argc--; argv++;
+    }
 
     /* find the command */
     for(cmd = img_cmds; cmd->name != NULL; cmd++) {
