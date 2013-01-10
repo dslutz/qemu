@@ -5999,9 +5999,13 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     }
 
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
-    pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
+    if (vmware_hw) {
+        pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                     PCI_BASE_ADDRESS_MEM_TYPE_64, &s->mmio_io);
+    } else {
+        pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
                      PCI_BASE_ADDRESS_MEM_TYPE_32, &s->mmio_io);
-    if (!vmware_hw) {
+        /* if using 64 bit bar for mmio, this needs to use 3 instead of 2. */
         pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
                          PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
     }
