@@ -368,6 +368,7 @@ static bool scsi_target_emulate_report_luns(SCSITargetReq *r)
     }
     assert(i == n + 8);
     r->len = len;
+    trace_scsi_report_luns_extra(channel, id, i, n, found_lun0, len);
     return true;
 }
 

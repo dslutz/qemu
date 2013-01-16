@@ -3331,7 +3331,7 @@ static void mpt_update_interrupt(MptState *s)
             qemu_irq_raise(s->dev.irq[0]);
         }
     } else if (!msix_enabled(&s->dev)) {
-        trace_mpt_irq_lower();
+        trace_mpt_irq_lower(s->intr_status, s->intr_mask);
         qemu_irq_lower(s->dev.irq[0]);
     }
 }
@@ -3605,7 +3605,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
         cmd->iov_size = le32_to_cpu(cmd->request.scsi_io.data_length);
         trace_mpt_handle_scsi("SCSI IO", 0,
                               cmd->request.scsi_io.target_id,
-                              cmd->request.scsi_io.lun[1], sdev, cmd->iov_size);
+                              cmd->request.scsi_io.lun[1], sdev, cmd->iov_size, cmd->request.scsi_io.cdb[0]);
         if (sdev) {
             uint32_t chain_offset = cmd->request.scsi_io.chain_offset;
             int32_t len;
@@ -3637,6 +3637,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
                                     cmd->request.scsi_io.cdb, cmd);
             len = scsi_req_enqueue(cmd->req);
             if (len < 0) {
+                trace_mpt_negative_enqueue(len);
                 len = -len;
             }
             if (len > 0) {
@@ -4591,6 +4592,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         reply->ioc_facts.max_buses = s->max_buses;
         reply->ioc_facts.fw_image_size = 0;
         reply->ioc_facts.fw_version = 0x1329200;
+        trace_mpt_ioc_facts(s->ports, s->max_devices);
         break;
     }
     case MPT_MESSAGE_HDR_FUNCTION_PORT_FACTS:
@@ -4633,6 +4635,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
                 reply->port_facts.max_lan_buckets = 0;
             }
         }
+        trace_mpt_port_facts(s, pport_factsReq->port_number, pport_factsReq->message_flags, reply->port_facts.port_type, reply->port_facts.max_devices);
         break;
     }
     case MPT_MESSAGE_HDR_FUNCTION_PORT_ENABLE:
@@ -4727,8 +4730,8 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
     mpt_finish_address_reply(s, reply, fForceReplyPostFifo);
 }
 
-static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
-                              unsigned size)
+static uint64_t mpt_mmio_read_internal(void *opaque, hwaddr addr,
+                                       unsigned size, bool is_port)
 {
     MptState *s = opaque;
     uint32_t retval = 0;
@@ -4744,7 +4747,16 @@ static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
          * of the reply during one read.
          */
         if (s->doorbell) {
-            retval |= s->reply_buffer.areply[s->next_reply_entry_read++];
+            retval |= s->reply_buffer.areply[s->next_reply_entry_read];
+            /* The guest may read the doorbell multiple times before
+             * acknowledging it, so don't increment next_reply_entry_read until
+             * the acknowledgement (clearing the interrupt)
+             * Exception: The guest doesn't use acknowledgements if reading
+             * through io space as opposed to mmio.
+             */
+            if (is_port) {
+                ++(s->next_reply_entry_read);
+            }
         } else {
             retval |= s->ioc_fault_code;
         }
@@ -4792,6 +4804,12 @@ static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
     return retval;
 }
 
+static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
+                              unsigned size)
+{
+    return mpt_mmio_read_internal(opaque, addr, size, false);
+}
+
 static void mpt_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size)
 {
@@ -4799,7 +4817,7 @@ static void mpt_mmio_write(void *opaque, hwaddr addr,
 
     MptState *s = opaque;
 
-    trace_mpt_mmio_writel(addr, val);
+    trace_mpt_mmio_writel(addr, val, (int) s->doorbell, s->next_reply_entry_read, s->drbl_message_index, s->drbl_message_size);
     switch (addr) {
     case MPT_REG_REPLY_QUEUE:
         s->reply_free_queue[s->reply_free_queue_next_entry_free_write++] = val;
@@ -4855,7 +4873,7 @@ static void mpt_mmio_write(void *opaque, hwaddr addr,
     case MPT_REG_HOST_INTR_STATUS:
         s->intr_status &= ~MPT_REG_HOST_INTR_STATUS_SYSTEM_DOORBELL;
         if (s->doorbell && s->drbl_message_size == s->drbl_message_index) {
-            if (s->next_reply_entry_read == s->reply_size) {
+            if (++(s->next_reply_entry_read) >= s->reply_size) {
                 s->doorbell = false;
             }
             s->intr_status |= MPT_REG_HOST_INTR_STATUS_SYSTEM_DOORBELL;
@@ -4913,7 +4931,7 @@ static const MemoryRegionOps mpt_mmio_ops = {
 static uint64_t mpt_port_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
-    uint64_t val = mpt_mmio_read(opaque, addr & 0xff, size);
+    uint64_t val = mpt_mmio_read_internal(opaque, addr & 0xff, size, true);
     trace_mpt_port_read(opaque, addr, val, size);
     return val;
 }
