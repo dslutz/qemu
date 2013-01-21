@@ -4536,6 +4536,11 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         s->reply_frame_size = p_ioc_init_req->reply_frame_size;
         s->max_buses = p_ioc_init_req->max_buses;
         s->max_devices = p_ioc_init_req->max_devices;
+        if (s->max_devices == 0) {
+            /* FreeBSD sets this to 0 to indicate it can handle (I guess) a
+             * "lot." */
+            s->max_devices = 256;
+        }
         s->host_mfa_high_addr = p_ioc_init_req->host_mfa_high_addr;
         s->sense_buffer_high_addr = p_ioc_init_req->sense_buffer_high_addr;
 
