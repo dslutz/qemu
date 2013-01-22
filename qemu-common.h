@@ -52,6 +52,7 @@ typedef struct MigrationParams MigrationParams;
 
 extern int vmware_hw;
 extern int xen_platform_pci;
+extern uint64_t pci_hole_min_size;
 
 #ifdef _WIN32
 #include "qemu-os-win32.h"
