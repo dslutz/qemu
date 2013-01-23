@@ -4361,6 +4361,8 @@ static int mpt_process_config_req(MptState *s,
     reply->function = config_req->function;
     reply->message_context = config_req->message_context;
 
+    trace_mpt_process_config_req(config_req->action, config_req->function, config_req->message_context, config_req->page_type, config_req->ext_page_type, config_req->page_number, config_req->page_address.page_address);
+
     switch (MPT_CONFIGURATION_PAGE_TYPE_GET(config_req->page_type)) {
     case MPT_CONFIGURATION_PAGE_TYPE_IO_UNIT:
     {
@@ -4422,6 +4424,7 @@ static int mpt_process_config_req(MptState *s,
     }
 
     if (rc == -1) {
+        trace_mpt_err_config(config_req->page_type, config_req->action, config_req->ext_page_type, config_req->page_number, config_req->page_length, config_req->page_version, config_req->page_address.page_address);
         reply->page_type = config_req->page_type;
         reply->page_number = config_req->page_number;
         reply->page_length = config_req->page_length;

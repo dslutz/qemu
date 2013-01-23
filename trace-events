@@ -608,8 +608,10 @@ mpt_port_write(void *opaque, uint64_t addr, uint64_t val, uint32_t size) "mpt=%p
 mpt_port_facts(void *opaque, uint8_t port_number, uint8_t message_flags, uint8_t port_type, uint16_t max_devices) "mpt=%p port_number=%hhu message_flags=%hhu port_type=%hhx max_devices=%hu"
 mpt_negative_enqueue(int32_t len) "len=%d"
 mpt_ioc_facts(uint32_t ports, uint16_t max_devices) "ports=%u max_devices=%hu"
+mpt_process_config_req(int action, int function, int message_context, int page_type, int ext_page_type, int page_number, int page_address) "action=0x%x function=0x%x context=0x%x page_type=0x%x ext_page_type=0x%x page_number=0x%x page_address=0x%x"
 mpt_err_io_request(void *s, int ioc_status, int target_id, unsigned int cmd, unsigned int bus, unsigned int max_devices) "mpt=%p ioc_status=%d target_id=%d cmd=%u bus=%u max_devices=%u"
 mpt_err_command(int status, int target_id) "status=%d target_id=%d"
+mpt_err_config(int page_type, int action, int ext_page_type, int page_number, int page_length, int page_version, int page_address) "page_type=0x%x action=0x%x ext_page_type=0x%x page_number=0x%x page_length=0x%x page_version=0x%x page_address=0x%x"
 
 # hw/pvscsi.c
 pvscsi_rings_mgr_init(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"
