@@ -2975,6 +2975,8 @@ typedef struct QEMU_PACKED MptConfigurationPagesSas {
     /** I/O unit page 3 */
     MptConfigurationPageSASIOUnit3      sas_io_unit_page_3;
 
+    MptConfigurationPageSASExpander0    sas_expander_page_0;
+
     /** Number of PHYs in the array. */
     uint32_t                            c_phy_s;
     /** Pointer to an array of per PHYS pages. */
@@ -3054,11 +3056,11 @@ typedef struct MptConfigurationPagesSupported {
  * Initializes a extended page header.
  */
 #define MPT_CONFIG_EXTENDED_PAGE_HEADER_INIT(pg, cb, nr, flags, exttype) \
-    (pg)->u.fields.ext_hdr.page_type = flags |                           \
+    (pg)->u.fields.ext_hdr.page_type = (flags) |                         \
         MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;                            \
-    (pg)->u.fields.ext_hdr.page_number = nr;                             \
-    (pg)->u.fields.ext_hdr.ext_page_type = exttype;                      \
-    (pg)->u.fields.ext_hdr.ext_page_len = cb / 4
+    (pg)->u.fields.ext_hdr.page_number = (nr);                           \
+    (pg)->u.fields.ext_hdr.ext_page_type = (exttype);                    \
+    (pg)->u.fields.ext_hdr.ext_page_len = (cb) / 4
 
 /**
  * Possible SG element types.
@@ -4320,7 +4322,16 @@ static int mpt_config_page_get_extended(
         break;
     }
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASEXPANDER:
-        /* No expanders supported */
+    {
+        /* NetApp requires that we return a header here.  The rest of the
+         * page doesn't have to exist. */
+        if (pConfigurationReq->action == MPT_CONFIGURATION_REQUEST_ACTION_HEADER) {
+            *pp_page_header = &p_lsi_logic->config_pages->u.sas_pages
+                    .sas_expander_page_0.u.fields.ext_hdr;
+            break;
+        }
+        /* No expanders supported  - fallthrough */
+    }
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_LOG:
         /* No log supported */
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_ENCLOSURE:
@@ -5233,6 +5244,16 @@ static void mpt_init_config_pages_sas(MptState *s)
         MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASIOUNIT;
     p_pages->sas_io_unit_page_3.u.fields.ext_hdr.ext_page_len =
         sizeof(MptConfigurationPageSASIOUnit3) / 4;
+
+    p_pages->sas_expander_page_0.u.fields.ext_hdr.page_version = 3;
+    MPT_CONFIG_EXTENDED_PAGE_HEADER_INIT(
+        &p_pages->sas_expander_page_0,
+        sizeof(MptConfigurationPageSASExpander0),
+        0,
+        0,
+        MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASEXPANDER);
+    /* No initialization for the rest of the expander structure because we
+     * aren't really an expander, and won't return it to the guest. */
 
     p_pages->c_phy_s = s->ports;
     p_pages->pa_phy_s = (PMptPHY)g_malloc0(p_pages->c_phy_s * sizeof(MptPHY));
