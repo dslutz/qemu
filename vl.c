@@ -271,6 +271,7 @@ int kvm_allowed = 0;
 int xen_allowed = 0;
 int vmware_hw = 0;
 int xen_platform_pci = 0;
+uint64_t pci_hole_min_size = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;
@@ -3720,8 +3721,11 @@ int main(int argc, char **argv, char **envp)
                                           vmware_hw);
         xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci",
                                              xen_enabled());
-        printf("%s: vmware_hw=%d xen_platform_pci=%d\n",
-               __func__, vmware_hw, xen_platform_pci);
+        pci_hole_min_size = qemu_opt_get_number(machine_opts,
+                                        "pci_hole_min_size", pci_hole_min_size);
+        printf("%s: vmware_hw=%d xen_platform_pci=%d pci_hole_min_size=%llu\n",
+               __func__, vmware_hw, xen_platform_pci,
+                           (unsigned long long) pci_hole_min_size);
     } else {
         kernel_filename = initrd_filename = kernel_cmdline = NULL;
     }

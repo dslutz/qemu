@@ -153,6 +153,15 @@ qemu_irq *xen_interrupt_controller_init(void)
 
 /* Memory Ops */
 
+static uint64_t mmio_hole_size(void)
+{
+    uint64_t sz = HVM_BELOW_4G_MMIO_LENGTH;
+    if (sz < pci_hole_min_size) {
+        sz = pci_hole_min_size;
+    }
+    return sz;
+}
+
 static void xen_ram_init(ram_addr_t ram_size)
 {
     MemoryRegion *sysmem = get_system_memory();
@@ -160,21 +169,22 @@ static void xen_ram_init(ram_addr_t ram_size)
     ram_addr_t block_len;
 
     block_len = ram_size;
-    if (ram_size >= HVM_BELOW_4G_RAM_END) {
+    below_4g_mem_size = (((uint64_t) 1) << 32) - mmio_hole_size();
+    if (ram_size < below_4g_mem_size) {
+        below_4g_mem_size = ram_size;
+    } else if (ram_size > below_4g_mem_size) {
         /* Xen does not allocate the memory continuously, and keep a hole at
          * HVM_BELOW_4G_MMIO_START of HVM_BELOW_4G_MMIO_LENGTH
          */
-        block_len += HVM_BELOW_4G_MMIO_LENGTH;
+        block_len += mmio_hole_size();
     }
     memory_region_init_ram(&ram_memory, "xen.ram", block_len);
     vmstate_register_ram_global(&ram_memory);
 
-    if (ram_size >= HVM_BELOW_4G_RAM_END) {
-        above_4g_mem_size = ram_size - HVM_BELOW_4G_RAM_END;
-        below_4g_mem_size = HVM_BELOW_4G_RAM_END;
-    } else {
-        below_4g_mem_size = ram_size;
+    if (ram_size >= below_4g_mem_size) {
+        above_4g_mem_size = ram_size - below_4g_mem_size;
     }
+    printf("below=%llx above=%llx\n", (unsigned long long) below_4g_mem_size, (unsigned long long) above_4g_mem_size);
 
     memory_region_init_alias(&ram_640k, "xen.ram.640k",
                              &ram_memory, 0, 0xa0000);
