@@ -3499,6 +3499,7 @@ static void mpt_command_complete(SCSIRequest *req,
         cmd->reply.scsi_io_error.sense_count = sense_len;
         cmd->reply.scsi_io_error.response_info = 0;
 
+        trace_mpt_err_command(req->status, cmd->reply.scsi_io_error.target_id);
         mpt_finish_address_reply(cmd->state, &cmd->reply, true);
     } else {
         mpt_finish_context_reply(cmd->state,
@@ -3700,6 +3701,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
     cmd->reply.scsi_io_error.sense_count = 0;
     cmd->reply.scsi_io_error.response_info = 0;
 
+    trace_mpt_err_io_request(s, cmd->reply.scsi_io_error.ioc_status, cmd->reply.scsi_io_error.target_id, cmd->request.scsi_io.cdb[0], cmd->reply.scsi_io_error.bus, s->max_devices);
     mpt_finish_address_reply(s, &cmd->reply, false);
     g_free(cmd);
 
