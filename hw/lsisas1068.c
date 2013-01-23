@@ -2975,6 +2975,8 @@ typedef struct QEMU_PACKED MptConfigurationPagesSas {
     /** I/O unit page 3 */
     MptConfigurationPageSASIOUnit3      sas_io_unit_page_3;
 
+    MptConfigurationPageSASExpander0    sas_expander_page_0;
+
     /** Number of PHYs in the array. */
     uint32_t                            c_phy_s;
     /** Pointer to an array of per PHYS pages. */
@@ -3054,11 +3056,11 @@ typedef struct MptConfigurationPagesSupported {
  * Initializes a extended page header.
  */
 #define MPT_CONFIG_EXTENDED_PAGE_HEADER_INIT(pg, cb, nr, flags, exttype) \
-    (pg)->u.fields.ext_hdr.page_type = flags |                           \
+    (pg)->u.fields.ext_hdr.page_type = (flags) |                         \
         MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;                            \
-    (pg)->u.fields.ext_hdr.page_number = nr;                             \
-    (pg)->u.fields.ext_hdr.ext_page_type = exttype;                      \
-    (pg)->u.fields.ext_hdr.ext_page_len = cb / 4
+    (pg)->u.fields.ext_hdr.page_number = (nr);                           \
+    (pg)->u.fields.ext_hdr.ext_page_type = (exttype);                    \
+    (pg)->u.fields.ext_hdr.ext_page_len = (cb) / 4
 
 /**
  * Possible SG element types.
@@ -3331,7 +3333,7 @@ static void mpt_update_interrupt(MptState *s)
             qemu_irq_raise(s->dev.irq[0]);
         }
     } else if (!msix_enabled(&s->dev)) {
-        trace_mpt_irq_lower();
+        trace_mpt_irq_lower(s->intr_status, s->intr_mask);
         qemu_irq_lower(s->dev.irq[0]);
     }
 }
@@ -3499,6 +3501,7 @@ static void mpt_command_complete(SCSIRequest *req,
         cmd->reply.scsi_io_error.sense_count = sense_len;
         cmd->reply.scsi_io_error.response_info = 0;
 
+        trace_mpt_err_command(req->status, cmd->reply.scsi_io_error.target_id);
         mpt_finish_address_reply(cmd->state, &cmd->reply, true);
     } else {
         mpt_finish_context_reply(cmd->state,
@@ -3605,7 +3608,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
         cmd->iov_size = le32_to_cpu(cmd->request.scsi_io.data_length);
         trace_mpt_handle_scsi("SCSI IO", 0,
                               cmd->request.scsi_io.target_id,
-                              cmd->request.scsi_io.lun[1], sdev, cmd->iov_size);
+                              cmd->request.scsi_io.lun[1], sdev, cmd->iov_size, cmd->request.scsi_io.cdb[0]);
         if (sdev) {
             uint32_t chain_offset = cmd->request.scsi_io.chain_offset;
             int32_t len;
@@ -3637,6 +3640,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
                                     cmd->request.scsi_io.cdb, cmd);
             len = scsi_req_enqueue(cmd->req);
             if (len < 0) {
+                trace_mpt_negative_enqueue(len);
                 len = -len;
             }
             if (len > 0) {
@@ -3699,6 +3703,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
     cmd->reply.scsi_io_error.sense_count = 0;
     cmd->reply.scsi_io_error.response_info = 0;
 
+    trace_mpt_err_io_request(s, cmd->reply.scsi_io_error.ioc_status, cmd->reply.scsi_io_error.target_id, cmd->request.scsi_io.cdb[0], cmd->reply.scsi_io_error.bus, s->max_devices);
     mpt_finish_address_reply(s, &cmd->reply, false);
     g_free(cmd);
 
@@ -4317,7 +4322,16 @@ static int mpt_config_page_get_extended(
         break;
     }
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASEXPANDER:
-        /* No expanders supported */
+    {
+        /* NetApp requires that we return a header here.  The rest of the
+         * page doesn't have to exist. */
+        if (pConfigurationReq->action == MPT_CONFIGURATION_REQUEST_ACTION_HEADER) {
+            *pp_page_header = &p_lsi_logic->config_pages->u.sas_pages
+                    .sas_expander_page_0.u.fields.ext_hdr;
+            break;
+        }
+        /* No expanders supported  - fallthrough */
+    }
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_LOG:
         /* No log supported */
     case MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_ENCLOSURE:
@@ -4346,6 +4360,8 @@ static int mpt_process_config_req(MptState *s,
     reply->action = config_req->action;
     reply->function = config_req->function;
     reply->message_context = config_req->message_context;
+
+    trace_mpt_process_config_req(config_req->action, config_req->function, config_req->message_context, config_req->page_type, config_req->ext_page_type, config_req->page_number, config_req->page_address.page_address);
 
     switch (MPT_CONFIGURATION_PAGE_TYPE_GET(config_req->page_type)) {
     case MPT_CONFIGURATION_PAGE_TYPE_IO_UNIT:
@@ -4408,6 +4424,7 @@ static int mpt_process_config_req(MptState *s,
     }
 
     if (rc == -1) {
+        trace_mpt_err_config(config_req->page_type, config_req->action, config_req->ext_page_type, config_req->page_number, config_req->page_length, config_req->page_version, config_req->page_address.page_address);
         reply->page_type = config_req->page_type;
         reply->page_number = config_req->page_number;
         reply->page_length = config_req->page_length;
@@ -4535,6 +4552,11 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         s->reply_frame_size = p_ioc_init_req->reply_frame_size;
         s->max_buses = p_ioc_init_req->max_buses;
         s->max_devices = p_ioc_init_req->max_devices;
+        if (s->max_devices == 0) {
+            /* FreeBSD sets this to 0 to indicate it can handle (I guess) a
+             * "lot." */
+            s->max_devices = 256;
+        }
         s->host_mfa_high_addr = p_ioc_init_req->host_mfa_high_addr;
         s->sense_buffer_high_addr = p_ioc_init_req->sense_buffer_high_addr;
 
@@ -4591,6 +4613,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         reply->ioc_facts.max_buses = s->max_buses;
         reply->ioc_facts.fw_image_size = 0;
         reply->ioc_facts.fw_version = 0x1329200;
+        trace_mpt_ioc_facts(s->ports, s->max_devices);
         break;
     }
     case MPT_MESSAGE_HDR_FUNCTION_PORT_FACTS:
@@ -4633,6 +4656,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
                 reply->port_facts.max_lan_buckets = 0;
             }
         }
+        trace_mpt_port_facts(s, pport_factsReq->port_number, pport_factsReq->message_flags, reply->port_facts.port_type, reply->port_facts.max_devices);
         break;
     }
     case MPT_MESSAGE_HDR_FUNCTION_PORT_ENABLE:
@@ -4727,8 +4751,8 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
     mpt_finish_address_reply(s, reply, fForceReplyPostFifo);
 }
 
-static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
-                              unsigned size)
+static uint64_t mpt_mmio_read_internal(void *opaque, hwaddr addr,
+                                       unsigned size, bool is_port)
 {
     MptState *s = opaque;
     uint32_t retval = 0;
@@ -4744,7 +4768,16 @@ static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
          * of the reply during one read.
          */
         if (s->doorbell) {
-            retval |= s->reply_buffer.areply[s->next_reply_entry_read++];
+            retval |= s->reply_buffer.areply[s->next_reply_entry_read];
+            /* The guest may read the doorbell multiple times before
+             * acknowledging it, so don't increment next_reply_entry_read until
+             * the acknowledgement (clearing the interrupt)
+             * Exception: The guest doesn't use acknowledgements if reading
+             * through io space as opposed to mmio.
+             */
+            if (is_port) {
+                ++(s->next_reply_entry_read);
+            }
         } else {
             retval |= s->ioc_fault_code;
         }
@@ -4792,6 +4825,12 @@ static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
     return retval;
 }
 
+static uint64_t mpt_mmio_read(void *opaque, hwaddr addr,
+                              unsigned size)
+{
+    return mpt_mmio_read_internal(opaque, addr, size, false);
+}
+
 static void mpt_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size)
 {
@@ -4799,7 +4838,7 @@ static void mpt_mmio_write(void *opaque, hwaddr addr,
 
     MptState *s = opaque;
 
-    trace_mpt_mmio_writel(addr, val);
+    trace_mpt_mmio_writel(addr, val, (int) s->doorbell, s->next_reply_entry_read, s->drbl_message_index, s->drbl_message_size);
     switch (addr) {
     case MPT_REG_REPLY_QUEUE:
         s->reply_free_queue[s->reply_free_queue_next_entry_free_write++] = val;
@@ -4855,7 +4894,7 @@ static void mpt_mmio_write(void *opaque, hwaddr addr,
     case MPT_REG_HOST_INTR_STATUS:
         s->intr_status &= ~MPT_REG_HOST_INTR_STATUS_SYSTEM_DOORBELL;
         if (s->doorbell && s->drbl_message_size == s->drbl_message_index) {
-            if (s->next_reply_entry_read == s->reply_size) {
+            if (++(s->next_reply_entry_read) >= s->reply_size) {
                 s->doorbell = false;
             }
             s->intr_status |= MPT_REG_HOST_INTR_STATUS_SYSTEM_DOORBELL;
@@ -4913,7 +4952,7 @@ static const MemoryRegionOps mpt_mmio_ops = {
 static uint64_t mpt_port_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
-    uint64_t val = mpt_mmio_read(opaque, addr & 0xff, size);
+    uint64_t val = mpt_mmio_read_internal(opaque, addr & 0xff, size, true);
     trace_mpt_port_read(opaque, addr, val, size);
     return val;
 }
@@ -5208,6 +5247,16 @@ static void mpt_init_config_pages_sas(MptState *s)
         MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASIOUNIT;
     p_pages->sas_io_unit_page_3.u.fields.ext_hdr.ext_page_len =
         sizeof(MptConfigurationPageSASIOUnit3) / 4;
+
+    p_pages->sas_expander_page_0.u.fields.ext_hdr.page_version = 3;
+    MPT_CONFIG_EXTENDED_PAGE_HEADER_INIT(
+        &p_pages->sas_expander_page_0,
+        sizeof(MptConfigurationPageSASExpander0),
+        0,
+        0,
+        MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASEXPANDER);
+    /* No initialization for the rest of the expander structure because we
+     * aren't really an expander, and won't return it to the guest. */
 
     p_pages->c_phy_s = s->ports;
     p_pages->pa_phy_s = (PMptPHY)g_malloc0(p_pages->c_phy_s * sizeof(MptPHY));
@@ -5999,9 +6048,13 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     }
 
     pci_register_bar(&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
-    pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
+    if (vmware_hw) {
+        pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
+                     PCI_BASE_ADDRESS_MEM_TYPE_64, &s->mmio_io);
+    } else {
+        pci_register_bar(&s->dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
                      PCI_BASE_ADDRESS_MEM_TYPE_32, &s->mmio_io);
-    if (!vmware_hw) {
+        /* if using 64 bit bar for mmio, this needs to use 3 instead of 2. */
         pci_register_bar(&s->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY |
                          PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
     }
