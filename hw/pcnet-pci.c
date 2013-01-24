@@ -44,9 +44,9 @@ typedef struct {
 
 typedef struct {
     PCIDevice pci_dev;
-    PCNetVState state;
+    PCNetVmxState state;
     MemoryRegion io_bar;
-} PCIPCNetVState;
+} PCIPCNetVmxState;
 
 static void pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val)
 {
@@ -128,7 +128,7 @@ static const MemoryRegionOps pcnet_io_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void vlance_morph_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writeb(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     trace_vlance_morph_ioport_writeb(vs, addr, val);
     switch (addr & 0x03) {
@@ -138,7 +138,7 @@ static void vlance_morph_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t 
     }
 }
 
-static uint32_t vlance_morph_ioport_readb(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readb(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -153,7 +153,7 @@ static uint32_t vlance_morph_ioport_readb(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static void vlance_morph_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writew(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     trace_vlance_morph_ioport_writew(vs, addr, val);
     switch (addr & 0x03) {
@@ -163,7 +163,7 @@ static void vlance_morph_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t 
     }
 }
 
-static uint32_t vlance_morph_ioport_readw(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readw(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -178,7 +178,7 @@ static uint32_t vlance_morph_ioport_readw(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static void vlance_morph_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vlance_morph_ioport_writel(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     trace_vlance_morph_ioport_writel(vs, addr, val);
     switch (addr & 0x03) {
@@ -187,7 +187,7 @@ static void vlance_morph_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t 
     }
 }
 
-static uint32_t vlance_morph_ioport_readl(PCNetVState *vs, uint32_t addr)
+static uint32_t vlance_morph_ioport_readl(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -202,7 +202,7 @@ static uint32_t vlance_morph_ioport_readl(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static void vmxnet_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writeb(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     trace_vmxnet_ioport_writeb(vs, addr, val);
     switch (addr & 0x3f) {
@@ -224,7 +224,7 @@ static void vmxnet_ioport_writeb(PCNetVState *vs, uint32_t addr, uint32_t val)
     }
 }
 
-static uint32_t vmxnet_ioport_readb(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readb(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -254,7 +254,7 @@ static uint32_t vmxnet_ioport_readb(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static void vmxnet_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writew(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     trace_vmxnet_ioport_writew(vs, addr, val);
     switch (addr & 0x3f) {
@@ -268,7 +268,7 @@ static void vmxnet_ioport_writew(PCNetVState *vs, uint32_t addr, uint32_t val)
     }
 }
 
-static uint32_t vmxnet_ioport_readw(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readw(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -293,7 +293,7 @@ static uint32_t vmxnet_ioport_readw(PCNetVState *vs, uint32_t addr)
     return val;
 }
 
-static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
+static void vmxnet_ioport_writel(PCNetVmxState *vs, uint32_t addr, uint32_t val)
 {
     PCNetState *s = &vs->s1;
     Vmxnet2_DriverData dd;
@@ -416,7 +416,7 @@ static void vmxnet_ioport_writel(PCNetVState *vs, uint32_t addr, uint32_t val)
 	}
 }
 
-static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
+static uint32_t vmxnet_ioport_readl(PCNetVmxState *vs, uint32_t addr)
 {
     uint32_t val = ~0U;
 
@@ -477,7 +477,7 @@ static uint32_t vmxnet_ioport_readl(PCNetVState *vs, uint32_t addr)
 static uint64_t vlance_ioport_read(void *opaque, hwaddr addr,
                                   unsigned size)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
 
     trace_vlance_ioport_read(opaque, addr, size);
     if (vs->s2.vmxdata_addr) {
@@ -529,7 +529,7 @@ static uint64_t vlance_ioport_read(void *opaque, hwaddr addr,
 static void vlance_ioport_write(void *opaque, hwaddr addr,
                                uint64_t data, unsigned size)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
 
     trace_vlance_ioport_write(opaque, addr, data, size);
     if (vs->s2.vmxdata_addr) {
@@ -589,7 +589,7 @@ static const MemoryRegionOps vlance_io_ops = {
 static uint64_t vmxnet_ioport_read(void *opaque, hwaddr addr,
                                   unsigned size)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
 
     trace_vmxnet_ioport_read(opaque, addr, size);
     if (vs->s2.vmxdata_addr) {
@@ -611,7 +611,7 @@ static uint64_t vmxnet_ioport_read(void *opaque, hwaddr addr,
 static void vmxnet_ioport_write(void *opaque, hwaddr addr,
                                uint64_t data, unsigned size)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
 
     trace_vmxnet_ioport_write(opaque, addr, data, size);
     if (vs->s2.vmxdata_addr) {
@@ -744,9 +744,9 @@ static const VMStateDescription vmstate_pci_vlance = {
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
     .fields      = (VMStateField []) {
-        VMSTATE_PCI_DEVICE(pci_dev, PCIPCNetVState),
-        VMSTATE_STRUCT(state.s1, PCIPCNetVState, 0, vmstate_pcnet, PCNetState),
-        VMSTATE_STRUCT(state.s2, PCIPCNetVState, 0, vmstate_vlance, PCNetState2),
+        VMSTATE_PCI_DEVICE(pci_dev, PCIPCNetVmxState),
+        VMSTATE_STRUCT(state.s1, PCIPCNetVmxState, 0, vmstate_pcnet, PCNetState),
+        VMSTATE_STRUCT(state.s2, PCIPCNetVmxState, 0, vmstate_vlance, PCNetStateVmx),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -860,15 +860,15 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
     return pcnet_common_init(&pci_dev->qdev, s, &net_pci_pcnet_info);
 }
 
-static void vlance_common_init(PCNetState2 *s2)
+static void vlance_common_init(PCNetStateVmx *s2)
 {
     memset(s2, 0, sizeof(s2));
 }
 
 static int pci_vmxnet_init(PCIDevice *pci_dev)
 {
-    PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev, pci_dev);
-    PCNetVState *vs = &d->state;
+    PCIPCNetVmxState *d = DO_UPCAST(PCIPCNetVmxState, pci_dev, pci_dev);
+    PCNetVmxState *vs = &d->state;
     PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
 
@@ -900,8 +900,8 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
 
 static int pci_vlance_init(PCIDevice *pci_dev)
 {
-    PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev, pci_dev);
-    PCNetVState *vs = &d->state;
+    PCIPCNetVmxState *d = DO_UPCAST(PCIPCNetVmxState, pci_dev, pci_dev);
+    PCNetVmxState *vs = &d->state;
     PCNetState *s = &vs->s1;
     uint8_t *pci_conf;
 
@@ -938,8 +938,8 @@ static void pcnet_pci_reset(DeviceState *dev)
 
 static void vlance_pci_reset(DeviceState *dev)
 {
-    PCIPCNetVState *d = DO_UPCAST(PCIPCNetVState, pci_dev.qdev, dev);
-    PCNetVState *vs = &d->state;
+    PCIPCNetVmxState *d = DO_UPCAST(PCIPCNetVmxState, pci_dev.qdev, dev);
+    PCNetVmxState *vs = &d->state;
     PCIDevice *pci_dev = vs->s1.dma_opaque;
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(pci_dev);
 
@@ -1016,14 +1016,14 @@ static TypeInfo pcnet_info = {
 static TypeInfo vmxnet_info = {
     .name          = "vmxnet",
     .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIPCNetVState),
+    .instance_size = sizeof(PCIPCNetVmxState),
     .class_init    = vmxnet_class_init,
 };
 
 static TypeInfo vlance_info = {
     .name          = "vlance",
     .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIPCNetVState),
+    .instance_size = sizeof(PCIPCNetVmxState),
     .class_init    = vlance_class_init,
 };
 
