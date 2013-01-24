@@ -635,6 +635,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "xen_platform_pci",
             .type = QEMU_OPT_BOOL,
             .help = "enable/disable add of xen platform pci",
+        }, {
+            .name = "pci_hole_min_size",
+            .type = QEMU_OPT_NUMBER,
+            .help = "minimum size of mmio hole in physical address space",
         },
         { /* End of list */ }
     },
