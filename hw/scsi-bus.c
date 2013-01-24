@@ -254,6 +254,7 @@ int scsi_bus_legacy_handle_cmdline(SCSIBus *bus)
 
 static int32_t scsi_invalid_field(SCSIRequest *req, uint8_t *buf)
 {
+    trace_scsi_err_invalid_field(req);
     scsi_req_build_sense(req, SENSE_CODE(INVALID_FIELD));
     scsi_req_complete(req, CHECK_CONDITION);
     return 0;
@@ -268,6 +269,7 @@ static const struct SCSIReqOps reqops_invalid_field = {
 
 static int32_t scsi_invalid_command(SCSIRequest *req, uint8_t *buf)
 {
+    trace_scsi_err_invalid_command(req);
     scsi_req_build_sense(req, SENSE_CODE(INVALID_OPCODE));
     scsi_req_complete(req, CHECK_CONDITION);
     return 0;
@@ -282,6 +284,10 @@ static const struct SCSIReqOps reqops_invalid_opcode = {
 
 static int32_t scsi_unit_attention(SCSIRequest *req, uint8_t *buf)
 {
+    trace_scsi_err_unit_attention(req,
+        (req->dev && req->dev->unit_attention.key == UNIT_ATTENTION),
+        (req->bus && req->bus->unit_attention.key == UNIT_ATTENTION));
+
     if (req->dev && req->dev->unit_attention.key == UNIT_ATTENTION) {
         scsi_req_build_sense(req, req->dev->unit_attention);
     } else if (req->bus->unit_attention.key == UNIT_ATTENTION) {
@@ -453,10 +459,12 @@ static int32_t scsi_target_send_command(SCSIRequest *req, uint8_t *buf)
         }
         break;
     default:
+        trace_scsi_err_lun_not_supported(req);
         scsi_req_build_sense(req, SENSE_CODE(LUN_NOT_SUPPORTED));
         scsi_req_complete(req, CHECK_CONDITION);
         return 0;
     illegal_request:
+        trace_scsi_err_illegal_field(req);
         scsi_req_build_sense(req, SENSE_CODE(INVALID_FIELD));
         scsi_req_complete(req, CHECK_CONDITION);
         return 0;
@@ -624,6 +632,7 @@ static void scsi_clear_unit_attention(SCSIRequest *req)
         return;
     }
 
+    trace_scsi_clear_unit_attention(req, (req->dev && ua == &req->dev->unit_attention));
     *ua = SENSE_CODE(NO_SENSE);
 }
 

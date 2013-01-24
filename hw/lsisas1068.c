@@ -3032,24 +3032,24 @@ typedef struct MptConfigurationPagesSupported {
  * Initializes a page header.
  */
 #define MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, flags)                \
-    (pg)->u.fields.header.page_type = flags;                            \
-    (pg)->u.fields.header.page_number = nr;                             \
+    (pg)->u.fields.header.page_type = (flags);                          \
+    (pg)->u.fields.header.page_number = (nr);                           \
     (pg)->u.fields.header.page_length = sizeof(type) / 4
 
 #define MPT_CONFIG_PAGE_HEADER_INIT_MANUFACTURING(pg, type, nr, flags)  \
-    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, flags |                   \
+    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, (flags) |                 \
                                 MPT_CONFIGURATION_PAGE_TYPE_MANUFACTURING)
 
 #define MPT_CONFIG_PAGE_HEADER_INIT_IO_UNIT(pg, type, nr, flags)        \
-    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, flags |                   \
+    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, (flags) |                 \
                                 MPT_CONFIGURATION_PAGE_TYPE_IO_UNIT)
 
 #define MPT_CONFIG_PAGE_HEADER_INIT_IOC(pg, type, nr, flags)            \
-    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, flags |                   \
+    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, (flags) |                 \
                                 MPT_CONFIGURATION_PAGE_TYPE_IOC)
 
 #define MPT_CONFIG_PAGE_HEADER_INIT_BIOS(pg, type, nr, flags)           \
-    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, flags |                   \
+    MPT_CONFIG_PAGE_HEADER_INIT(pg, type, nr, (flags) |                 \
                                 MPT_CONFIGURATION_PAGE_TYPE_BIOS)
 
 /**
@@ -4260,6 +4260,7 @@ static int mpt_config_sas_device(
     }
 
     if (p_sas_device) {
+        trace_mpt_config_sas_device(p_sas_device, p_sas_device->sas_dev_page0.u.fields.target_id, p_sas_device->sas_dev_page0.u.fields.dev_handle);
         switch (page_number) {
         case 0:
             *pp_page_header = &p_sas_device->sas_dev_page0.u.fields.ext_hdr;
