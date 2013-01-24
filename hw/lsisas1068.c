@@ -5517,6 +5517,8 @@ static void mpt_init_config_pages(MptState *s)
         &p_pages->manufacturing_page_5,
         MptConfigurationPageManufacturing5, 5,
         MPT_CONFIGURATION_PAGE_ATTRIBUTE_PERSISTENT_READONLY);
+    /* Silly value to humor ontap, until we get something unique/correct. */
+    p_pages->manufacturing_page_5.u.fields.base_wwid = 0xfeedface0ULL;
 
     /* Manufacturing Page 6 - Product specific settings. */
     MPT_CONFIG_PAGE_HEADER_INIT_MANUFACTURING(
