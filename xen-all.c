@@ -184,7 +184,8 @@ static void xen_ram_init(ram_addr_t ram_size)
     if (ram_size >= below_4g_mem_size) {
         above_4g_mem_size = ram_size - below_4g_mem_size;
     }
-    printf("below=%llx above=%llx\n", (unsigned long long) below_4g_mem_size, (unsigned long long) above_4g_mem_size);
+    fprintf(stderr, "%s: below=%llx above=%llx\n", __func__,
+            (unsigned long long) below_4g_mem_size, (unsigned long long) above_4g_mem_size);
 
     memory_region_init_alias(&ram_640k, "xen.ram.640k",
                              &ram_memory, 0, 0xa0000);
