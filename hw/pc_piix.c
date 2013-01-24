@@ -85,6 +85,7 @@ static void pc_init1(MemoryRegion *system_memory,
     MemoryRegion *pci_memory;
     MemoryRegion *rom_memory;
     void *fw_cfg = NULL;
+    uint64_t mmio_hole_start = 0xe0000000;
 
     pc_cpus_init(cpu_model);
 
@@ -92,9 +93,15 @@ static void pc_init1(MemoryRegion *system_memory,
         kvmclock_create();
     }
 
-    if (ram_size >= 0xe0000000 ) {
-        above_4g_mem_size = ram_size - 0xe0000000;
-        below_4g_mem_size = 0xe0000000;
+    if (pci_hole_min_size > ((1ULL << 32) - mmio_hole_start)) {
+        mmio_hole_start = (1ULL << 32) - pci_hole_min_size;
+        fprintf(stderr, "%s: mmio_hole_start=%llx\n", __func__,
+                (unsigned long long) mmio_hole_start);
+    }
+
+    if (ram_size >= mmio_hole_start ) {
+        above_4g_mem_size = ram_size - mmio_hole_start;
+        below_4g_mem_size = mmio_hole_start;
     } else {
         above_4g_mem_size = 0;
         below_4g_mem_size = ram_size;
