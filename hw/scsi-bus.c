@@ -383,6 +383,7 @@ static bool scsi_target_emulate_inquiry(SCSITargetReq *r)
     assert(r->req.dev->lun != r->req.lun);
     if (r->req.cmd.buf[1] & 0x2) {
         /* Command support data - optional, not implemented */
+        trace_scsi_inquiry_err_support(r->req.lun, r->req.dev->lun);
         return false;
     }
 
@@ -402,6 +403,7 @@ static bool scsi_target_emulate_inquiry(SCSITargetReq *r)
             break;
         }
         default:
+            trace_scsi_inquiry_err_page_code(r->req.lun, r->req.dev->lun, page_code);
             return false;
         }
         /* done with EVPD */
@@ -412,6 +414,7 @@ static bool scsi_target_emulate_inquiry(SCSITargetReq *r)
 
     /* Standard INQUIRY data */
     if (r->req.cmd.buf[2] != 0) {
+        trace_scsi_inquiry_err_standard(r->req.lun, r->req.dev->lun, r->req.cmd.buf[2]);
         return false;
     }
 

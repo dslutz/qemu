@@ -37,6 +37,8 @@ do { printf("scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
 #include "hw/block-common.h"
 #include "dma.h"
 
+#include "trace.h"
+
 #ifdef __linux
 #include <scsi/sg.h>
 #endif
@@ -513,6 +515,7 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
     int buflen = 0;
     int start;
 
+    trace_scsi_disk_inquiry(req->cmd.buf[1], req->cmd.buf[2]);
     if (req->cmd.buf[1] & 0x1) {
         /* Vital product data */
         uint8_t page_code = req->cmd.buf[2];
@@ -644,6 +647,7 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
 
     /* Standard INQUIRY data */
     if (req->cmd.buf[2] != 0) {
+        trace_scsi_disk_inquiry_err_standard(req->cmd.buf[2]);
         return -1;
     }
 
@@ -1631,6 +1635,7 @@ static int32_t scsi_disk_emulate_command(SCSIRequest *req, uint8_t *buf)
     case INQUIRY:
         buflen = scsi_disk_emulate_inquiry(req, outbuf);
         if (buflen < 0) {
+            trace_scsi_disk_inquiry_err_generic(buflen);
             goto illegal_request;
         }
         break;

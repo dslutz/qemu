@@ -4186,6 +4186,7 @@ static int mpt_config_sas_phy(
     if (p_phy_pages) {
         switch (page_number) {
         case 0:
+            trace_mpt_config_sas_phy_page_0(p_phy_pages->sas_phy_page_0.u.fields.owner_dev_handle, p_phy_pages->sas_phy_page_0.u.fields.attached_dev_handle, p_phy_pages->sas_phy_page_0.u.fields.attached_device_info, p_phy_pages->sas_phy_page_0.u.fields.phy_info);
             *pp_page_header = &p_phy_pages->sas_phy_page_0.u.fields.ext_hdr;
             *pp_page_data = p_phy_pages->sas_phy_page_0.u.page_data;
             *p_cb_page = sizeof(p_phy_pages->sas_phy_page_0);
@@ -5343,16 +5344,25 @@ static void mpt_init_config_pages_sas(MptState *s)
             p_sas_page_0->u.fields.phy[i].negotiated_link_rate =
                 MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_SET(
                     MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_30GB);
+            uint32_t controller_phy_device_type =
+#if 0
+                MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+#else
+                /* Value from netapp.  Check if it makes sense for various values of vmware_hw. */
+                MPTSCSI_SASIOUNIT0_DEVICE_LSI
+                | MPTSCSI_SASIOUNIT0_DEVICE_DIRECT_ATTACHED
+                | MPTSCSI_SASIOUNIT0_DEVICE_SSP_INITIATOR;
+#endif
             p_sas_page_0->u.fields.phy[i].controller_phy_device_info =
                 MPTSCSI_SASIOUNIT0_DEVICE_TYPE_SET(
                     MPTSCSI_SASIOUNIT0_DEVICE_TYPE_END)
-                | MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+                | controller_phy_device_type;
             p_sas_page_0->u.fields.phy[i].attached_dev_handle =
                 device_handle;
             p_sas_page_1->u.fields.phy[i].controller_phy_device_info =
                 MPTSCSI_SASIOUNIT0_DEVICE_TYPE_SET(
                     MPTSCSI_SASIOUNIT0_DEVICE_TYPE_END)
-                | MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+                | controller_phy_device_type;
             p_sas_page_0->u.fields.phy[i].controller_dev_handle =
                 device_handle;
 
@@ -5366,6 +5376,15 @@ static void mpt_init_config_pages_sas(MptState *s)
             p_phy_pages->sas_phy_page_0.u.fields.attached_dev_handle =
                 device_handle;
 
+            uint32_t device_info_type =
+#if 0
+                MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+#else
+                /* This value comes from netapp; need to check if it makes
+                 * sense for all values of vmware_hw */
+                MPTSCSI_SASIOUNIT0_DEVICE_DIRECT_ATTACHED
+                | MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+#endif
             /* SAS device page 0. */
             p_sas_device->sas_dev_page0.u.fields.ext_hdr.page_type =
                 MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
@@ -5388,7 +5407,7 @@ static void mpt_init_config_pages_sas(MptState *s)
             p_sas_device->sas_dev_page0.u.fields.device_info =
                 MPTSCSI_SASPHY0_DEV_INFO_DEVICE_TYPE_SET(
                     MPTSCSI_SASPHY0_DEV_INFO_DEVICE_TYPE_END)
-                | MPTSCSI_SASIOUNIT0_DEVICE_SSP_TARGET;
+                | device_info_type;
             p_sas_device->sas_dev_page0.u.fields.flags =
                 MPTSCSI_SASDEVICE0_FLAGS_DEVICE_PRESENT
                 | MPTSCSI_SASDEVICE0_FLAGS_DEVICE_MAPPED_TO_BUS_AND_TARGET_ID

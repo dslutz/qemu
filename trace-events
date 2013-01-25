@@ -467,6 +467,14 @@ scsi_err_unit_attention(void *req, int dev_attention, int bus_attention) "req=%p
 scsi_err_lun_not_supported(void *req) "req=%p"
 scsi_err_illegal_field(void *req) "req=%p"
 scsi_clear_unit_attention(void *req, int isdev) "req=%p isdev=%d"
+scsi_inquiry_err_support(int reqlun, int devlun) "req.lun=%u dev.lun=%u"
+scsi_inquiry_err_page_code(int reqlun, int devlun, int page_code) "req.lun=%u dev.lun=%u page_code=0x%x"
+scsi_inquiry_err_standard(int reqlun, int devlun, int cmd2) "req.lun=%u dev.lun=%u buf[2]=%u"
+
+# hw/scsi_disk.c
+scsi_disk_inquiry_err_standard(int buf2) "buf[2]=%u"
+scsi_disk_inquiry_err_generic(int buflen) "buflen=%d"
+scsi_disk_inquiry(int buf1, int buf2) "buf[1]=0x%x buf[2]=0x%x"
 
 # vl.c
 vm_state_notify(int running, int reason) "running %d reason %d"
@@ -619,6 +627,7 @@ mpt_err_io_request(void *s, int ioc_status, int target_id, unsigned int cmd, uns
 mpt_err_command(int status, int target_id) "status=%d target_id=%d"
 mpt_err_config(int page_type, int action, int ext_page_type, int page_number, int page_length, int page_version, int page_address) "page_type=0x%x action=0x%x ext_page_type=0x%x page_number=0x%x page_length=0x%x page_version=0x%x page_address=0x%x"
 mpt_config_sas_device(void *device, int target_id, int handle) "device=%p target id=%d handle=%d"
+mpt_config_sas_phy_page_0(int owner_dev_handle, int attached_dev_handle, int attached_device_info, int phy_info) "owner_dev_handle=%d attached_dev_handle=%d attached_device_info=0x%x phy_info=0x%x"
 
 # hw/pvscsi.c
 pvscsi_rings_mgr_init(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"
