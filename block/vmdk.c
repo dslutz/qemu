@@ -638,6 +638,8 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
         /* parse extent line:
          * RW [size in sectors] FLAT "file-name.vmdk" OFFSET
          * or
+         * RW [size in sectors] VMFS "file-name.vmdk"
+         * or
          * RW [size in sectors] SPARSE "file-name.vmdk"
          */
         flat_offset = -1;
@@ -649,6 +651,11 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
             if (ret != 5 || flat_offset < 0) {
                 return -EINVAL;
             }
+        } else if (!strcmp(type, "VMFS")) {
+            if (ret != 4) {
+                return -EINVAL;
+            }
+            flat_offset = 0;
         } else if (ret != 4) {
             return -EINVAL;
         }
@@ -662,7 +669,7 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
             fname[strlen(fname) - 1] = '\0';
         }
         if (sectors <= 0 ||
-            (strcmp(type, "FLAT") && strcmp(type, "SPARSE")) ||
+            (strcmp(type, "FLAT") && strcmp(type, "VMFS") && strcmp(type, "SPARSE")) ||
             (strcmp(access, "RW"))) {
             goto next_line;
         }
@@ -675,7 +682,7 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
         }
 
         /* save to extents array */
-        if (!strcmp(type, "FLAT")) {
+        if (!strcmp(type, "FLAT") || !strcmp(type, "VMFS")) {
             /* FLAT extent */
             VmdkExtent *extent;
 
@@ -721,6 +728,7 @@ static int vmdk_open_desc_file(BlockDriverState *bs, int flags,
         return -EINVAL;
     }
     if (strcmp(ct, "monolithicFlat") &&
+        strcmp(ct, "vmfs") &&
         strcmp(ct, "twoGbMaxExtentSparse") &&
         strcmp(ct, "twoGbMaxExtentFlat")) {
         fprintf(stderr,
@@ -1503,6 +1511,7 @@ static int vmdk_create(const char *filename, QEMUOptionParameter *options)
     split = !(strcmp(fmt, "twoGbMaxExtentFlat") &&
               strcmp(fmt, "twoGbMaxExtentSparse"));
     flat = !(strcmp(fmt, "monolithicFlat") &&
+             strcmp(fmt, "vmfs") &&
              strcmp(fmt, "twoGbMaxExtentFlat"));
     compress = !strcmp(fmt, "streamOptimized");
     if (flat) {
