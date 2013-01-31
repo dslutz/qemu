@@ -394,7 +394,7 @@ static inline void pcnet_rmd_load(PCNetState *s, struct pcnet_RMD *rmd,
     }
 }
 
-static inline int vmxnet_rmd_load(PCNetVState *vs, struct Vmxnet2_RxRingEntry *rmd,
+static inline int vmxnet_rmd_load(PCNetVmxState *vs, struct Vmxnet2_RxRingEntry *rmd,
                                  hwaddr addr)
 {
     PCNetState *s = &vs->s1;
@@ -681,7 +681,7 @@ static inline hwaddr pcnet_rdra_addr(PCNetState *s, int idx)
     return s->rdra + ((CSR_RCVRL(s) - idx) * (BCR_SWSTYLE(s) ? 16 : 8));
 }
 
-static inline hwaddr vmxnet_rdra_addr(PCNetVState *vs, int idx)
+static inline hwaddr vmxnet_rdra_addr(PCNetVmxState *vs, int idx)
 {
     return vs->s2.vmx_rx_ring + (idx * sizeof(Vmxnet2_RxRingEntry));
 }
@@ -702,7 +702,7 @@ static void pcnet_poll_timer(void *opaque);
 static uint32_t pcnet_csr_readw(PCNetState *s, uint32_t rap);
 static void pcnet_csr_writew(PCNetState *s, uint32_t rap, uint32_t new_value);
 static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val);
-static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val);
+static void vlance_bcr_writew(PCNetVmxState *vs, uint32_t rap, uint32_t val);
 
 static void pcnet_s_reset(PCNetState *s)
 {
@@ -801,10 +801,10 @@ void pcnet_update_irq(PCNetState *s)
     s->isr = isr;
 }
 
-void vmxnet_update_irq(PCNetVState *vs)
+void vmxnet_update_irq(PCNetVmxState *vs)
 {
     PCNetState *s = &vs->s1;
-    PCNetState2 *s2 = &vs->s2;
+    PCNetStateVmx *s2 = &vs->s2;
     int iISR = 0;
 
     if (s2->vmx_rx_last_interrupt_index != s2->vmx_rx_ring_index) {
@@ -1054,10 +1054,10 @@ int pcnet_can_receive(NetClientState *nc)
     return sizeof(s->buffer)-16;
 }
 
-static void vmxnet_rdte_poll(PCNetVState *vs)
+static void vmxnet_rdte_poll(PCNetVmxState *vs)
 {
     PCNetState *s = &vs->s1;
-    PCNetState2 *s2 = &vs->s2;
+    PCNetStateVmx *s2 = &vs->s2;
 
     /* assume lack of a next receive descriptor */
     CSR_NRST(s) = 0;
@@ -1076,7 +1076,7 @@ static void vmxnet_rdte_poll(PCNetVState *vs)
 
 int vlance_can_receive(NetClientState *nc)
 {
-    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
     PCNetState *s = &vs->s1;
     Vmxnet2_RxRingEntry  rmd;
     hwaddr addr;
@@ -1287,7 +1287,7 @@ void pcnet_set_link_status(NetClientState *nc)
 
 void vlance_set_link_status(NetClientState *nc)
 {
-    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
     vs->s2.link_down_reported = 0;
@@ -1394,7 +1394,7 @@ static void pcnet_transmit(PCNetState *s)
     s->tx_busy = 0;
 }
 
-static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
+static int vmxnet_tdte_poll(PCNetVmxState *vs, Vmxnet2_TxRingEntry *desc)
 {
     PCNetState *s = &vs->s1;
     hwaddr cxda;
@@ -1418,7 +1418,7 @@ static int vmxnet_tdte_poll(PCNetVState *vs, Vmxnet2_TxRingEntry *desc)
   return (desc->ownership == VMXNET2_OWNERSHIP_NIC);
 }
 
-static inline int pcnet_is_link_up(PCNetVState *vs)
+static inline int pcnet_is_link_up(PCNetVmxState *vs)
 {
     return vs->s1.lnkst;
 }
@@ -1427,7 +1427,7 @@ static inline int pcnet_is_link_up(PCNetVState *vs)
  * Store transmit message descriptor and hand it over to the host (the VM guest).
  * Make sure that all data are transmitted before we clear the own flag.
  */
-static inline void vmxnet_tmd_store_pass_host(PCNetVState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
+static inline void vmxnet_tmd_store_pass_host(PCNetVmxState *vs, Vmxnet2_TxRingEntry *tmd, PA addr)
 {
     PCNetState *s = &vs->s1;
 
@@ -1438,7 +1438,7 @@ static inline void vmxnet_tmd_store_pass_host(PCNetVState *vs, Vmxnet2_TxRingEnt
 /**
  * Fails a TMD with a generic error.
  */
-static inline void vmxnet_xmit_fail_tmd_generic(PCNetVState *vs, Vmxnet2_TxRingEntry *pTmd)
+static inline void vmxnet_xmit_fail_tmd_generic(PCNetVmxState *vs, Vmxnet2_TxRingEntry *pTmd)
 {
     PCNetState *s = &vs->s1;
 
@@ -1447,7 +1447,7 @@ static inline void vmxnet_xmit_fail_tmd_generic(PCNetVState *vs, Vmxnet2_TxRingE
     trace_vmxnet_xmit_fail_tmd_generic(vs, s->bcr[BCR_SWS]);
 }
 
-void vmxnet_transmit(PCNetVState *vs)
+void vmxnet_transmit(PCNetVmxState *vs)
 {
     PCNetState *s = &vs->s1;
     unsigned cFlushIrq = 0;
@@ -1541,10 +1541,10 @@ txdone:
 /**
  * Poll for changes in RX and TX descriptor rings.
  */
-void vmxnet_poll_rx_tx(PCNetVState *vs)
+void vmxnet_poll_rx_tx(PCNetVmxState *vs)
 {
     PCNetState *s = &vs->s1;
-    PCNetState2 *s2 = &vs->s2;
+    PCNetStateVmx *s2 = &vs->s2;
 
     if (!s2->vmxdata_addr) {
         if (CSR_RXON(s)) {
@@ -1574,9 +1574,9 @@ static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry
 
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 {
-    PCNetVState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
     PCNetState *s = &vs->s1;
-    PCNetState2 *s2 = &vs->s2;
+    PCNetStateVmx *s2 = &vs->s2;
     int is_padr = 0, is_bcast = 0, is_ladr = 0;
     uint8_t buf1[MIN_BUF_SIZE];
     int size = size_;
@@ -1927,7 +1927,7 @@ uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap)
     return val;
 }
 
-static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
+static void vlance_bcr_writew(PCNetVmxState *vs, uint32_t rap, uint32_t val)
 {
     PCNetState *s = &vs->s1;
 
@@ -1993,7 +1993,7 @@ static void vlance_bcr_writew(PCNetVState *vs, uint32_t rap, uint32_t val)
     }
 }
 
-static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
+static uint32_t pcnet_mii_readw(PCNetVmxState *vs, uint32_t miiaddr)
 {
     uint32_t val;
     bool autoneg, duplex, fast;
@@ -2103,7 +2103,7 @@ static uint32_t pcnet_mii_readw(PCNetVState *vs, uint32_t miiaddr)
     return val;
 }
 
-uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap)
+uint32_t vlance_bcr_readw(PCNetVmxState *vs, uint32_t rap)
 {
     PCNetState *s = &vs->s1;
     uint32_t val;
@@ -2174,7 +2174,7 @@ void pcnet_h_reset(void *opaque)
 
 void vlance_h_reset(void *opaque, uint16_t vid, uint16_t sid, uint16_t svid)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
     PCNetState *s = &vs->s1;
 
     pcnet_h_reset(opaque);
@@ -2302,7 +2302,7 @@ uint32_t pcnet_ioport_readl(void *opaque, uint32_t addr)
 
 void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
     PCNetState *s = &vs->s1;
 
     trace_vlance_ioport_writew(opaque, addr, val);
@@ -2325,7 +2325,7 @@ void vlance_ioport_writew(void *opaque, uint32_t addr, uint32_t val)
 
 uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
     PCNetState *s = &vs->s1;
     uint32_t val = -1;
 
@@ -2357,7 +2357,7 @@ uint32_t vlance_ioport_readw(void *opaque, uint32_t addr)
 
 void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
     PCNetState *s = &vs->s1;
 
     pcnet_poll_timer(s);
@@ -2389,7 +2389,7 @@ void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val)
 
 uint32_t vlance_ioport_readl(void *opaque, uint32_t addr)
 {
-    PCNetVState *vs = opaque;
+    PCNetVmxState *vs = opaque;
     PCNetState *s = &vs->s1;
     uint32_t val = -1;
 
@@ -2453,26 +2453,26 @@ const VMStateDescription vmstate_vlance = {
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
     .fields      = (VMStateField []) {
-        VMSTATE_UINT64(vmxdata_addr, PCNetState2),
-        VMSTATE_UINT64(vmx_rx_ring, PCNetState2),
-        VMSTATE_UINT64(vmx_rx_ring2, PCNetState2),
-        VMSTATE_UINT64(vmx_tx_ring, PCNetState2),
-        VMSTATE_UINT32(vmxdata_length, PCNetState2),
-        VMSTATE_UINT32(link_down_reported, PCNetState2),
-        VMSTATE_UINT16(vmx_rx_ring_index, PCNetState2),
-        VMSTATE_UINT16(vmx_rx_last_interrupt_index, PCNetState2),
-        VMSTATE_UINT16(vmx_rx_ring_length, PCNetState2),
-        VMSTATE_UINT16(vmx_rx_ring2_index, PCNetState2),
-        VMSTATE_UINT16(vmx_rx_ring2_length, PCNetState2),
-        VMSTATE_UINT16(vmx_tx_ring_index, PCNetState2),
-        VMSTATE_UINT16(vmx_tx_last_interrupt_index, PCNetState2),
-        VMSTATE_UINT16(vmx_tx_ring_length, PCNetState2),
-        VMSTATE_BOOL(vmx_interrupt_enabled, PCNetState2),
-        VMSTATE_BOOL(vmxnet2, PCNetState2),
-        VMSTATE_UINT16_ARRAY(bcr2, PCNetState2, 50-32),
-        VMSTATE_UINT16_ARRAY(mii, PCNetState2, 16),
-        VMSTATE_UINT16_ARRAY(morph, PCNetState2, 1),
-        VMSTATE_UINT32_ARRAY(vmxnet_reg, PCNetState2, VMXNET_CHIP_IO_RESV_SIZE),
+        VMSTATE_UINT64(vmxdata_addr, PCNetStateVmx),
+        VMSTATE_UINT64(vmx_rx_ring, PCNetStateVmx),
+        VMSTATE_UINT64(vmx_rx_ring2, PCNetStateVmx),
+        VMSTATE_UINT64(vmx_tx_ring, PCNetStateVmx),
+        VMSTATE_UINT32(vmxdata_length, PCNetStateVmx),
+        VMSTATE_UINT32(link_down_reported, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_rx_ring_index, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_rx_last_interrupt_index, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_rx_ring_length, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_rx_ring2_index, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_rx_ring2_length, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_tx_ring_index, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_tx_last_interrupt_index, PCNetStateVmx),
+        VMSTATE_UINT16(vmx_tx_ring_length, PCNetStateVmx),
+        VMSTATE_BOOL(vmx_interrupt_enabled, PCNetStateVmx),
+        VMSTATE_BOOL(vmxnet2, PCNetStateVmx),
+        VMSTATE_UINT16_ARRAY(bcr2, PCNetStateVmx, 50-32),
+        VMSTATE_UINT16_ARRAY(mii, PCNetStateVmx, 16),
+        VMSTATE_UINT16_ARRAY(morph, PCNetStateVmx, 1),
+        VMSTATE_UINT32_ARRAY(vmxnet_reg, PCNetStateVmx, VMXNET_CHIP_IO_RESV_SIZE),
         VMSTATE_END_OF_LIST()
     }
 };

@@ -1124,6 +1124,7 @@ pcnet_ioport_readl(void *opaque, uint32_t addr, uint32_t val) "opaque=%p addr=0x
 pcnet_ioport_writew(void *opaque, uint32_t addr, uint32_t val) "opaque=%p addr=0x%x val=0x%x"
 pcnet_ioport_writel(void *opaque, uint32_t addr, uint32_t val) "opaque=%p addr=0x%x val=0x%x"
 vlance_receive(void *vs, const uint8_t *buf, size_t size_) "vs=%p buf=%p size=%zd"
+vlance_receive_size(void *vs, size_t size_) "vs=%p size=%zd"
 pcnet_mii_readw(void *vs, uint32_t miiaddr, uint32_t val) "vs=%p miiaddr=0x%x val=0x%x"
 vlance_bcr_sws(void *vs, uint32_t val) "vs=%p BCR_SWS=0x%04x"
 vlance_bcr_readw(void *vs, uint32_t rap, uint32_t val) "vs=%p rap=0x%x val=0x%x"
