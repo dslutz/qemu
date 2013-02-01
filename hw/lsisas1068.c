@@ -2988,6 +2988,7 @@ typedef struct QEMU_PACKED MptConfigurationPagesSas {
     PMptSASDevice                       p_sas_device_head;
     /** Pointer to the last SAS device. */
     PMptSASDevice                       p_sas_device_tail;
+    MptExtendedConfigurationPageHeader  spare_device_ext_hdr;
 } MptConfigurationPagesSas, *PMptConfigurationPagesSas;
 
 /**
@@ -4209,12 +4210,13 @@ static int mpt_config_sas_phy(
 static int mpt_config_sas_device(
     MptState *p_lsi_logic,
     PMptConfigurationPagesSupported p_pages,
-    uint8_t page_number,
-    MptConfigurationPageAddress page_address,
+    PMptConfigurationRequest req,
     PMptExtendedConfigurationPageHeader *pp_page_header,
     uint8_t **pp_page_data, size_t *p_cb_page)
 {
     int rc = 0;
+    uint8_t page_number = req->page_number;
+    MptConfigurationPageAddress page_address = req->page_address;
     uint8_t address_form =
         MPT_CONFIGURATION_PAGE_ADDRESS_GET_SAS_FORM(page_address);
     PMptConfigurationPagesSas p_pagesSas = &p_pages->u.sas_pages;
@@ -4236,6 +4238,7 @@ static int mpt_config_sas_device(
             }
 
             if (p_sas_device) {
+                trace_mpt_config_sas_device_weird(handle, p_pagesSas->c_devices);
                 p_sas_device = p_sas_device->p_next;
             }
         }
@@ -4282,7 +4285,14 @@ static int mpt_config_sas_device(
             rc = -1;
         }
     } else {
-        rc = -1;
+        if (page_number == 0
+                && req->action == MPT_CONFIGURATION_REQUEST_ACTION_HEADER) {
+
+            *pp_page_header = &p_pagesSas->spare_device_ext_hdr;
+            *p_cb_page = sizeof(p_pagesSas->spare_device_ext_hdr);
+        } else {
+            rc = -1;
+        }
     }
 
     return rc;
@@ -4318,8 +4328,7 @@ static int mpt_config_page_get_extended(
     {
         rc = mpt_config_sas_device(p_lsi_logic,
                                    p_lsi_logic->config_pages,
-                                   pConfigurationReq->page_number,
-                                   pConfigurationReq->page_address,
+                                   pConfigurationReq,
                                    pp_page_header, pp_page_data, p_cb_page);
         break;
     }
@@ -5183,6 +5192,8 @@ static void mpt_init_config_pages_sas(MptState *s)
 {
     PMptConfigurationPagesSas p_pages = &s->config_pages->u.sas_pages;
 
+    uint16_t *tmp_initiator_handles = g_malloc0(sizeof(tmp_initiator_handles[0]) * s->ports);
+
     /* Manufacturing Page 7 - Connector settings. */
     p_pages->cb_manufacturing_page_7 =
         MPTSCSI_MANUFACTURING7_GET_SIZE(s->ports);
@@ -5263,11 +5274,100 @@ static void mpt_init_config_pages_sas(MptState *s)
     p_pages->c_phy_s = s->ports;
     p_pages->pa_phy_s = (PMptPHY)g_malloc0(p_pages->c_phy_s * sizeof(MptPHY));
 
+    p_pages->spare_device_ext_hdr.page_type = 
+            MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
+            | MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;
+    p_pages->spare_device_ext_hdr.page_number = 0;
+    p_pages->spare_device_ext_hdr.ext_page_type =
+            MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASDEVICE;
+    p_pages->spare_device_ext_hdr.ext_page_len = sizeof(MptExtendedConfigurationPageHeader) / 4;
+    p_pages->spare_device_ext_hdr.page_version = 0;
+
     /* Initialize the PHY configuration */
     unsigned i;
+    uint16_t root_handle = mpt_get_handle(s);
+    SASADDRESS sas_address;
+    memset(&sas_address, 0, sizeof(SASADDRESS));
+    sas_address.ll_address = s->sas_addr;
+
+    /* Create initiator devices.  NetApp wants these to exist. */
+    for (i = 0; i < s->ports; ++i) {
+        PMptSASDevice p_initiator =
+            (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
+        tmp_initiator_handles[i] = mpt_get_handle(s);
+
+        p_initiator->sas_dev_page0.u.fields.ext_hdr.page_type =
+            MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
+            | MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;
+        p_initiator->sas_dev_page0.u.fields.ext_hdr.page_number = 0;
+        p_initiator->sas_dev_page0.u.fields.ext_hdr.ext_page_type =
+            MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASDEVICE;
+        p_initiator->sas_dev_page0.u.fields.ext_hdr.ext_page_len =
+            sizeof(MptConfigurationPageSASDevice0) / 4;
+        p_initiator->sas_dev_page0.u.fields.sas_address =
+            sas_address;
+        p_initiator->sas_dev_page0.u.fields.parent_dev_handle =
+            root_handle;
+        p_initiator->sas_dev_page0.u.fields.phy_num = i;
+        p_initiator->sas_dev_page0.u.fields.access_status =
+            MPTSCSI_SASDEVICE0_STATUS_NO_ERRORS;
+        p_initiator->sas_dev_page0.u.fields.dev_handle = tmp_initiator_handles[i];
+        p_initiator->sas_dev_page0.u.fields.target_id = i;
+        p_initiator->sas_dev_page0.u.fields.bus = 0;
+        p_initiator->sas_dev_page0.u.fields.device_info =
+            MPTSCSI_SASPHY0_DEV_INFO_DEVICE_TYPE_SET(
+                MPTSCSI_SASPHY0_DEV_INFO_DEVICE_TYPE_END)
+            | MPTSCSI_SASDEVICE0_DEV_INFO_DEVICE_LSI
+            | MPTSCSI_SASDEVICE0_DEV_INFO_DEVICE_DIRECT_ATTACHED
+            | MPTSCSI_SASDEVICE0_DEV_INFO_DEVICE_SSP_INITIATOR;
+        p_initiator->sas_dev_page0.u.fields.flags =
+            MPTSCSI_SASDEVICE0_FLAGS_DEVICE_PRESENT
+            | MPTSCSI_SASDEVICE0_FLAGS_DEVICE_MAPPED_TO_BUS_AND_TARGET_ID
+            | MPTSCSI_SASDEVICE0_FLAGS_DEVICE_MAPPING_PERSISTENT;
+        p_initiator->sas_dev_page0.u.fields.physical_port = i;
+
+        /* SAS device page 1. */
+        p_initiator->sas_dev_page1.u.fields.ext_hdr.page_type =
+            MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
+            | MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;
+        p_initiator->sas_dev_page1.u.fields.ext_hdr.page_number = 1;
+        p_initiator->sas_dev_page1.u.fields.ext_hdr.ext_page_type =
+            MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASDEVICE;
+        p_initiator->sas_dev_page1.u.fields.ext_hdr.ext_page_len =
+            sizeof(MptConfigurationPageSASDevice1) / 4;
+        p_initiator->sas_dev_page1.u.fields.sas_address = sas_address;
+        p_initiator->sas_dev_page1.u.fields.dev_handle = tmp_initiator_handles[i];
+        p_initiator->sas_dev_page1.u.fields.target_id = i;
+        p_initiator->sas_dev_page1.u.fields.bus = 0;
+
+        /* SAS device page 2. */
+        p_initiator->sas_dev_page2.u.fields.ext_hdr.page_type =
+            MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
+            | MPT_CONFIGURATION_PAGE_TYPE_EXTENDED;
+        p_initiator->sas_dev_page2.u.fields.ext_hdr.page_number =
+            2;
+        p_initiator->sas_dev_page2.u.fields.ext_hdr.ext_page_type =
+            MPT_CONFIGURATION_PAGE_TYPE_EXTENDED_SASDEVICE;
+        p_initiator->sas_dev_page2.u.fields.ext_hdr.ext_page_len =
+            sizeof(MptConfigurationPageSASDevice2) / 4;
+        p_initiator->sas_dev_page2.u.fields.sas_address =
+            sas_address;
+
+        /* Link into device list. */
+        if (!p_pages->c_devices) {
+            p_pages->p_sas_device_head = p_initiator;
+            p_pages->p_sas_device_tail = p_initiator;
+            p_pages->c_devices = 1;
+        } else {
+            p_initiator->p_prev = p_pages->p_sas_device_tail;
+            p_pages->p_sas_device_tail->p_next = p_initiator;
+            p_pages->p_sas_device_tail = p_initiator;
+            p_pages->c_devices++;
+        }
+    }
+
     for (i = 0; i < s->ports; i++) {
         PMptPHY p_phy_pages = &p_pages->pa_phy_s[i];
-        uint16_t controller_handle = mpt_get_handle(s);
 
         p_manufacturing_page_7->u.fields.phy[i].location =
             MPTSCSI_MANUFACTURING7_LOCATION_AUTO;
@@ -5281,7 +5381,7 @@ static void mpt_init_config_pages_sas(MptState *s)
             MPTSCSI_SASIOUNIT0_DEVICE_TYPE_SET(
                 MPTSCSI_SASIOUNIT0_DEVICE_TYPE_NO);
         p_sas_page_0->u.fields.phy[i].controller_dev_handle =
-            controller_handle;
+            tmp_initiator_handles[i];
         p_sas_page_0->u.fields.phy[i].attached_dev_handle = 0;
         p_sas_page_0->u.fields.phy[i].discovery_status = 0;
 
@@ -5334,12 +5434,9 @@ static void mpt_init_config_pages_sas(MptState *s)
         /* Settings for present devices. */
         if (scsi_device_find(&s->bus, 0, i, 0)) {
             uint16_t device_handle = mpt_get_handle(s);
-            SASADDRESS sas_address;
+            trace_mpt_device(i, device_handle);
             PMptSASDevice p_sas_device =
                 (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
-
-            memset(&sas_address, 0, sizeof(SASADDRESS));
-            sas_address.ll_address = s->sas_addr;
 
             p_sas_page_0->u.fields.phy[i].negotiated_link_rate =
                 MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_SET(
@@ -5363,8 +5460,8 @@ static void mpt_init_config_pages_sas(MptState *s)
                 MPTSCSI_SASIOUNIT0_DEVICE_TYPE_SET(
                     MPTSCSI_SASIOUNIT0_DEVICE_TYPE_END)
                 | controller_phy_device_type;
-            p_sas_page_0->u.fields.phy[i].controller_dev_handle =
-                device_handle;
+            /* p_sas_page_0->u.fields.phy[i].controller_dev_handle =
+                device_handle; */
 
             p_phy_pages->sas_phy_page_0.u.fields.attached_device_info =
                 MPTSCSI_SASPHY0_DEV_INFO_DEVICE_TYPE_SET(
@@ -5372,7 +5469,7 @@ static void mpt_init_config_pages_sas(MptState *s)
             p_phy_pages->sas_phy_page_0.u.fields.sas_address =
                 sas_address;
             p_phy_pages->sas_phy_page_0.u.fields.owner_dev_handle =
-                device_handle;
+                tmp_initiator_handles[i];
             p_phy_pages->sas_phy_page_0.u.fields.attached_dev_handle =
                 device_handle;
 
@@ -5397,7 +5494,7 @@ static void mpt_init_config_pages_sas(MptState *s)
             p_sas_device->sas_dev_page0.u.fields.sas_address =
                 sas_address;
             p_sas_device->sas_dev_page0.u.fields.parent_dev_handle =
-                controller_handle;
+                tmp_initiator_handles[i];
             p_sas_device->sas_dev_page0.u.fields.phy_num = i;
             p_sas_device->sas_dev_page0.u.fields.access_status =
                 MPTSCSI_SASDEVICE0_STATUS_NO_ERRORS;
@@ -5454,6 +5551,8 @@ static void mpt_init_config_pages_sas(MptState *s)
             }
         }
     }
+
+    g_free(tmp_initiator_handles);
 }
 
 static void mpt_init_config_pages(MptState *s)

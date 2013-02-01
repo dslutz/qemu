@@ -628,6 +628,8 @@ mpt_err_command(int status, int target_id) "status=%d target_id=%d"
 mpt_err_config(int page_type, int action, int ext_page_type, int page_number, int page_length, int page_version, int page_address) "page_type=0x%x action=0x%x ext_page_type=0x%x page_number=0x%x page_length=0x%x page_version=0x%x page_address=0x%x"
 mpt_config_sas_device(void *device, int target_id, int handle) "device=%p target id=%d handle=%d"
 mpt_config_sas_phy_page_0(int owner_dev_handle, int attached_dev_handle, int attached_device_info, int phy_info) "owner_dev_handle=%d attached_dev_handle=%d attached_device_info=0x%x phy_info=0x%x"
+mpt_config_sas_device_weird(uint16_t handle, unsigned int c_devices) "handle=%hx c_devices=%u"
+mpt_device(unsigned port, uint16_t handle) "port=%u handle=%hu"
 
 # hw/pvscsi.c
 pvscsi_rings_mgr_init(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"
