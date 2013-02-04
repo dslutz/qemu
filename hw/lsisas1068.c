@@ -3620,8 +3620,10 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
                     sizeof(MptSCSIIORequest);
             }
 
-            mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
-                        sizeof(MptSCSIIORequest), chain_offset);
+            if (cmd->iov_size) {
+                mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
+                            sizeof(MptSCSIIORequest), chain_offset);
+            }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
                 MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE ?
