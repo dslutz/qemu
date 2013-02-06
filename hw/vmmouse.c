@@ -58,11 +58,18 @@ typedef struct _VMMouseState
     uint32_t queue[VMMOUSE_QUEUE_SIZE];
     int32_t queue_size;
     uint16_t nb_queue;
+    uint16_t in_queue;
+    uint16_t out_queue;
     uint16_t status;
     uint8_t absolute;
     QEMUPutMouseEntry *entry;
     void *ps2_mouse;
 } VMMouseState;
+
+static inline int32_t vmmouse_queue_size(VMMouseState *s)
+{
+    return s->nb_queue;
+}
 
 static uint32_t vmmouse_get_status(VMMouseState *s)
 {
@@ -97,10 +104,15 @@ static void vmmouse_mouse_event(void *opaque, int x, int y, int dz, int buttons_
         y <<= 1;
     }
 
-    s->queue[s->nb_queue++] = buttons;
-    s->queue[s->nb_queue++] = x;
-    s->queue[s->nb_queue++] = y;
-    s->queue[s->nb_queue++] = dz;
+    s->queue[s->in_queue++] = buttons;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
+    s->queue[s->in_queue++] = x;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
+    s->queue[s->in_queue++] = y;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
+    s->queue[s->in_queue++] = dz;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
+    s->nb_queue += 4;
 
     /* need to still generate PS2 events to notify driver to
        read from queue */
@@ -148,7 +160,8 @@ static void vmmouse_read_id(VMMouseState *s)
     }
 
     trace_vmmouse_read_id(s, s->nb_queue);
-    s->queue[s->nb_queue++] = VMMOUSE_VERSION;
+    s->queue[s->in_queue++] = VMMOUSE_VERSION;
+    s->nb_queue++;
     s->status = 0;
 }
 
@@ -188,12 +201,12 @@ static void vmmouse_data(VMMouseState *s, uint32_t *data, uint32_t size)
         return;
     }
 
-    for (i = 0; i < size; i++)
-        data[i] = s->queue[i];
+    for (i = 0; i < size; i++) {
+        data[i] = s->queue[s->out_queue++];
+	s->out_queue = s->out_queue % VMMOUSE_QUEUE_SIZE;
+    }
 
     s->nb_queue -= size;
-    if (s->nb_queue)
-        memmove(s->queue, &s->queue[size], sizeof(s->queue[0]) * s->nb_queue);
 }
 
 static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
@@ -264,6 +277,8 @@ static const VMStateDescription vmstate_vmmouse = {
         VMSTATE_INT32_EQUAL(queue_size, VMMouseState),
         VMSTATE_UINT32_ARRAY(queue, VMMouseState, VMMOUSE_QUEUE_SIZE),
         VMSTATE_UINT16(nb_queue, VMMouseState),
+        VMSTATE_UINT16(in_queue, VMMouseState),
+        VMSTATE_UINT16(out_queue, VMMouseState),
         VMSTATE_UINT16(status, VMMouseState),
         VMSTATE_UINT8(absolute, VMMouseState),
         VMSTATE_END_OF_LIST()
