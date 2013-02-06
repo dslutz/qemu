@@ -20,6 +20,7 @@
 #include "xen-mapcache.h"
 #include "trace.h"
 #include "exec-memory.h"
+#include "cpu-all.h"
 
 #include <xen/hvm/ioreq.h>
 #include <xen/hvm/params.h>
@@ -787,6 +788,41 @@ static void cpu_ioreq_move(ioreq_t *req)
     }
 }
 
+static bool env_hack = false;
+static void sync_regs_from_shared(ioreq_t *req)
+{
+    CPUX86State *env = cpu_single_env;
+    if (!env) {
+	cpu_single_env = g_malloc(sizeof (CPUX86State));
+	env = cpu_single_env;
+	env_hack = true;
+    }
+    env->regs[R_EAX] = req->vmdata[0];
+    env->regs[R_EBX] = req->vmdata[1];
+    env->regs[R_ECX] = req->vmdata[2];
+    env->regs[R_EDX] = req->vmdata[3];
+    env->regs[R_ESI] = req->vmdata[4];
+    env->regs[R_EDI] = req->vmdata[5];
+}
+
+static void sync_regs_to_shared(ioreq_t *req)
+{
+    CPUX86State *env = cpu_single_env;
+    req->vmdata[0] = env->regs[R_EAX];
+    req->vmdata[1] = env->regs[R_EBX];
+    req->vmdata[2] = env->regs[R_ECX];
+    req->vmdata[3] = env->regs[R_EDX];
+    req->vmdata[4] = env->regs[R_ESI];
+    req->vmdata[5] = env->regs[R_EDI];
+    xen_rmb();
+
+    if (env_hack) { // XXX temp for POC
+	g_free(cpu_single_env);
+	cpu_single_env = NULL;
+	env_hack = false;
+    }
+}
+
 static void handle_ioreq(ioreq_t *req)
 {
     trace_handle_ioreq(req, req->type, req->dir, req->df, req->data_is_ptr,
@@ -803,7 +839,11 @@ static void handle_ioreq(ioreq_t *req)
 
     switch (req->type) {
         case IOREQ_TYPE_PIO:
+	    if (req->addr == 0x565c)
+		sync_regs_from_shared(req);
             cpu_ioreq_pio(req);
+	    if (req->addr == 0x565c)
+		sync_regs_to_shared(req);
             break;
         case IOREQ_TYPE_COPY:
             cpu_ioreq_move(req);
