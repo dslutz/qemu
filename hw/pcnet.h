@@ -66,8 +66,8 @@
 #define CSR_PROM(S)      !!(((S)->csr[15])&0x8000)
 
 typedef struct PCNetState_st PCNetState;
-typedef struct PCNetState2_st PCNetState2;
-typedef struct PCNetVState_st PCNetVState;
+typedef struct PCNetStateVmx_st PCNetStateVmx;
+typedef struct PCNetVmxState_st PCNetVmxState;
 
 struct PCNetState_st {
     NICState *nic;
@@ -92,7 +92,7 @@ struct PCNetState_st {
     int looptest;
 };
 
-struct PCNetState2_st {
+struct PCNetStateVmx_st {
     uint64_t vmxdata_addr;
     uint64_t vmx_rx_ring;
     uint64_t vmx_rx_ring2;
@@ -115,9 +115,9 @@ struct PCNetState2_st {
     uint32_t vmxnet_reg[VMXNET_CHIP_IO_RESV_SIZE];
 };
 
-struct PCNetVState_st {
+struct PCNetVmxState_st {
     PCNetState s1;
-    PCNetState2 s2;
+    PCNetStateVmx s2;
 };
 
 void pcnet_h_reset(void *opaque);
@@ -131,7 +131,7 @@ uint32_t vlance_ioport_readw(void *opaque, uint32_t addr);
 void vlance_ioport_writel(void *opaque, uint32_t addr, uint32_t val);
 uint32_t vlance_ioport_readl(void *opaque, uint32_t addr);
 uint32_t pcnet_bcr_readw(PCNetState *s, uint32_t rap);
-uint32_t vlance_bcr_readw(PCNetVState *vs, uint32_t rap);
+uint32_t vlance_bcr_readw(PCNetVmxState *vs, uint32_t rap);
 int pcnet_can_receive(NetClientState *nc);
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_set_link_status(NetClientState *nc);
@@ -140,9 +140,9 @@ int vlance_can_receive(NetClientState *nc);
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_);
 void pcnet_common_cleanup(PCNetState *d);
 int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info);
-void vmxnet_poll_rx_tx(PCNetVState *vs);
+void vmxnet_poll_rx_tx(PCNetVmxState *vs);
 void pcnet_update_irq(PCNetState *s);
-void vmxnet_update_irq(PCNetVState *vs);
-void vmxnet_transmit(PCNetVState *vs);
+void vmxnet_update_irq(PCNetVmxState *vs);
+void vmxnet_transmit(PCNetVmxState *vs);
 extern const VMStateDescription vmstate_pcnet;
 extern const VMStateDescription vmstate_vlance;
