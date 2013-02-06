@@ -26,7 +26,7 @@
 #include <xen/hvm/params.h>
 #include <xen/hvm/e820.h>
 
-//#define DEBUG_XEN
+#define DEBUG_XEN
 
 #ifdef DEBUG_XEN
 #define DPRINTF(fmt, ...) \
@@ -841,10 +841,10 @@ static void handle_ioreq(ioreq_t *req)
 
     switch (req->type) {
         case IOREQ_TYPE_PIO:
-	    if (req->addr == 0x565c)
+	    if (req->addr == 0x5658)
 		sync_regs_from_shared(req);
             cpu_ioreq_pio(req);
-	    if (req->addr == 0x565c)
+	    if (req->addr == 0x5658)
 		sync_regs_to_shared(req);
             break;
         case IOREQ_TYPE_COPY:

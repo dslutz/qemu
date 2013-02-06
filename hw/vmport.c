@@ -82,11 +82,11 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
         return eax;
     }
     if (!s->func[command]) {
-	trace_vmport_ioport_read_unknown(opaque, addr, size, command);
+        trace_vmport_ioport_read_unknown(opaque, addr, size, command);
 #ifdef VMPORT_DEBUG
-	fprintf(stderr, "vmport: unknown command %x\n", command);
+        fprintf(stderr, "vmport: unknown command %x\n", command);
 #endif
-	return eax;
+        return eax;
     }
 
     return s->func[command](s->opaque[command], addr);
@@ -149,12 +149,7 @@ static int vmport_initfn(ISADevice *dev)
     VMPortState *s = DO_UPCAST(VMPortState, dev, dev);
 
     memory_region_init_io(&s->io, &vmport_ops, s, "vmport", 1);
-    if (xen_enabled()) {
-	isa_register_ioport(dev, &s->io, 0x565c); // xen channel
-    }
-    else {
-	isa_register_ioport(dev, &s->io, 0x5658);
-    }
+    isa_register_ioport(dev, &s->io, 0x5658);
 
     port_state = s;
     /* Register some generic port commands */
