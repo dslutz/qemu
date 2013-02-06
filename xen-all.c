@@ -789,14 +789,18 @@ static void cpu_ioreq_move(ioreq_t *req)
 }
 
 static bool env_hack = false;
+static CPUX86State *vmmouse_env;
 static void sync_regs_from_shared(ioreq_t *req)
 {
-    CPUX86State *env = cpu_single_env;
-    if (!env) {
-	cpu_single_env = g_malloc(sizeof (CPUX86State));
-	env = cpu_single_env;
-	env_hack = true;
+    CPUX86State *env;
+
+    if (!cpu_single_env) {
+        if (!vmmouse_env)
+            vmmouse_env = g_malloc(sizeof (CPUX86State));
+        cpu_single_env = vmmouse_env;
+        env_hack = true;
     }
+    env = cpu_single_env;
     env->regs[R_EAX] = req->vmdata[0];
     env->regs[R_EBX] = req->vmdata[1];
     env->regs[R_ECX] = req->vmdata[2];
@@ -814,10 +818,8 @@ static void sync_regs_to_shared(ioreq_t *req)
     req->vmdata[3] = env->regs[R_EDX];
     req->vmdata[4] = env->regs[R_ESI];
     req->vmdata[5] = env->regs[R_EDI];
-    xen_rmb();
 
-    if (env_hack) { // XXX temp for POC
-	g_free(cpu_single_env);
+    if (env_hack) {
 	cpu_single_env = NULL;
 	env_hack = false;
     }
