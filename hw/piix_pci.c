@@ -274,7 +274,8 @@ static PCIBus *i440fx_common_init(const char *device_name,
                  PAM_EXPAN_SIZE);
     }
 
-    /* Warning: this is hard coded in seabios(src/acpi-dsdt.dsl)! */
+    /* Warning: this is hard coded in seabios(src/acpi-dsdt.dsl)
+     * and xen(tools/firmware/hvmloader/acpi/dsdt.asl)! */
     *piix3_devfn = PCI_DEVFN(0x7, 0);
     if (vmware_hw) {
 #if 0

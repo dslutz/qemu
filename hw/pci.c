@@ -1546,7 +1546,9 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, const char *default_model,
 
 PCIDevice *pci_vga_init(PCIBus *bus)
 {
-    int devfn = vmware_hw ? PCI_DEVFN(0xf, 0) : -1;
+    /* Warning: this is hard coded in seabios(src/acpi-dsdt.dsl)
+     * and xen(tools/firmware/hvmloader/acpi/dsdt.asl)! */
+    int devfn = vmware_hw ? PCI_DEVFN(0xf, 0) : PCI_DEVFN(0xf, 0);
 
     switch (vga_interface_type) {
     case VGA_CIRRUS:
