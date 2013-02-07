@@ -270,6 +270,7 @@ static int tcg_allowed = 1;
 int kvm_allowed = 0;
 int xen_allowed = 0;
 int vmware_hw = 0;
+int vmware_hwx = 0;
 int xen_platform_pci = 0;
 uint64_t pci_hole_min_size = 0;
 uint32_t xen_domid;
