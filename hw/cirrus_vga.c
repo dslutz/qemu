@@ -2979,11 +2979,6 @@ static Property pci_vga_cirrus_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-DeviceState *pci_cirrus_vga_init(PCIBus *bus)
-{
-    return &pci_create_simple(bus, vmware_hw ? PCI_DEVFN(0xf, 0) : -1, "cirrus-vga")->qdev;
-}
-
 static void cirrus_vga_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
