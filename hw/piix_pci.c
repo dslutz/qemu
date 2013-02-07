@@ -274,8 +274,9 @@ static PCIBus *i440fx_common_init(const char *device_name,
                  PAM_EXPAN_SIZE);
     }
 
+    /* Warning: this is hard coded in seabios(src/acpi-dsdt.dsl)! */
+    *piix3_devfn = PCI_DEVFN(0x7, 0);
     if (vmware_hw) {
-        *piix3_devfn = PCI_DEVFN(0x7, 0);
 #if 0
 /* DCS: Does not yet work... */
         which_piix = "PIIX4";
@@ -285,7 +286,6 @@ static PCIBus *i440fx_common_init(const char *device_name,
         which_piix_xen = "PIIX3-xen";
 #endif
     } else {
-        *piix3_devfn = -1;
         which_piix = "PIIX3";
         which_piix_xen = "PIIX3-xen";
     }

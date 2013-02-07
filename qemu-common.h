@@ -51,7 +51,6 @@ typedef struct MigrationParams MigrationParams;
 #include <glib.h>
 
 extern int vmware_hw;
-extern int vmware_hwx;
 extern int xen_platform_pci;
 extern uint64_t pci_hole_min_size;
 
