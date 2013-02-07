@@ -20,12 +20,13 @@
 #include "xen-mapcache.h"
 #include "trace.h"
 #include "exec-memory.h"
+#include "cpu-all.h"
 
 #include <xen/hvm/ioreq.h>
 #include <xen/hvm/params.h>
 #include <xen/hvm/e820.h>
 
-//#define DEBUG_XEN
+#define DEBUG_XEN
 
 #ifdef DEBUG_XEN
 #define DPRINTF(fmt, ...) \
@@ -787,6 +788,43 @@ static void cpu_ioreq_move(ioreq_t *req)
     }
 }
 
+static bool env_hack = false;
+static CPUX86State *vmmouse_env;
+static void sync_regs_from_shared(ioreq_t *req)
+{
+    CPUX86State *env;
+
+    if (!cpu_single_env) {
+        if (!vmmouse_env)
+            vmmouse_env = g_malloc(sizeof (CPUX86State));
+        cpu_single_env = vmmouse_env;
+        env_hack = true;
+    }
+    env = cpu_single_env;
+    env->regs[R_EAX] = req->vmdata[0];
+    env->regs[R_EBX] = req->vmdata[1];
+    env->regs[R_ECX] = req->vmdata[2];
+    env->regs[R_EDX] = req->vmdata[3];
+    env->regs[R_ESI] = req->vmdata[4];
+    env->regs[R_EDI] = req->vmdata[5];
+}
+
+static void sync_regs_to_shared(ioreq_t *req)
+{
+    CPUX86State *env = cpu_single_env;
+    req->vmdata[0] = env->regs[R_EAX];
+    req->vmdata[1] = env->regs[R_EBX];
+    req->vmdata[2] = env->regs[R_ECX];
+    req->vmdata[3] = env->regs[R_EDX];
+    req->vmdata[4] = env->regs[R_ESI];
+    req->vmdata[5] = env->regs[R_EDI];
+
+    if (env_hack) {
+	cpu_single_env = NULL;
+	env_hack = false;
+    }
+}
+
 static void handle_ioreq(ioreq_t *req)
 {
     trace_handle_ioreq(req, req->type, req->dir, req->df, req->data_is_ptr,
@@ -803,7 +841,11 @@ static void handle_ioreq(ioreq_t *req)
 
     switch (req->type) {
         case IOREQ_TYPE_PIO:
+	    if (req->addr == 0x5658)
+		sync_regs_from_shared(req);
             cpu_ioreq_pio(req);
+	    if (req->addr == 0x5658)
+		sync_regs_to_shared(req);
             break;
         case IOREQ_TYPE_COPY:
             cpu_ioreq_move(req);

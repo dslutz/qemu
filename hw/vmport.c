@@ -25,6 +25,7 @@
 #include "isa.h"
 #include "pc.h"
 #include "kvm.h"
+#include "xen.h"
 #include "qdev.h"
 #include "trace.h"
 
@@ -80,8 +81,7 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
         trace_vmport_ioport_read_big(opaque, addr, size, command);
         return eax;
     }
-    if (!s->func[command])
-    {
+    if (!s->func[command]) {
         trace_vmport_ioport_read_unknown(opaque, addr, size, command);
 #ifdef VMPORT_DEBUG
         fprintf(stderr, "vmport: unknown command %x\n", command);
