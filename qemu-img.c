@@ -88,6 +88,7 @@ static void help(void)
            "  '-p' show progress of command (only certain commands)\n"
            "  '-S' indicates the consecutive number of bytes that must contain only zeros\n"
            "       for qemu-img to create a sparse image during conversion\n"
+           "  '-z' for host_device, skip zero block writes\n"
            "  '--output' takes the format in which the output must be done (human or json)\n"
            "\n"
            "Parameters to check subcommand:\n"
