@@ -671,7 +671,11 @@ static int scsi_disk_emulate_inquiry(SCSIRequest *req, uint8_t *outbuf)
      * block characteristics VPD page by default.  Not all of SPC-3
      * is actually implemented, but we're good enough.
      */
-    outbuf[2] = 5;
+    if (vmware_hw) {
+        outbuf[2] = 2;
+    } else {
+        outbuf[2] = 5;
+    }
     outbuf[3] = 2 | 0x10; /* Format 2, HiSup */
 
     if (buflen > 36) {
