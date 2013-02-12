@@ -1343,7 +1343,7 @@ typedef struct QEMU_PACKED MptConfigurationPageManufacturing7PHY {
 typedef struct QEMU_PACKED MptConfigurationPageManufacturing7 {
     /** Union. */
     union {
-        /** Byte view. */
+        /** Byte view. Variable size. */
         uint8_t                           page_data[1];
         /** Field view. */
         struct {
@@ -1735,7 +1735,7 @@ typedef struct QEMU_PACKED MptConfigurationPageIOC6 {
     /** Union. */
     union {
         /** Byte view. */
-        uint8_t                   page_data[60];
+        uint8_t                   page_data[56]; //XXX was 60
         /** Field view. */
         struct {
             /** The omnipresent header. */
@@ -1776,7 +1776,7 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS1 {
     /** Union. */
     union {
         /** Byte view. */
-        uint8_t                   page_data[48];
+        uint8_t                   page_data[32]; //XXX was 48
         /** Field view. */
         struct {
             /** The omnipresent header. */
@@ -1868,7 +1868,7 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS2 {
     /** Union. */
     union {
         /** Byte view. */
-        uint8_t                   page_data[384];
+        uint8_t                   page_data[124];
         /** Field view. */
         struct {
             /** The omnipresent header. */
@@ -1924,6 +1924,8 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS2 {
                     /** PCI Slot Number */
                     uint8_t               pci_slot_no;
                     /** Reserved */
+                    uint8_t               reserved1;
+                    /** Reserved */
                     uint32_t              reserved[3];
                     /** LUN */
                     uint32_t              lun[5];
@@ -1937,7 +1939,7 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS2 {
                     /** World wide port name high */
                     uint32_t              world_wide_port_name_high;
                     /** Reserved */
-                    uint32_t              reserved[3];
+                    uint32_t              reserved[2];
                     /** LUN */
                     uint32_t              lun[5];
                     /** Reserved */
@@ -1948,7 +1950,7 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS2 {
                     /** SAS address */
                     SASADDRESS            sas_address;
                     /** Reserved */
-                    uint32_t              reserved[3];
+                    uint32_t              reserved[2];
                     /** LUN */
                     uint32_t              lun[5];
                     /** Reserved */
@@ -1959,7 +1961,7 @@ typedef struct QEMU_PACKED MptConfigurationPageBIOS2 {
                     /** Enclosure logical ID */
                     uint64_t              enclosure_logical_id;
                     /** Reserved */
-                    uint32_t              reserved[3];
+                    uint32_t              reserved[2];
                     /** LUN */
                     uint32_t              lun[5];
                     /** Reserved */
@@ -2182,7 +2184,7 @@ typedef struct QEMU_PACKED MptConfigurationPageSCSISPIDevice1 {
     /** Union. */
     union {
         /** Byte view. */
-        uint8_t                   page_data[16];
+        uint8_t                   page_data[12]; //XXX was 16
         /** Field view. */
         struct {
             /** The omnipresent header. */
@@ -2273,7 +2275,7 @@ typedef struct QEMU_PACKED MptConfigurationPageSCSISPIDevice3 {
     /** Union. */
     union {
         /** Byte view. */
-        uint8_t                   page_data[1];
+        uint8_t                   page_data[12]; //XXX was 1
         /** Field view. */
         struct {
             /** The omnipresent header. */
@@ -3621,10 +3623,10 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
 
             mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
                         sizeof(MptSCSIIORequest), chain_offset);
-            is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
+            is_write = (MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
-                MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE ?
-                true : false;
+			MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE);
+	    //?                true : false;
             uint32_t i;
             for (i = 0; i < MPT_MAX_CMDS; i++) {
                 if (s->cmds[i] == 0) {
@@ -5337,7 +5339,7 @@ static void mpt_init_config_pages_sas(MptState *s)
                 (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
 
             memset(&sas_address, 0, sizeof(SASADDRESS));
-            sas_address.ll_address = s->sas_addr;
+            sas_address.ll_address = s->sas_addr + i;
 
             p_sas_page_0->u.fields.phy[i].negotiated_link_rate =
                 MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_SET(
