@@ -88,6 +88,7 @@ static void help(void)
            "  '-p' show progress of command (only certain commands)\n"
            "  '-S' indicates the consecutive number of bytes that must contain only zeros\n"
            "       for qemu-img to create a sparse image during conversion\n"
+           "  '-z' for host_device, skip zero block writes\n"
            "  '--output' takes the format in which the output must be done (human or json)\n"
            "\n"
            "Parameters to check subcommand:\n"
@@ -661,6 +662,7 @@ static int compare_sectors(const uint8_t *buf1, const uint8_t *buf2, int n,
 static int img_convert(int argc, char **argv)
 {
     int c, ret = 0, n, n1, bs_n, bs_i, compress, cluster_size, cluster_sectors;
+    int force_zero_init;
     int progress = 0, flags;
     const char *fmt, *out_fmt, *cache, *out_baseimg, *out_filename;
     BlockDriver *drv, *proto_drv;
@@ -682,8 +684,9 @@ static int img_convert(int argc, char **argv)
     cache = "unsafe";
     out_baseimg = NULL;
     compress = 0;
+    force_zero_init = 1;
     for(;;) {
-        c = getopt(argc, argv, "f:O:B:s:hce6o:pS:t:");
+        c = getopt(argc, argv, "f:O:B:s:hce6o:pS:t:z");
         if (c == -1) {
             break;
         }
@@ -736,6 +739,9 @@ static int img_convert(int argc, char **argv)
             break;
         case 't':
             cache = optarg;
+            break;
+        case 'z':
+            force_zero_init = 1;
             break;
         }
     }
@@ -984,7 +990,7 @@ static int img_convert(int argc, char **argv)
         /* signal EOF to align */
         bdrv_write_compressed(out_bs, 0, NULL, 0);
     } else {
-        int has_zero_init = bdrv_has_zero_init(out_bs);
+        int has_zero_init = force_zero_init ? 1 : bdrv_has_zero_init(out_bs);
 
         sector_num = 0; // total number of sectors converted so far
         nb_sectors = total_sectors - sector_num;
