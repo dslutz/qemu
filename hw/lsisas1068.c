@@ -3628,8 +3628,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
-			MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE);
-	    //?                true : false;
+			MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE;
             uint32_t i;
             for (i = 0; i < MPT_MAX_CMDS; i++) {
                 if (s->cmds[i] == 0) {
@@ -5291,11 +5290,10 @@ static void mpt_init_config_pages_sas(MptState *s)
     unsigned i;
     uint16_t root_handle = mpt_get_handle(s);
     SASADDRESS sas_address;
-    memset(&sas_address, 0, sizeof(SASADDRESS));
-    sas_address.ll_address = s->sas_addr;
 
     /* Create initiator devices.  NetApp wants these to exist. */
     for (i = 0; i < s->ports; ++i) {
+        sas_address.ll_address = s->sas_addr + i;
         PMptSASDevice p_initiator =
             (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
         tmp_initiator_handles[i] = mpt_get_handle(s);
@@ -5441,6 +5439,8 @@ static void mpt_init_config_pages_sas(MptState *s)
             trace_mpt_device(i, device_handle);
             PMptSASDevice p_sas_device =
                 (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
+
+            sas_address.ll_address = s->sas_addr + i;
 
             p_sas_page_0->u.fields.phy[i].negotiated_link_rate =
                 MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_SET(
