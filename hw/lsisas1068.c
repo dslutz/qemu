@@ -5293,7 +5293,7 @@ static void mpt_init_config_pages_sas(MptState *s)
 
     /* Create initiator devices.  NetApp wants these to exist. */
     for (i = 0; i < s->ports; ++i) {
-        sas_address.ll_address = s->sas_addr + i;
+        sas_address.ll_address = s->sas_addr + (i << 2);
         PMptSASDevice p_initiator =
             (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
         tmp_initiator_handles[i] = mpt_get_handle(s);
@@ -5440,7 +5440,7 @@ static void mpt_init_config_pages_sas(MptState *s)
             PMptSASDevice p_sas_device =
                 (PMptSASDevice)g_malloc0(sizeof(MptSASDevice));
 
-            sas_address.ll_address = s->sas_addr + i;
+            sas_address.ll_address = s->sas_addr + (i << 2);
 
             p_sas_page_0->u.fields.phy[i].negotiated_link_rate =
                 MPTSCSI_SASIOUNIT0_NEGOTIATED_RATE_SET(
