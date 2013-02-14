@@ -43,7 +43,7 @@
 #define MPTSCSI_MAXIMUM_CHAIN_DEPTH 0x22
 
 #define USE_PCIE
-/* #define USE_MSIX */ /* curent theory is that this chip doesn't do msi-x */
+//#define USE_MSIX
 
 /** SPI SCSI controller (LSI53C1030) */
 #define MPTSCSI_PCI_SPI_CTRLNAME             "lsi53c1030"
@@ -6001,7 +6001,7 @@ mpt_msi_init(MptState *s) {
 
     int res;
 
-    if (!mpt_use_msi(s) || vmware_hw) {
+    if (!mpt_use_msi(s)) {
         s->msi_used = false;
         return s->msi_used;
     }
@@ -6186,7 +6186,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     mpt_msi_init(s);
 
-    if (pci_is_express(&s->dev)) {
+    if (vmware_hw || pci_is_express(&s->dev)) {
 	mpt_pcie_init(s);
     }
 
@@ -6196,7 +6196,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
         msix_init(&s->dev, 15, &s->mmio_io, 0, 0x2000)) {
         s->flags &= ~MPT_MASK_USE_MSIX; //???
 	}*/
-    if (mpt_use_msix(s) && mpt_msix_init(s)) {
+    if (!vmware_hw && mpt_use_msix(s) && mpt_msix_init(s)) {
 	s->flags |= MPT_MASK_USE_MSIX;
         msix_vector_use(&s->dev, 0);
     }
@@ -6217,8 +6217,8 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     s->request_queue_entries = MPTSCSI_REQUEST_QUEUE_DEPTH_DEFAULT + 1;
     mpt_queues_alloc(s);
 
-    trace_mpt_init(mpt_use_msix(s) ? "MSI-X" : "INTx",
-                   mpt_is_sas(s) ? "sas" : "scsi");
+    trace_mpt_init(mpt_use_msi(s) ? (mpt_use_msix(s) ? "MSI-X" : "MSI" )
+		   : "INTx", mpt_is_sas(s) ? "sas" : "scsi");
 
     if (s->ctrl_type == MPTCTRLTYPE_SCSI_SPI) {
         s->ports = MPTSCSI_PCI_SPI_PORTS_MAX;
@@ -6257,7 +6257,7 @@ static Property mptsas_properties[] = {
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
     DEFINE_PROP_BIT("use_msi", MptState, flags,
-                    MPT_FLAG_USE_MSI, false),
+                    MPT_FLAG_USE_MSI, true),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),
@@ -6300,8 +6300,6 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(oc);
 
     /* Note: This is a PCI-X (PCI-eXtended) device.
-     * Currently MSI (Message Signaled Interrupts)
-     * is not supported.
      */
 
     pc->init = mpt_scsi_sas_init;
@@ -6313,6 +6311,7 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
         pc->revision = 0x01;
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
+        pc->is_express = 1; /* vmware blew this */
     } else {
         pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
