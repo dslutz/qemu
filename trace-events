@@ -630,6 +630,8 @@ mpt_config_sas_device(void *device, int target_id, int handle) "device=%p target
 mpt_config_sas_phy_page_0(int owner_dev_handle, int attached_dev_handle, int attached_device_info, int phy_info) "owner_dev_handle=%d attached_dev_handle=%d attached_device_info=0x%x phy_info=0x%x"
 mpt_config_sas_device_weird(uint16_t handle, unsigned int c_devices) "handle=%hx c_devices=%u"
 mpt_device(unsigned port, uint16_t handle) "port=%u handle=%hu"
+mpt_abort_command(void *cmd, void *req) "cmd=%p req=%p"
+mpt_complete_aborted_command(void *cmd) "cmd=%p"
 
 # hw/pvscsi.c
 pvscsi_rings_mgr_init(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"

@@ -3405,7 +3405,8 @@ static void mpt_finish_address_reply(MptState *s,
 
 static void mpt_abort_command(MptCmd *cmd)
 {
-    if (cmd->req) {
+    trace_mpt_abort_command(cmd, cmd->req);
+    if (cmd->req) { /* why have this if-statement? */
         cmd->req = NULL;
     }
 }
@@ -3462,6 +3463,13 @@ static void mpt_command_complete(SCSIRequest *req,
 
     if (cmd->sge_cnt) {
         qemu_sglist_destroy(&cmd->qsg);
+    }
+
+    if (!cmd->req) {
+        /* Use of mpt_abort_command() causes this condition. */
+        trace_mpt_complete_aborted_command(cmd);
+        g_free(cmd);
+        return;
     }
 
     sense_len = scsi_req_get_sense(cmd->req, sense_buf,
