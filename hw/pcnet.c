@@ -36,10 +36,10 @@
  */
 
 #include "qdev.h"
-#include "net.h"
-#include "qemu-timer.h"
-#include "qemu_socket.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "qemu/timer.h"
+#include "qemu/sockets.h"
+#include "sysemu/sysemu.h"
 #include "trace.h"
 
 #include "pcnet.h"
@@ -1047,7 +1047,7 @@ static int pcnet_tdte_poll(PCNetState *s)
 
 int pcnet_can_receive(NetClientState *nc)
 {
-    PCNetState *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = qemu_get_nic_opaque(nc);
     if (CSR_STOP(s) || CSR_SPND(s))
         return 0;
 
@@ -1076,7 +1076,8 @@ static void vmxnet_rdte_poll(PCNetVmxState *vs)
 
 int vlance_can_receive(NetClientState *nc)
 {
-    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    NetClientState *nc0 = nc - nc->queue_index;
+    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
     PCNetState *s = &vs->s1;
     Vmxnet2_RxRingEntry  rmd;
     hwaddr addr;
@@ -1098,7 +1099,7 @@ int vlance_can_receive(NetClientState *nc)
 
 ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 {
-    PCNetState *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *s = qemu_get_nic_opaque(nc);
     int is_padr = 0, is_bcast = 0, is_ladr = 0;
     uint8_t buf1[60];
     int remaining;
@@ -1280,14 +1281,15 @@ ssize_t pcnet_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 
 void pcnet_set_link_status(NetClientState *nc)
 {
-    PCNetState *d = DO_UPCAST(NICState, nc, nc)->opaque;
+    PCNetState *d = qemu_get_nic_opaque(nc);
 
     d->lnkst = nc->link_down ? 0 : 0x40;
 }
 
 void vlance_set_link_status(NetClientState *nc)
 {
-    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    NetClientState *nc0 = nc - nc->queue_index;
+    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
     vs->s2.link_down_reported = 0;
@@ -1350,11 +1352,12 @@ static void pcnet_transmit(PCNetState *s)
                 if (BCR_SWSTYLE(s) == 1)
                     add_crc = !GET_FIELD(tmd.status, TMDS, NOFCS);
                 s->looptest = add_crc ? PCNET_LOOPTEST_CRC : PCNET_LOOPTEST_NOCRC;
-                pcnet_receive(&s->nic->nc, s->buffer, s->xmit_pos);
+                pcnet_receive(qemu_get_queue(s->nic), s->buffer, s->xmit_pos);
                 s->looptest = 0;
             } else
                 if (s->nic)
-                    qemu_send_packet(&s->nic->nc, s->buffer, s->xmit_pos);
+                    qemu_send_packet(qemu_get_queue(s->nic), s->buffer,
+                                     s->xmit_pos);
 
             s->csr[0] &= ~0x0008;   /* clear TDMD */
             s->csr[4] |= 0x0004;    /* set TXSTRT */
@@ -1485,16 +1488,18 @@ void vmxnet_transmit(PCNetVmxState *vs)
                  * zero length if it is not the last one in the chain. */
                 if (RT_LIKELY(cb <= MAX_FRAME))
                 {
+		    NetClientState *nc = qemu_get_queue(s->nic);
                     s->phys_mem_read(s->dma_opaque, NET_SG_MAKE_PA(tmd.sg.sg[0]),
                                      s->buffer + s->xmit_pos, cb, CSR_BSWP(s));
                     s->xmit_pos += cb;
                     if (CSR_LOOP(s)) {
                         s->looptest = PCNET_LOOPTEST_NOCRC;                        
-                        vlance_receive(&s->nic->nc, s->buffer, s->xmit_pos);
+                        vlance_receive(nc, s->buffer, s->xmit_pos); //XXXDMK
                         s->looptest = 0;
                     } else {
                         if (s->nic)
-                            qemu_send_packet(&s->nic->nc, s->buffer, s->xmit_pos);
+                            qemu_send_packet(nc, s->buffer, s->xmit_pos); //XXXDMK
+
                     }
                     s->xmit_pos = 0;
                 }
@@ -1574,7 +1579,8 @@ static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry
 
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 {
-    PCNetVmxState *vs = DO_UPCAST(NICState, nc, nc)->opaque;
+    NetClientState *nc0 = nc - nc->queue_index;
+    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
     PCNetState *s = &vs->s1;
     PCNetStateVmx *s2 = &vs->s2;
     int is_padr = 0, is_bcast = 0, is_ladr = 0;
@@ -1976,7 +1982,7 @@ static void vlance_bcr_writew(PCNetVmxState *vs, uint32_t rap, uint32_t val)
         vs->s2.bcr2[rap-32] = val;
     case BCR_STVAL:
         val &= 0xffff;
-        vs->s2.bcr2[BCR_STVAL-32] = val;
+        s->bcr[rap] = val;
 #if 0
         if (vs->fAm79C973)
             TMTimerSetNano(vs->CTX_SUFF(pTimerSoftInt), 12800U * val);
@@ -2491,7 +2497,7 @@ int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info)
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(info, &s->conf, object_get_typename(OBJECT(dev)), dev->id, s);
-    qemu_format_nic_info_str(&s->nic->nc, s->conf.macaddr.a);
+    qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 
     add_boot_device_path(s->conf.bootindex, dev, "/ethernet-phy@0");
 

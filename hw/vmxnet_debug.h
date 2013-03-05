@@ -26,11 +26,11 @@
     #error "VMXNET version is not defined"
 #endif
 
-/* #define VMXNET_DEBUG_CB */
+#define VMXNET_DEBUG_CB
 #define VMXNET_DEBUG_WARNINGS
 #define VMXNET_DEBUG_ERRORS
 /* #define VMXNET_DEBUG_INTERRUPTS */
-/* #define VMXNET_DEBUG_CONFIG */
+#define VMXNET_DEBUG_CONFIG
 /* #define VMXNET_DEBUG_RINGS */
 /* #define VMXNET_DEBUG_PACKETS */
 /* #define VMXNET_DEBUG_SHMEM_ACCESS */

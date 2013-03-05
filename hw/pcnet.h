@@ -1,3 +1,6 @@
+#ifndef HW_PCNET_H
+#define HW_PCNET_H 1
+
 #include "vmxnet/vmware_adjust.h"
 
 #define PCNET_IOPORT_SIZE       0x20
@@ -9,7 +12,7 @@
 #define PCNET_LOOPTEST_CRC	1
 #define PCNET_LOOPTEST_NOCRC	2
 
-#include "memory.h"
+#include "exec/memory.h"
 
 /* BUS CONFIGURATION REGISTERS */
 #define BCR_MSRDA    0
@@ -146,3 +149,5 @@ void vmxnet_update_irq(PCNetVmxState *vs);
 void vmxnet_transmit(PCNetVmxState *vs);
 extern const VMStateDescription vmstate_pcnet;
 extern const VMStateDescription vmstate_vlance;
+
+#endif

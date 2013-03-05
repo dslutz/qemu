@@ -25,15 +25,15 @@
  *
  */
 
-#include "softfloat.h"
-#include "compiler.h"
+#include "fpu/softfloat.h"
+#include "qemu/compiler.h"
 #include "scsi-defs.h"
 #include "hw/hw.h"
-#include "hw/pci.h"
+#include "pci/pci.h"
 #include "hw/scsi.h"
-#include "msi.h"
-#include "msix.h"
-#include "qemu-queue.h"
+#include "pci/msi.h"
+#include "pci/msix.h"
+#include "qemu/queue.h"
 #include "vmw_pvscsi.h"
 #include "trace.h"
 

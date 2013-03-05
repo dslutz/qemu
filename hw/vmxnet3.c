@@ -16,16 +16,16 @@
  */
 
 #include "hw.h"
-#include "pci.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "vmxnet/net.h"
 #include "virtio-net.h"
 #include "net/tap.h"
 #include "net/checksum.h"
-#include "sysemu.h"
-#include "iov.h"
-#include "bswap.h"
-#include "msix.h"
-#include "msi.h"
+#include "sysemu/sysemu.h"
+#include "qemu/iov.h"
+#include "qemu/bswap.h"
+#include "pci/msix.h"
+#include "pci/msi.h"
 
 #include "vmxnet3.h"
 #include "vmxnet_debug.h"
@@ -432,7 +432,7 @@ static void vmxnet3_set_variable_mac(VMXNET3State *s, uint32_t h, uint32_t l)
 
     VMW_CFPRN("Variable MAC: " VMXNET_MF, VMXNET_MA(s->conf.macaddr.a));
 
-    qemu_format_nic_info_str(&s->nic->nc, s->conf.macaddr.a);
+    qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a); //XXXDMK
 }
 
 static uint64_t vmxnet3_get_mac_low(MACAddr *addr)
@@ -683,7 +683,7 @@ vmxnet3_send_packet(VMXNET3State *s, uint32_t qidx)
     vmxnet3_dump_virt_hdr(vmxnet_tx_pkt_get_vhdr(s->tx_pkt));
     vmxnet_tx_pkt_dump(s->tx_pkt);
 
-    bytes_sent = vmxnet_tx_pkt_send(s->tx_pkt, &s->nic->nc);
+    bytes_sent = vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic)); //XXXDMK
     if (!bytes_sent) {
         res = false;
         status = VMXNET3_PKT_STATUS_DISCARD;
@@ -1240,6 +1240,7 @@ static void vmxnet3_update_features(VMXNET3State *s)
 {
     uint32_t guest_features;
     int rxcso_supported;
+    NetClientState *nc = qemu_get_queue(s->nic);
 
     guest_features = VMXNET3_READ_DRV_SHARED32(s->drv_shmem,
                                                devRead.misc.uptFeatures);
@@ -1252,7 +1253,7 @@ static void vmxnet3_update_features(VMXNET3State *s)
               s->lro_supported, rxcso_supported,
               s->rx_vlan_stripping);
     if (s->peer_has_vhdr) {
-        tap_set_offload(s->nic->nc.peer,
+        tap_set_offload(nc->peer, //XXXDMK
                         rxcso_supported,
                         s->lro_supported,
                         s->lro_supported,
@@ -1683,7 +1684,12 @@ vmxnet3_io_bar1_read(void *opaque, hwaddr addr, unsigned size)
 static int
 vmxnet3_can_receive(NetClientState *nc)
 {
-    VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
+#if 0 //XXXDMK
+    NetClientState *nc0 = nc - nc->queue_index;
+    VMXNET3State *s = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+#else
+    VMXNET3State *s = qemu_get_nic_opaque(nc);
+#endif
     return s->device_active &&
            VMXNET_FLAG_IS_SET(s->link_status_and_speed, VMXNET3_LINK_STATUS_UP);
 }
@@ -1763,10 +1769,15 @@ vmxnet3_rx_filter_may_indicate(VMXNET3State *s, const void *data,
 static ssize_t
 vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
-    VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
+#if 0
+    NetClientState *nc0 = nc - nc->queue_index;
+    VMXNET3State *s = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+#else
+    VMXNET3State *s = qemu_get_nic_opaque(nc);
+#endif
     size_t bytes_indicated;
 
-    if (!vmxnet3_can_receive(&s->nic->nc)) {
+    if (!vmxnet3_can_receive(qemu_get_queue(s->nic))) { //XXXDMK not just nc?
         VMW_PKPRN("Cannot receive now");
         return -1;
     }
@@ -1798,13 +1809,23 @@ vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 
 static void vmxnet3_cleanup(NetClientState *nc)
 {
-    VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
+#if 0
+    NetClientState *nc0 = nc - nc->queue_index;
+    VMXNET3State *s = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+#else
+    VMXNET3State *s = qemu_get_nic_opaque(nc);
+#endif
     s->nic = NULL;
 }
 
 static void vmxnet3_set_link_status(NetClientState *nc)
 {
-    VMXNET3State *s = DO_UPCAST(NICState, nc, nc)->opaque;
+#if 0
+    NetClientState *nc0 = nc - nc->queue_index;
+    VMXNET3State *s = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+#else
+    VMXNET3State *s = qemu_get_nic_opaque(nc);
+#endif
 
     if (nc->link_down) {
         s->link_status_and_speed &= ~VMXNET3_LINK_STATUS_UP;
@@ -1827,7 +1848,8 @@ static NetClientInfo net_vmxnet3_info = {
 
 static bool vmxnet3_peer_has_vnet_hdr(VMXNET3State *s)
 {
-    NetClientState *peer = s->nic->nc.peer;
+    NetClientState *nc = qemu_get_queue(s->nic);
+    NetClientState *peer = nc->peer; //XXXDMK
 
     if ((NULL != peer)                              &&
         (NET_CLIENT_OPTIONS_KIND_TAP == peer->info->type)   &&
@@ -1852,6 +1874,8 @@ static void vmxnet3_net_uninit(VMXNET3State *s)
 
 static void vmxnet3_net_init(VMXNET3State *s)
 {
+    NetClientState *nc;
+
     VMW_CBPRN("vmxnet3_net_init called...");
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
@@ -1877,13 +1901,14 @@ static void vmxnet3_net_init(VMXNET3State *s)
     s->rx_pkt = NULL;
     s->rx_vlan_stripping = false;
     s->lro_supported = false;
+    nc = &s->nic->ncs[0];
 
     if (s->peer_has_vhdr) {
-        tap_set_vnet_hdr_len(s->nic->nc.peer, sizeof(struct virtio_net_hdr));
-        tap_using_vnet_hdr(s->nic->nc.peer, 1);
+        tap_set_vnet_hdr_len(nc->peer, sizeof(struct virtio_net_hdr)); //XXXMDK
+        tap_using_vnet_hdr(nc->peer, 1); //XXXDMK
     }
 
-    qemu_format_nic_info_str(&s->nic->nc, s->conf.macaddr.a);
+    qemu_format_nic_info_str(nc, s->conf.macaddr.a); //XXXDMK
 }
 
 static void

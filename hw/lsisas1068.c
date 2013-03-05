@@ -27,14 +27,14 @@
  */
 
 #include "hw.h"
-#include "pci.h"
-#include "dma.h"
-#include "msi.h"
-#include "msix.h"
-#include "iov.h"
+#include "pci/pci.h"
+#include "sysemu/dma.h"
+#include "pci/msi.h"
+#include "pci/msix.h"
+#include "qemu/iov.h"
 #include "scsi.h"
 #include "scsi-defs.h"
-#include "block_int.h"
+#include "block/block_int.h"
 #include "trace.h"
 
 #define MPTSCSI_REQUEST_QUEUE_DEPTH_DEFAULT 128
