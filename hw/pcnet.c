@@ -1488,17 +1488,18 @@ void vmxnet_transmit(PCNetVmxState *vs)
                  * zero length if it is not the last one in the chain. */
                 if (RT_LIKELY(cb <= MAX_FRAME))
                 {
-		    NetClientState *nc = qemu_get_queue(s->nic);
                     s->phys_mem_read(s->dma_opaque, NET_SG_MAKE_PA(tmd.sg.sg[0]),
                                      s->buffer + s->xmit_pos, cb, CSR_BSWP(s));
                     s->xmit_pos += cb;
                     if (CSR_LOOP(s)) {
                         s->looptest = PCNET_LOOPTEST_NOCRC;                        
-                        vlance_receive(nc, s->buffer, s->xmit_pos); //XXXDMK
+                        vlance_receive(qemu_get_queue(s->nic), s->buffer,
+				       s->xmit_pos); //XXXDMK
                         s->looptest = 0;
                     } else {
                         if (s->nic)
-                            qemu_send_packet(nc, s->buffer, s->xmit_pos); //XXXDMK
+                            qemu_send_packet(qemu_get_queue(s->nic), s->buffer,
+					     s->xmit_pos); //XXXDMK
 
                     }
                     s->xmit_pos = 0;
