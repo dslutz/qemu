@@ -3437,7 +3437,9 @@ static void mpt_xfer_complete(SCSIRequest *req, uint32_t len)
 static void mpt_finish_context_reply(MptState *s,
                                      uint32_t message_context)
 {
-    assert(!s->doorbell);
+    if (s->doorbell) {
+        fprintf(stderr, "%s: We are in a doorbell function\n", __func__);
+    }
 
     /* Write message context ID into reply post queue. */
     s->reply_post_queue[s->reply_post_queue_next_entry_free_write++] =
@@ -4545,7 +4547,7 @@ static const char *mpt_msg_desc[] = {
 static void mpt_process_message(MptState *s, MptMessageHdr *msg,
                                 MptReplyUnion *reply)
 {
-    bool fForceReplyPostFifo = false;
+    bool force_reply_post_fifo = false;
 
     memset(reply, 0, sizeof(MptReplyUnion));
 
@@ -4560,7 +4562,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         reply->scsi_task_management.task_type =
             p_task_mgmt_req->task_type;
         reply->scsi_task_management.termination_count = 0;
-        fForceReplyPostFifo = true;
+        force_reply_post_fifo = true;
         break;
     }
 
@@ -4770,7 +4772,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
     reply->header.function = msg->function;
     reply->header.message_context = msg->message_context;
 
-    mpt_finish_address_reply(s, reply, fForceReplyPostFifo);
+    mpt_finish_address_reply(s, reply, force_reply_post_fifo);
 }
 
 static uint64_t mpt_mmio_read_internal(void *opaque, hwaddr addr,
