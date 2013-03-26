@@ -1441,7 +1441,7 @@ typedef struct QEMU_PACKED MptConfigurationPageManufacturing10 {
             /** The omnipresent header. */
             MptConfigurationPageHeader    header;
             /** Product specific information */
-        } fields;
+	} fields;
     } u;
 } MptConfigurationPageManufacturing10, *PMptConfigurationPageManufacturing10;
 
@@ -6000,6 +6000,65 @@ static const VMStateDescription vmstate_mpt = {
     }
 };
 
+static const VMStateDescription vmstate_mpte = {
+    .name = "lsimpte",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(dev, MptState),
+
+        VMSTATE_BUFFER_UNSAFE_INFO(config_pages, MptState, 0,
+                                   mpt_config_vmstate_info, 0),
+
+        VMSTATE_UINT32(ctrl_type, MptState),
+        VMSTATE_UINT32(state, MptState),
+        VMSTATE_UINT32(who_init, MptState),
+        VMSTATE_UINT16(next_handle, MptState),
+        VMSTATE_UINT32(ports, MptState),
+        VMSTATE_UINT32(flags, MptState),
+        VMSTATE_UINT32(intr_mask, MptState),
+        VMSTATE_UINT32(intr_status, MptState),
+        VMSTATE_UINT32(doorbell, MptState),
+        VMSTATE_UINT32(busy, MptState),
+        VMSTATE_BOOL(msi_used, MptState),
+        VMSTATE_BOOL(event_notification_enabled, MptState),
+        VMSTATE_BOOL(diagnostic_enabled, MptState),
+        VMSTATE_UINT32(diagnostic_access_idx, MptState),
+        VMSTATE_UINT16(max_devices, MptState),
+        VMSTATE_UINT16(max_buses, MptState),
+        VMSTATE_UINT64(sas_addr, MptState),
+        VMSTATE_BUFFER_UNSAFE(drbl_message, MptState, 0,
+                              (sizeof(MptRequestUnion)+sizeof(uint32_t)-1)/
+                              sizeof(uint32_t)),
+        VMSTATE_UINT16(drbl_message_index, MptState),
+        VMSTATE_UINT16(drbl_message_size, MptState),
+        VMSTATE_BUFFER_UNSAFE(reply_buffer, MptState, 0,
+                              sizeof(MptReplyUnion)),
+        VMSTATE_UINT16(next_reply_entry_read, MptState),
+        VMSTATE_UINT16(reply_size, MptState),
+        VMSTATE_UINT16(ioc_fault_code, MptState),
+        VMSTATE_UINT16(reply_frame_size, MptState),
+        VMSTATE_UINT32(host_mfa_high_addr, MptState),
+        VMSTATE_UINT32(sense_buffer_high_addr, MptState),
+        VMSTATE_UINT32(reply_queue_entries, MptState),
+        VMSTATE_UINT32(request_queue_entries, MptState),
+
+        VMSTATE_UINT32(reply_free_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(reply_free_queue_next_address_read, MptState),
+        VMSTATE_UINT32(reply_post_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(reply_post_queue_next_address_read, MptState),
+        VMSTATE_UINT32(request_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(request_queue_next_address_read, MptState),
+        VMSTATE_UINT32(next_cmd, MptState),
+
+        VMSTATE_BUFFER_UNSAFE_INFO(reply_free_queue, MptState, 0,
+                                   mpt_queue_vmstate_info, 0),
+
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static bool
 mpt_msi_init(MptState *s) {
 #define LSISAS_MSI_NUM_VECTORS   (1)
@@ -6320,14 +6379,15 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
         pc->is_express = 1; /* vmware blew this */
+	dc->vmsd = &vmstate_mpte;
     } else {
         pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
+	dc->vmsd = &vmstate_mpt;
     }
     pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
-    dc->vmsd = &vmstate_mpt;
     dc->desc = MPTSCSI_PCI_SAS_DESC;
 }
 
@@ -6354,7 +6414,7 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
-    dc->vmsd = &vmstate_mpt;
+    dc->vmsd = &vmstate_mpte;
     dc->desc = MPTSCSI_PCI_SAS_E_DESC;
 }
 

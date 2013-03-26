@@ -293,10 +293,27 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
     }
 };
 
+static const VMStateDescription pcie_bridge_dev_vmstate = {
+    .name = "pcie_bridge",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
+        SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmware_bridge_dev_vmstate = {
     .name = "vmware_pci_bridge",
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmware_pcie_bridge_dev_vmstate = {
+    .name = "vmware_pcie_bridge",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -370,7 +387,7 @@ static void vmware_pcie_bridge_dev_class_init(ObjectClass *klass, void *data)
     dc->desc = "VMware PCIe Bridge";
     dc->reset = pci_bridge_reset;
     dc->props = vmware_bridge_dev_properties;
-    dc->vmsd = &vmware_bridge_dev_vmstate;
+    dc->vmsd = &vmware_pcie_bridge_dev_vmstate;
 }
 
 static const TypeInfo pci_bridge_dev_info = {
