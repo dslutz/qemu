@@ -6106,7 +6106,7 @@ mpt_msix_init(MptState *s) {
                 __func__, res);
         s->msix_used = false;
     } else {
-        if (!xxx_use_msix_vectors(s, LSISAS_MAX_INTRS)) {
+        if (!msix_vector_use(&s->dev, LSISAS_MAX_INTRS)) {
             fprintf(stderr, "%s: Failed to use MSI-X vectors, error %d\n",
                     __func__, res);
             msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
