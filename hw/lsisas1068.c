@@ -1441,7 +1441,7 @@ typedef struct QEMU_PACKED MptConfigurationPageManufacturing10 {
             /** The omnipresent header. */
             MptConfigurationPageHeader    header;
             /** Product specific information */
-	} fields;
+        } fields;
     } u;
 } MptConfigurationPageManufacturing10, *PMptConfigurationPageManufacturing10;
 
@@ -3550,7 +3550,7 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
 
         if (do_mapping) {
             cmd->sge_cnt = iov_count;
-	    //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+            //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
             qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memory);
         }
         while (end_of_list == false) {
@@ -3636,7 +3636,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
-			MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE;
+                        MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE;
             uint32_t i;
             for (i = 0; i < MPT_MAX_CMDS; i++) {
                 if (s->cmds[i] == 0) {
@@ -6077,7 +6077,7 @@ mpt_msi_init(MptState *s) {
                    LSISAS_USE_64BIT, LSISAS_PER_VECTOR_MASK);
     if (0 > res) {
         fprintf(stderr, "%s: Failed to initialize MSI, error %d\n", __func__, res);
-	s->msi_used = false;
+        s->msi_used = false;
     } else {
         s->msi_used = true;
     }
@@ -6098,7 +6098,7 @@ mpt_cleanup_msi(MptState *s)
 static bool
 mpt_msix_init(MptState *s) {
     int res = msix_init(&s->dev, LSISAS_MAX_INTRS,
-	                &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0,
+                        &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0,
                         &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0x800,
                         0x90);
     if (0 > res) {
@@ -6149,16 +6149,16 @@ mpt_pcie_init(MptState *s) {
     int lanes = 8;
 
     if (pci_is_express(dev)) {
-	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
-	if (offset < 0)
-	    return false;
-	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	if (vmware_hw) {
-	    lanes = 32; /* vmware lies */
-	}
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
+        int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+        if (offset < 0)
+            return false;
+        pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        if (vmware_hw) {
+            lanes = 32; /* vmware lies */
+        }
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
     }
     return true;
 #else
@@ -6254,7 +6254,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     mpt_msi_init(s);
 
     if (vmware_hw || pci_is_express(&s->dev)) {
-	mpt_pcie_init(s);
+        mpt_pcie_init(s);
     }
 
 #ifdef USE_MSIX
@@ -6262,13 +6262,13 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     /*if (mpt_use_msix(s) &&
         msix_init(&s->dev, 15, &s->mmio_io, 0, 0x2000)) {
         s->flags &= ~MPT_MASK_USE_MSIX; //???
-	}*/
+        }*/
     if (!vmware_hw && mpt_use_msix(s) && mpt_msix_init(s)) {
-	s->flags |= MPT_MASK_USE_MSIX;
+        s->flags |= MPT_MASK_USE_MSIX;
         msix_vector_use(&s->dev, 0);
     }
     else
-	s->flags &= ~MPT_MASK_USE_MSIX;
+        s->flags &= ~MPT_MASK_USE_MSIX;
 #else
     s->flags &= ~MPT_MASK_USE_MSIX;
 #endif
@@ -6285,7 +6285,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     mpt_queues_alloc(s);
 
     trace_mpt_init(mpt_use_msi(s) ? (mpt_use_msix(s) ? "MSI-X" : "MSI" )
-		   : "INTx", mpt_is_sas(s) ? "sas" : "scsi");
+                   : "INTx", mpt_is_sas(s) ? "sas" : "scsi");
 
     if (s->ctrl_type == MPTCTRLTYPE_SCSI_SPI) {
         s->ports = MPTSCSI_PCI_SPI_PORTS_MAX;
@@ -6379,11 +6379,11 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
         pc->is_express = 1; /* vmware blew this */
-	dc->vmsd = &vmstate_mpte;
+        dc->vmsd = &vmstate_mpte;
     } else {
         pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
-	dc->vmsd = &vmstate_mpt;
+        dc->vmsd = &vmstate_mpt;
     }
     pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
@@ -6402,12 +6402,12 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     if (vmware_hw) {
         pc->revision = 0x01;
-	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
+        pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
-	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
-	pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+        pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
     }
     pc->is_express = 1;

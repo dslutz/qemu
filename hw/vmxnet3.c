@@ -1965,14 +1965,14 @@ vmxnet3_init_pci_express(VMXNET3State *s)
     uint8_t *conf = dev->config;
 
     if (pci_is_express(dev)) {
-	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0); //XXXDMK
-	if (offset < 0)
-	    return false;
-	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	/* set to 32x */
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, 32);
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, 32);
+        int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+        if (offset < 0)
+            return false;
+        pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        /* set to 32x */
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, 32);
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, 32);
     }
     return true;
 #else
@@ -2121,8 +2121,8 @@ static int vmxnet3_pci_init(PCIDevice *pci_dev)
     }
     else {
         VMW_CFPRN("Initialized PCIe.");
-	pci_word_test_and_clear_mask(s->parent_obj.config + PCI_COMMAND, PCI_COMMAND_INTX_DISABLE);
-	pci_word_test_and_clear_mask(s->parent_obj.config + PCI_COMMAND, PCI_COMMAND_MASTER);
+        pci_word_test_and_clear_mask(s->parent_obj.config + PCI_COMMAND, PCI_COMMAND_INTX_DISABLE);
+        pci_word_test_and_clear_mask(s->parent_obj.config + PCI_COMMAND, PCI_COMMAND_MASTER);
     }
     /* Interrupt pin A */
     pci_dev->config[PCI_INTERRUPT_PIN] = 0x01;
