@@ -6292,7 +6292,7 @@ static Property mptsas_properties[] = {
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
     DEFINE_PROP_BIT("use_msi", MptState, flags,
-                    MPT_FLAG_USE_MSI, true),
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),

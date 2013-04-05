@@ -38,14 +38,14 @@
 
 typedef struct {
     PCIDevice pci_dev;
-    PCNetState state;
     MemoryRegion io_bar;
+    PCNetState state;
 } PCIPCNetState;
 
 typedef struct {
     PCIDevice pci_dev;
-    PCNetVmxState state;
     MemoryRegion io_bar;
+    PCNetVmxState state;
 } PCIPCNetVmxState;
 
 static void pcnet_aprom_writeb(void *opaque, uint32_t addr, uint32_t val)
@@ -793,12 +793,12 @@ static void pci_pcnet_uninit(PCIDevice *dev)
 
 static void pci_vlance_uninit(PCIDevice *dev)
 {
-    PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev, dev);
+    PCIPCNetVmxState *d = DO_UPCAST(PCIPCNetVmxState, pci_dev, dev);
 
     memory_region_destroy(&d->io_bar);
-    qemu_del_timer(d->state.poll_timer);
-    qemu_free_timer(d->state.poll_timer);
-    qemu_del_net_client(&d->state.nic->nc);
+    qemu_del_timer(d->state.s1.poll_timer);
+    qemu_free_timer(d->state.s1.poll_timer);
+    qemu_del_net_client(&d->state.s1.nic->nc);
 }
 
 static NetClientInfo net_pci_pcnet_info = {
@@ -951,6 +951,11 @@ static Property pcnet_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static Property vlance_properties[] = {
+    DEFINE_NIC_PROPERTIES(PCIPCNetVmxState, state.s1.conf),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void pcnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -984,7 +989,7 @@ static void vmxnet_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     dc->reset = vlance_pci_reset;
     dc->vmsd = &vmstate_pci_vlance;
-    dc->props = pcnet_properties;
+    dc->props = vlance_properties;
 }
 
 static void vlance_class_init(ObjectClass *klass, void *data)
@@ -1003,7 +1008,7 @@ static void vlance_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     dc->reset = vlance_pci_reset;
     dc->vmsd = &vmstate_pci_vlance;
-    dc->props = pcnet_properties;
+    dc->props = vlance_properties;
 }
 
 static TypeInfo pcnet_info = {
