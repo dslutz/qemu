@@ -37,8 +37,6 @@
 #include "block_int.h"
 #include "trace.h"
 
-void hex_dump(FILE *f, const uint8_t *buf, int size);
-
 #define MPTSCSI_REQUEST_QUEUE_DEPTH_DEFAULT 128
 #define MPTSCSI_REPLY_QUEUE_DEPTH_DEFAULT   128
 
@@ -3539,6 +3537,33 @@ static void mpt_command_cancel(SCSIRequest *req)
     }
 }
 
+static void vms_dump(FILE *f, const uint8_t *buf, int size)
+{
+    int len, i, j, c;
+
+    for(i=0;i<size;i+=16) {
+        len = size - i;
+        if (len > 16)
+            len = 16;
+        for(j=len;j<16;j++) {
+            fprintf(f, (j!=15)&&((j&3) == 3)?"   ":"  ");
+        }
+        for(j=len - 1;j>=0;j--) {
+            fprintf(f,
+                    (j!=15)&&((j&3) == 3)?" %02x":"%02x",
+                    buf[i+j]);
+        }
+        fprintf(f, "  %08x: ", i);
+        for(j=0;j<len;j++) {
+            c = buf[i+j];
+            if (c < ' ' || c > '~')
+                c = '.';
+            fprintf(f, "%c", c);
+        }
+        fprintf(f, "\n");
+    }
+}
+
 static int mpt_map_sgl(MptState *s, MptCmd *cmd,
                        hwaddr sgl_pa, uint32_t chain_offset)
 {
@@ -3568,7 +3593,7 @@ static int mpt_map_sgl(MptState *s, MptCmd *cmd,
                     fprintf(stderr,
                             "%s: element_type(%d) not simple. sge@0x%lx:\n",
                             __func__, sge.simple_32.element_type, (long)next_sge_pa);
-                    hex_dump(stderr, (void*)&sge, sizeof(MptSGEntryUnion));
+                    vms_dump(stderr, (void*)&sge, sizeof(MptSGEntryUnion));
                     return 1;
                 }
                 if (sge.simple_32.length == 0 && sge.simple_32.end_of_list &&
@@ -3824,7 +3849,7 @@ static bool mpt_queue_consumer(MptState *s)
                     fprintf(stderr,
                             "%s: mpt_process_scsi_io_Request() failed pa=0x%lx:\n",
                             __func__, (long)host_msg_frame_pa);
-                    hex_dump(stderr, (void*)&cmd->request.header, cb_request);
+                    vms_dump(stderr, (void*)&cmd->request.header, cb_request);
                 }
             } else {
                 MptReplyUnion Reply;
