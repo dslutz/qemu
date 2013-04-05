@@ -51,8 +51,7 @@ int default_net = 1;
 /***********************************************************/
 /* network device redirectors */
 
-#if defined(DEBUG_NET)
-static void hex_dump(FILE *f, const uint8_t *buf, int size)
+void hex_dump(FILE *f, const uint8_t *buf, int size)
 {
     int len, i, j, c;
 
@@ -77,7 +76,6 @@ static void hex_dump(FILE *f, const uint8_t *buf, int size)
         fprintf(f, "\n");
     }
 }
-#endif
 
 static int get_str_sep(char *buf, int buf_size, const char **pp, int sep)
 {

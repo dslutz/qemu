@@ -37,6 +37,8 @@
 #include "block_int.h"
 #include "trace.h"
 
+void hex_dump(FILE *f, const uint8_t *buf, int size);
+
 #define MPTSCSI_REQUEST_QUEUE_DEPTH_DEFAULT 128
 #define MPTSCSI_REPLY_QUEUE_DEPTH_DEFAULT   128
 
@@ -3537,8 +3539,8 @@ static void mpt_command_cancel(SCSIRequest *req)
     }
 }
 
-static void mpt_map_sgl(MptState *s, MptCmd *cmd,
-                        hwaddr sgl_pa, uint32_t chain_offset)
+static int mpt_map_sgl(MptState *s, MptCmd *cmd,
+                       hwaddr sgl_pa, uint32_t chain_offset)
 {
     uint32_t iov_count = 0;
     bool do_mapping = false;
@@ -3562,11 +3564,17 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
                 MptSGEntryUnion sge;
                 cpu_physical_memory_read(next_sge_pa, &sge,
                                          sizeof(MptSGEntryUnion));
-                assert(sge.simple_32.element_type == MPTSGENTRYTYPE_SIMPLE);
+                if (sge.simple_32.element_type != MPTSGENTRYTYPE_SIMPLE) {
+                    fprintf(stderr,
+                            "%s: element_type(%d) not simple. sge@0x%lx:\n",
+                            __func__, sge.simple_32.element_type, (long)next_sge_pa);
+                    hex_dump(stderr, (void*)&sge, sizeof(MptSGEntryUnion));
+                    return 1;
+                }
                 if (sge.simple_32.length == 0 && sge.simple_32.end_of_list &&
                     sge.simple_32.end_of_buffer) {
                     cmd->sge_cnt = 0;
-                    return;
+                    return 0;
                 }
                 if (sge.simple_32.bit_address) {
                     next_sge_pa += sizeof(MptSGEntrySimple64);
@@ -3608,11 +3616,13 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
         }
         do_mapping = true;
     }
+    return 0;
 }
 
 static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
 {
     struct SCSIDevice *sdev = NULL;
+    int ret = 0;
 
     if (cmd->request.scsi_io.target_id < s->max_devices &&
         cmd->request.scsi_io.bus == 0) {
@@ -3633,8 +3643,17 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             }
 
             if (cmd->iov_size) {
-                mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
-                            sizeof(MptSCSIIORequest), chain_offset);
+                if (mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
+                                sizeof(MptSCSIIORequest), chain_offset)) {
+                    fprintf(stderr,
+                            "%s: mpt_map_sgl() failed pa=0x%lx(0x%lx):\n",
+                            __func__, (long)cmd->host_msg_frame_pa,
+                            (long)(cmd->host_msg_frame_pa + sizeof(MptSCSIIORequest)));
+                    cmd->reply.scsi_io_error.ioc_status =
+                        MPT_SCSI_IO_ERROR_IOCSTATUS_DEVICE_NOT_THERE + 1;
+                    ret = 1;
+                    goto bad_req;
+                }
             }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
@@ -3686,7 +3705,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             } else {
                 trace_mpt_scsi_nodata(cmd->index);
             }
-            return 0;
+            return ret;
         } else {
             cmd->reply.scsi_io_error.ioc_status =
                 MPT_SCSI_IO_ERROR_IOCSTATUS_DEVICE_NOT_THERE;
@@ -3700,6 +3719,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
                 MPT_SCSI_IO_ERROR_IOCSTATUS_INVALID_TARGETID;
         }
     }
+bad_req:
     cmd->reply.scsi_io_error.target_id = cmd->request.scsi_io.target_id;
     cmd->reply.scsi_io_error.bus = cmd->request.scsi_io.bus;
     cmd->reply.scsi_io_error.message_length = sizeof(MptSCSIIOErrorReply) / 4;
@@ -3721,7 +3741,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
     mpt_finish_address_reply(s, &cmd->reply, false);
     g_free(cmd);
 
-    return 0;
+    return ret;
 }
 
 static void mpt_process_message(MptState *s, MptMessageHdr *msg,
@@ -3800,7 +3820,12 @@ static bool mpt_queue_consumer(MptState *s)
                 cpu_physical_memory_read(host_msg_frame_pa,
                                          &cmd->request.header, cb_request);
                 cmd->host_msg_frame_pa = host_msg_frame_pa;
-                mpt_process_scsi_io_Request(s, cmd);
+                if (mpt_process_scsi_io_Request(s, cmd)) {
+                    fprintf(stderr,
+                            "%s: mpt_process_scsi_io_Request() failed pa=0x%lx:\n",
+                            __func__, (long)host_msg_frame_pa);
+                    hex_dump(stderr, (void*)&cmd->request.header, cb_request);
+                }
             } else {
                 MptReplyUnion Reply;
                 cpu_physical_memory_read(host_msg_frame_pa, &request.header,
