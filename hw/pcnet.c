@@ -1974,14 +1974,15 @@ static void vlance_bcr_writew(PCNetVmxState *vs, uint32_t rap, uint32_t val)
     case BCR_MIICAS:
     case BCR_MIIADDR:
         vs->s2.bcr2[rap-32] = val;
+	break;
     case BCR_STVAL:
         val &= 0xffff;
-        vs->s2.bcr2[BCR_STVAL-32] = val;
+        s->bcr[BCR_STVAL] = val;
 #if 0
         if (vs->fAm79C973)
             TMTimerSetNano(vs->CTX_SUFF(pTimerSoftInt), 12800U * val);
-        break;
 #endif
+        break;
     case BCR_MIIMDR:
         vs->s2.mii[vs->s2.bcr2[BCR_MIIADDR-32] & 0x1f] = val;
 #ifdef PCNET_DEBUG_MII
