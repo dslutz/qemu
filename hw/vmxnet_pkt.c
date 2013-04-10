@@ -17,9 +17,10 @@
 
 #include "vmxnet_pkt.h"
 #include "vmxnet_utils.h"
-#include "iov.h"
+#include "qemu/iov.h"
 
 #include "net/checksum.h"
+#include "net/tap.h"
 
 /*=============================================================================
  *=============================================================================

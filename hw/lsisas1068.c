@@ -27,14 +27,14 @@
  */
 
 #include "hw.h"
-#include "pci.h"
-#include "dma.h"
-#include "msi.h"
-#include "msix.h"
-#include "iov.h"
+#include "pci/pci.h"
+#include "sysemu/dma.h"
+#include "pci/msi.h"
+#include "pci/msix.h"
+#include "qemu/iov.h"
 #include "scsi.h"
 #include "scsi-defs.h"
-#include "block_int.h"
+#include "block/block_int.h"
 #include "trace.h"
 
 #define MPTSCSI_REQUEST_QUEUE_DEPTH_DEFAULT 128
@@ -3579,7 +3579,7 @@ static int mpt_map_sgl(MptState *s, MptCmd *cmd,
 
         if (do_mapping) {
             cmd->sge_cnt = iov_count;
-	    //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
+            //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
             qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memory);
         }
         while (end_of_list == false) {
@@ -3682,7 +3682,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
-			MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE;
+                        MPT_SCSIIO_REQUEST_CONTROL_TXDIR_WRITE;
             uint32_t i;
             for (i = 0; i < MPT_MAX_CMDS; i++) {
                 if (s->cmds[i] == 0) {
@@ -6052,6 +6052,65 @@ static const VMStateDescription vmstate_mpt = {
     }
 };
 
+static const VMStateDescription vmstate_mpte = {
+    .name = "lsimpte",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(dev, MptState),
+
+        VMSTATE_BUFFER_UNSAFE_INFO(config_pages, MptState, 0,
+                                   mpt_config_vmstate_info, 0),
+
+        VMSTATE_UINT32(ctrl_type, MptState),
+        VMSTATE_UINT32(state, MptState),
+        VMSTATE_UINT32(who_init, MptState),
+        VMSTATE_UINT16(next_handle, MptState),
+        VMSTATE_UINT32(ports, MptState),
+        VMSTATE_UINT32(flags, MptState),
+        VMSTATE_UINT32(intr_mask, MptState),
+        VMSTATE_UINT32(intr_status, MptState),
+        VMSTATE_UINT32(doorbell, MptState),
+        VMSTATE_UINT32(busy, MptState),
+        VMSTATE_BOOL(msi_used, MptState),
+        VMSTATE_BOOL(event_notification_enabled, MptState),
+        VMSTATE_BOOL(diagnostic_enabled, MptState),
+        VMSTATE_UINT32(diagnostic_access_idx, MptState),
+        VMSTATE_UINT16(max_devices, MptState),
+        VMSTATE_UINT16(max_buses, MptState),
+        VMSTATE_UINT64(sas_addr, MptState),
+        VMSTATE_BUFFER_UNSAFE(drbl_message, MptState, 0,
+                              (sizeof(MptRequestUnion)+sizeof(uint32_t)-1)/
+                              sizeof(uint32_t)),
+        VMSTATE_UINT16(drbl_message_index, MptState),
+        VMSTATE_UINT16(drbl_message_size, MptState),
+        VMSTATE_BUFFER_UNSAFE(reply_buffer, MptState, 0,
+                              sizeof(MptReplyUnion)),
+        VMSTATE_UINT16(next_reply_entry_read, MptState),
+        VMSTATE_UINT16(reply_size, MptState),
+        VMSTATE_UINT16(ioc_fault_code, MptState),
+        VMSTATE_UINT16(reply_frame_size, MptState),
+        VMSTATE_UINT32(host_mfa_high_addr, MptState),
+        VMSTATE_UINT32(sense_buffer_high_addr, MptState),
+        VMSTATE_UINT32(reply_queue_entries, MptState),
+        VMSTATE_UINT32(request_queue_entries, MptState),
+
+        VMSTATE_UINT32(reply_free_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(reply_free_queue_next_address_read, MptState),
+        VMSTATE_UINT32(reply_post_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(reply_post_queue_next_address_read, MptState),
+        VMSTATE_UINT32(request_queue_next_entry_free_write, MptState),
+        VMSTATE_UINT32(request_queue_next_address_read, MptState),
+        VMSTATE_UINT32(next_cmd, MptState),
+
+        VMSTATE_BUFFER_UNSAFE_INFO(reply_free_queue, MptState, 0,
+                                   mpt_queue_vmstate_info, 0),
+
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static bool
 mpt_msi_init(MptState *s) {
 #define LSISAS_MSI_NUM_VECTORS   (1)
@@ -6070,7 +6129,7 @@ mpt_msi_init(MptState *s) {
                    LSISAS_USE_64BIT, LSISAS_PER_VECTOR_MASK);
     if (0 > res) {
         fprintf(stderr, "%s: Failed to initialize MSI, error %d\n", __func__, res);
-	s->msi_used = false;
+        s->msi_used = false;
     } else {
         s->msi_used = true;
     }
@@ -6091,7 +6150,7 @@ mpt_cleanup_msi(MptState *s)
 static bool
 mpt_msix_init(MptState *s) {
     int res = msix_init(&s->dev, LSISAS_MAX_INTRS,
-	                &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0,
+                        &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0,
                         &s->msix_bar, LSISAS_MSIX_BAR_IDX, 0x800,
                         0x90);
     if (0 > res) {
@@ -6099,7 +6158,7 @@ mpt_msix_init(MptState *s) {
                 __func__, res);
         s->msix_used = false;
     } else {
-        if (!xxx_use_msix_vectors(s, LSISAS_MAX_INTRS)) {
+        if (!msix_vector_use(&s->dev, LSISAS_MAX_INTRS)) {
             fprintf(stderr, "%s: Failed to use MSI-X vectors, error %d\n",
                     __func__, res);
             msix_uninit(&s->dev, &s->msix_bar, &s->msix_bar);
@@ -6142,16 +6201,16 @@ mpt_pcie_init(MptState *s) {
     int lanes = 8;
 
     if (pci_is_express(dev)) {
-	int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
-	if (offset < 0)
-	    return false;
-	pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
-	if (vmware_hw) {
-	    lanes = 32; /* vmware lies */
-	}
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
-	pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
+        int offset = pcie_cap_init(dev, 0x40, PCI_EXP_TYPE_ENDPOINT, 0);
+        if (offset < 0)
+            return false;
+        pci_word_test_and_clear_mask(conf + PCI_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        pci_word_test_and_clear_mask(conf + PCI_SEC_STATUS, PCI_STATUS_66MHZ | PCI_STATUS_FAST_BACK);
+        if (vmware_hw) {
+            lanes = 32; /* vmware lies */
+        }
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKCAP, PCI_EXP_LNKCAP_MLW, lanes);
+        pci_set_long_by_mask(conf + offset + PCI_EXP_LNKSTA, PCI_EXP_LNKCAP_MLW, lanes);
     }
     return true;
 #else
@@ -6247,7 +6306,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     mpt_msi_init(s);
 
     if (vmware_hw || pci_is_express(&s->dev)) {
-	mpt_pcie_init(s);
+        mpt_pcie_init(s);
     }
 
 #ifdef USE_MSIX
@@ -6255,13 +6314,13 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     /*if (mpt_use_msix(s) &&
         msix_init(&s->dev, 15, &s->mmio_io, 0, 0x2000)) {
         s->flags &= ~MPT_MASK_USE_MSIX; //???
-	}*/
+        }*/
     if (!vmware_hw && mpt_use_msix(s) && mpt_msix_init(s)) {
-	s->flags |= MPT_MASK_USE_MSIX;
+        s->flags |= MPT_MASK_USE_MSIX;
         msix_vector_use(&s->dev, 0);
     }
     else
-	s->flags &= ~MPT_MASK_USE_MSIX;
+        s->flags &= ~MPT_MASK_USE_MSIX;
 #else
     s->flags &= ~MPT_MASK_USE_MSIX;
 #endif
@@ -6278,7 +6337,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     mpt_queues_alloc(s);
 
     trace_mpt_init(mpt_use_msi(s) ? (mpt_use_msix(s) ? "MSI-X" : "MSI" )
-		   : "INTx", mpt_is_sas(s) ? "sas" : "scsi");
+                   : "INTx", mpt_is_sas(s) ? "sas" : "scsi");
 
     if (s->ctrl_type == MPTCTRLTYPE_SCSI_SPI) {
         s->ports = MPTSCSI_PCI_SPI_PORTS_MAX;
@@ -6372,14 +6431,15 @@ static void mptsas_class_init(ObjectClass *oc, void *data)
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
         pc->is_express = 1; /* vmware blew this */
+        dc->vmsd = &vmstate_mpte;
     } else {
         pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_SUBSYSTEM_ID;
+        dc->vmsd = &vmstate_mpt;
     }
     pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
-    dc->vmsd = &vmstate_mpt;
     dc->desc = MPTSCSI_PCI_SAS_DESC;
 }
 
@@ -6394,19 +6454,19 @@ static void mptsase_class_init(ObjectClass *oc, void *data)
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
     if (vmware_hw) {
         pc->revision = 0x01;
-	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
+        pc->device_id = PCI_DEVICE_ID_LSI_SAS1068; /* vmware blew this */
         pc->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
         pc->subsystem_id = 0x1976;
     } else {
-	pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
-	pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
+        pc->device_id = PCI_DEVICE_ID_LSI_SAS1068E;
+        pc->subsystem_vendor_id = PCI_VENDOR_ID_LSI_LOGIC;
         pc->subsystem_id = MPTSCSI_PCI_SAS_E_SUBSYSTEM_ID;
     }
     pc->is_express = 1;
     pc->class_id = PCI_CLASS_STORAGE_SAS;
     dc->props = mptsas_properties;
     dc->reset = mpt_scsi_reset;
-    dc->vmsd = &vmstate_mpt;
+    dc->vmsd = &vmstate_mpte;
     dc->desc = MPTSCSI_PCI_SAS_E_DESC;
 }
 

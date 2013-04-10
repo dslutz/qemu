@@ -29,13 +29,13 @@ do { printf("scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
 #endif
 
 #include "qemu-common.h"
-#include "qemu-error.h"
+#include "qemu/error-report.h"
 #include "scsi.h"
 #include "scsi-defs.h"
-#include "sysemu.h"
-#include "blockdev.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/blockdev.h"
 #include "hw/block-common.h"
-#include "dma.h"
+#include "sysemu/dma.h"
 
 #include "trace.h"
 
@@ -87,9 +87,7 @@ static void scsi_free_request(SCSIRequest *req)
 {
     SCSIDiskReq *r = DO_UPCAST(SCSIDiskReq, req, req);
 
-    if (r->iov.iov_base) {
-        qemu_vfree(r->iov.iov_base);
-    }
+    qemu_vfree(r->iov.iov_base);
 }
 
 /* Helper function for command completion with sense.  */
@@ -1691,7 +1689,7 @@ static int32_t scsi_disk_emulate_command(SCSIRequest *req, uint8_t *buf)
         bdrv_get_geometry(s->qdev.conf.bs, &nb_sectors);
         if (!nb_sectors) {
             scsi_check_condition(r, SENSE_CODE(LUN_NOT_READY));
-            return -1;
+            return 0;
         }
         if ((req->cmd.buf[8] & 1) == 0 && req->cmd.lba) {
             goto illegal_request;
@@ -1760,7 +1758,7 @@ static int32_t scsi_disk_emulate_command(SCSIRequest *req, uint8_t *buf)
             bdrv_get_geometry(s->qdev.conf.bs, &nb_sectors);
             if (!nb_sectors) {
                 scsi_check_condition(r, SENSE_CODE(LUN_NOT_READY));
-                return -1;
+                return 0;
             }
             if ((req->cmd.buf[14] & 1) == 0 && req->cmd.lba) {
                 goto illegal_request;
@@ -2398,7 +2396,7 @@ static void scsi_hd_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd  = &vmstate_scsi_disk_state;
 }
 
-static TypeInfo scsi_hd_info = {
+static const TypeInfo scsi_hd_info = {
     .name          = "scsi-hd",
     .parent        = TYPE_SCSI_DEVICE,
     .instance_size = sizeof(SCSIDiskState),
@@ -2427,7 +2425,7 @@ static void scsi_cd_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd  = &vmstate_scsi_disk_state;
 }
 
-static TypeInfo scsi_cd_info = {
+static const TypeInfo scsi_cd_info = {
     .name          = "scsi-cd",
     .parent        = TYPE_SCSI_DEVICE,
     .instance_size = sizeof(SCSIDiskState),
@@ -2456,7 +2454,7 @@ static void scsi_block_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd  = &vmstate_scsi_disk_state;
 }
 
-static TypeInfo scsi_block_info = {
+static const TypeInfo scsi_block_info = {
     .name          = "scsi-block",
     .parent        = TYPE_SCSI_DEVICE,
     .instance_size = sizeof(SCSIDiskState),
@@ -2490,7 +2488,7 @@ static void scsi_disk_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd  = &vmstate_scsi_disk_state;
 }
 
-static TypeInfo scsi_disk_info = {
+static const TypeInfo scsi_disk_info = {
     .name          = "scsi-disk",
     .parent        = TYPE_SCSI_DEVICE,
     .instance_size = sizeof(SCSIDiskState),

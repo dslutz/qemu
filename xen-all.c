@@ -10,17 +10,17 @@
 
 #include <sys/mman.h>
 
-#include "hw/pci.h"
+#include "hw/pci/pci.h"
 #include "hw/pc.h"
 #include "hw/xen_common.h"
 #include "hw/xen_backend.h"
 #include "qmp-commands.h"
 
-#include "range.h"
-#include "xen-mapcache.h"
+#include "char/char.h"
+#include "qemu/range.h"
+#include "sysemu/xen-mapcache.h"
 #include "trace.h"
-#include "exec-memory.h"
-#include "cpu-all.h"
+#include "exec/address-spaces.h"
 
 #include <xen/hvm/ioreq.h>
 #include <xen/hvm/params.h>
@@ -304,7 +304,8 @@ static int xen_add_to_physmap(XenIOState *state,
     return -1;
 
 go_physmap:
-    DPRINTF("mapping vram to %llx - %llx\n", start_addr, start_addr + size);
+    DPRINTF("mapping vram to %"HWADDR_PRIx" - %"HWADDR_PRIx"\n",
+            start_addr, start_addr + size);
 
     pfn = phys_offset >> TARGET_PAGE_BITS;
     start_gpfn = start_addr >> TARGET_PAGE_BITS;
@@ -377,8 +378,8 @@ static int xen_remove_from_physmap(XenIOState *state,
     phys_offset = physmap->phys_offset;
     size = physmap->size;
 
-    DPRINTF("unmapping vram to %llx - %llx, from %llx\n",
-            phys_offset, phys_offset + size, start_addr);
+    DPRINTF("unmapping vram to %"HWADDR_PRIx" - %"HWADDR_PRIx", from ",
+            "%"HWADDR_PRIx"\n", phys_offset, phys_offset + size, start_addr);
 
     size >>= TARGET_PAGE_BITS;
     start_addr >>= TARGET_PAGE_BITS;
@@ -595,9 +596,7 @@ static void xen_reset_vcpu(void *opaque)
 
 void xen_vcpu_init(void)
 {
-    CPUArchState *first_cpu;
-
-    if ((first_cpu = qemu_get_cpu(0))) {
+    if (first_cpu != NULL) {
         qemu_register_reset(xen_reset_vcpu, first_cpu);
         xen_reset_vcpu(first_cpu);
     }
@@ -694,13 +693,48 @@ static void do_outp(pio_addr_t addr,
     }
 }
 
+/*
+ * Helper functions which read/write an object from/to physical guest
+ * memory, as part of the implementation of an ioreq.
+ *
+ * Equivalent to
+ *   cpu_physical_memory_rw(addr + (req->df ? -1 : +1) * req->size * i,
+ *                          val, req->size, 0/1)
+ * except without the integer overflow problems.
+ */
+static void rw_phys_req_item(hwaddr addr,
+                             ioreq_t *req, uint32_t i, void *val, int rw)
+{
+    /* Do everything unsigned so overflow just results in a truncated result
+     * and accesses to undesired parts of guest memory, which is up
+     * to the guest */
+    hwaddr offset = (hwaddr)req->size * i;
+    if (req->df) {
+        addr -= offset;
+    } else {
+        addr += offset;
+    }
+    cpu_physical_memory_rw(addr, val, req->size, rw);
+}
+
+static inline void read_phys_req_item(hwaddr addr,
+                                      ioreq_t *req, uint32_t i, void *val)
+{
+    rw_phys_req_item(addr, req, i, val, 0);
+}
+static inline void write_phys_req_item(hwaddr addr,
+                                       ioreq_t *req, uint32_t i, void *val)
+{
+    rw_phys_req_item(addr, req, i, val, 1);
+}
+
+
 static void cpu_ioreq_pio(ioreq_t *req)
 {
-    int i, sign;
+    uint32_t i;
 
     trace_cpu_ioreq_pio(req, req->dir, req->df, req->data_is_ptr, req->addr,
                          req->data, req->count, req->size);
-    sign = req->df ? -1 : 1;
 
     if (req->dir == IOREQ_READ) {
         if (!req->data_is_ptr) {
@@ -709,15 +743,10 @@ static void cpu_ioreq_pio(ioreq_t *req)
                                          req->size);
         } else {
             uint32_t tmp;
-            hwaddr mem_addr;
 
             for (i = 0; i < req->count; i++) {
-                mem_addr = req->data + (sign * i * (int64_t)req->size);
                 tmp = do_inp(req->addr, req->size);
-                trace_cpu_ioreq_pio_read_mem(req, mem_addr, tmp,
-                                             req->addr, req->size);
-                cpu_physical_memory_write(mem_addr,
-                                          (uint8_t *) &tmp, req->size);
+                write_phys_req_item(req->data, req, i, &tmp);
             }
         }
     } else if (req->dir == IOREQ_WRITE) {
@@ -728,13 +757,8 @@ static void cpu_ioreq_pio(ioreq_t *req)
         } else {
             for (i = 0; i < req->count; i++) {
                 uint32_t tmp = 0;
-                hwaddr mem_addr = req->data +
-                    (sign * i * (int64_t)req->size);
 
-                cpu_physical_memory_read(mem_addr,
-                                         (uint8_t*) &tmp, req->size);
-                trace_cpu_ioreq_pio_write_mem(req, mem_addr, tmp,
-                                              req->addr, req->size);
+                read_phys_req_item(req->data, req, i, &tmp);
                 do_outp(req->addr, req->size, tmp);
             }
         }
@@ -743,24 +767,19 @@ static void cpu_ioreq_pio(ioreq_t *req)
 
 static void cpu_ioreq_move(ioreq_t *req)
 {
-    int i, sign;
-
     trace_cpu_ioreq_move(req, req->dir, req->df, req->data_is_ptr, req->addr,
                          req->data, req->count, req->size);
-    sign = req->df ? -1 : 1;
+
+    uint32_t i;
 
     if (!req->data_is_ptr) {
         if (req->dir == IOREQ_READ) {
             for (i = 0; i < req->count; i++) {
-                cpu_physical_memory_read(
-                        req->addr + (sign * i * (int64_t)req->size),
-                        (uint8_t *) &req->data, req->size);
+                read_phys_req_item(req->addr, req, i, &req->data);
             }
         } else if (req->dir == IOREQ_WRITE) {
             for (i = 0; i < req->count; i++) {
-                cpu_physical_memory_write(
-                        req->addr + (sign * i * (int64_t)req->size),
-                        (uint8_t *) &req->data, req->size);
+                write_phys_req_item(req->addr, req, i, &req->data);
             }
         }
     } else {
@@ -768,21 +787,13 @@ static void cpu_ioreq_move(ioreq_t *req)
 
         if (req->dir == IOREQ_READ) {
             for (i = 0; i < req->count; i++) {
-                cpu_physical_memory_read(
-                        req->addr + (sign * i * (int64_t)req->size),
-                        (uint8_t*) &tmp, req->size);
-                cpu_physical_memory_write(
-                        req->data + (sign * i * (int64_t)req->size),
-                        (uint8_t*) &tmp, req->size);
+                read_phys_req_item(req->addr, req, i, &tmp);
+                write_phys_req_item(req->data, req, i, &tmp);
             }
         } else if (req->dir == IOREQ_WRITE) {
             for (i = 0; i < req->count; i++) {
-                cpu_physical_memory_read(
-                        req->data + (sign * i * (int64_t)req->size),
-                        (uint8_t*) &tmp, req->size);
-                cpu_physical_memory_write(
-                        req->addr + (sign * i * (int64_t)req->size),
-                        (uint8_t*) &tmp, req->size);
+                read_phys_req_item(req->data, req, i, &tmp);
+                write_phys_req_item(req->addr, req, i, &tmp);
             }
         }
     }

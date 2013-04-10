@@ -25,15 +25,15 @@
  *
  */
 
-#include "softfloat.h"
-#include "compiler.h"
+#include "fpu/softfloat.h"
+#include "qemu/compiler.h"
 #include "scsi-defs.h"
 #include "hw/hw.h"
-#include "hw/pci.h"
+#include "pci/pci.h"
 #include "hw/scsi.h"
-#include "msi.h"
-#include "msix.h"
-#include "qemu-queue.h"
+#include "pci/msi.h"
+#include "pci/msix.h"
+#include "qemu/queue.h"
 #include "vmw_pvscsi.h"
 #include "trace.h"
 
@@ -1149,6 +1149,39 @@ static const VMStateDescription vmstate_pvscsi = {
     }
 };
 
+static const VMStateDescription vmstate_pvscsie = {
+    .name = "pvscsie",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .minimum_version_id_old = 0,
+    .pre_save = pvscsi_pre_save,
+    .post_load = pvscsi_post_load,
+    .fields      = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(dev, PVSCSI_State),
+        VMSTATE_UINT8(msi_used, PVSCSI_State),
+        VMSTATE_UINT64(reg_interrupt_status, PVSCSI_State),
+        VMSTATE_UINT64(reg_interrupt_enabled, PVSCSI_State),
+        VMSTATE_UINT64(reg_command_status, PVSCSI_State),
+        VMSTATE_UINT64(curr_cmd, PVSCSI_State),
+        VMSTATE_UINT32(curr_cmd_data_cntr, PVSCSI_State),
+        VMSTATE_UINT32_ARRAY(curr_cmd_data, PVSCSI_State,
+                             ARRAY_SIZE(((PVSCSI_State*)NULL)->curr_cmd_data)),
+        VMSTATE_UINT8(rings_info_valid, PVSCSI_State),
+
+        VMSTATE_UINT64(rings.rs_pa, PVSCSI_State),
+        VMSTATE_UINT32(rings.txr_len_mask, PVSCSI_State),
+        VMSTATE_UINT32(rings.rxr_len_mask, PVSCSI_State),
+        VMSTATE_UINT64_ARRAY(rings.req_ring_pages_pa, PVSCSI_State,
+                             PVSCSI_SETUP_RINGS_MAX_NUM_PAGES),
+        VMSTATE_UINT64_ARRAY(rings.cmp_ring_pages_pa, PVSCSI_State,
+                             PVSCSI_SETUP_RINGS_MAX_NUM_PAGES),
+        VMSTATE_UINT64(rings.consumed_ptr, PVSCSI_State),
+        VMSTATE_UINT64(rings.filled_cmp_ptr, PVSCSI_State),
+
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void
 pvscsi_write_config(PCIDevice *pci, uint32_t addr, uint32_t val, int len)
 {
@@ -1171,12 +1204,13 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
 	k->is_express = 1;
         k->class_id = PCI_CLASS_STORAGE_SAS;
         k->revision = 0x02;
+	dc->vmsd = &vmstate_pvscsie;
     } else {
         k->subsystem_id = 0x1000;
         k->class_id = PCI_CLASS_STORAGE_SCSI;
+	dc->vmsd = &vmstate_pvscsi;
     }
     dc->reset = pvscsi_reset;
-    dc->vmsd = &vmstate_pvscsi;
     k->config_write = pvscsi_write_config;
 }
 

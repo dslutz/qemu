@@ -1,4 +1,4 @@
-#include "dma.h"
+#include "sysemu/dma.h"
 
 /* Get VMware header files to compile */
 #ifdef PCI_VENDOR_ID_VMWARE

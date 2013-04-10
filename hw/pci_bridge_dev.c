@@ -19,17 +19,13 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "pci_bridge.h"
-#include "pci_ids.h"
-#include "msi.h"
-#include "shpc.h"
-#include "slotid_cap.h"
-#include "memory.h"
-#include "pci_internals.h"
-
-#define REDHAT_PCI_VENDOR_ID 0x1b36
-#define PCI_BRIDGE_DEV_VENDOR_ID REDHAT_PCI_VENDOR_ID
-#define PCI_BRIDGE_DEV_DEVICE_ID 0x1
+#include "pci/pci_bridge.h"
+#include "pci/pci_ids.h"
+#include "pci/msi.h"
+#include "pci/shpc.h"
+#include "pci/slotid_cap.h"
+#include "exec/memory.h"
+#include "pci/pci_bus.h"
 
 struct PCIBridgeDev {
     PCIBridge bridge;
@@ -297,10 +293,27 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
     }
 };
 
+static const VMStateDescription pcie_bridge_dev_vmstate = {
+    .name = "pcie_bridge",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
+        SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmware_bridge_dev_vmstate = {
     .name = "vmware_pci_bridge",
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmware_pcie_bridge_dev_vmstate = {
+    .name = "vmware_pcie_bridge",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -312,8 +325,8 @@ static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
     k->init = pci_bridge_dev_initfn;
     k->exit = pci_bridge_dev_exitfn;
     k->config_write = pci_bridge_dev_write_config;
-    k->vendor_id = PCI_BRIDGE_DEV_VENDOR_ID;
-    k->device_id = PCI_BRIDGE_DEV_DEVICE_ID;
+    k->vendor_id = PCI_VENDOR_ID_REDHAT;
+    k->device_id = PCI_DEVICE_ID_REDHAT_BRIDGE;
     k->class_id = PCI_CLASS_BRIDGE_PCI;
     k->is_bridge = 1;
     dc->desc = "Standard PCI Bridge";
@@ -374,10 +387,10 @@ static void vmware_pcie_bridge_dev_class_init(ObjectClass *klass, void *data)
     dc->desc = "VMware PCIe Bridge";
     dc->reset = pci_bridge_reset;
     dc->props = vmware_bridge_dev_properties;
-    dc->vmsd = &vmware_bridge_dev_vmstate;
+    dc->vmsd = &vmware_pcie_bridge_dev_vmstate;
 }
 
-static TypeInfo pci_bridge_dev_info = {
+static const TypeInfo pci_bridge_dev_info = {
     .name = "pci-bridge",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIBridgeDev),

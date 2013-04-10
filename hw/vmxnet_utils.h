@@ -19,7 +19,7 @@
 #define _VMXNET_UTILS_H_
 
 #include <sys/types.h>
-#include <bswap.h>
+#include <qemu/bswap.h>
 #include <string.h>
 #include <hw/virtio-net.h>
 
