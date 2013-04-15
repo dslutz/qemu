@@ -4052,13 +4052,16 @@ int main(int argc, char **argv, char **envp)
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
         vmware_hw = qemu_opt_get_number(machine_opts, "vmware_hw",
                                           vmware_hw);
-        xen_platform_pci = qemu_opt_get_bool(machine_opts, "xen_platform_pci",
-                                             xen_enabled());
+        xen_platform_pci = qemu_opt_get_number(machine_opts,
+                                               "xen_platform_pci",
+                                               xen_enabled() ? -1 : 0);
         pci_hole_min_size = qemu_opt_get_number(machine_opts,
-                                        "pci_hole_min_size", pci_hole_min_size);
-        printf("%s: vmware_hw=%d xen_platform_pci=%d pci_hole_min_size=%llu\n",
-               __func__, vmware_hw, xen_platform_pci,
-                           (unsigned long long) pci_hole_min_size);
+                                                "pci_hole_min_size",
+                                                pci_hole_min_size);
+        fprintf(stderr, "%s: vmware_hw=%d xen_platform_pci=%d"
+                " pci_hole_min_size=%llu\n",
+                __func__, vmware_hw, xen_platform_pci,
+                (unsigned long long) pci_hole_min_size);
     } else {
         kernel_filename = initrd_filename = kernel_cmdline = NULL;
     }
