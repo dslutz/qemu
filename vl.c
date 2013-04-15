@@ -441,8 +441,8 @@ static QemuOptsList qemu_machine_opts = {
             .help = "vmware mode and set virtualHW.version",
         }, {
             .name = "xen_platform_pci",
-            .type = QEMU_OPT_BOOL,
-            .help = "enable/disable add of xen platform pci",
+            .type = QEMU_OPT_NUMBER,
+            .help = "pci addr of xen platform pci; 0 => do not add",
         }, {
             .name = "pci_hole_min_size",
             .type = QEMU_OPT_NUMBER,
