@@ -39,7 +39,9 @@
  *    VMware e1000 (Subsystem ID)
  *    VMware vmxnet3 (Uniform Pass Through NIC)
  */
+#ifndef PCI_VENDOR_ID_VMWARE
 #define PCI_VENDOR_ID_VMWARE            0x15AD
+#endif
 #define PCI_DEVICE_ID_VMWARE_SVGA2      0x0405
 #define PCI_DEVICE_ID_VMWARE_SVGA       0x0710
 #define PCI_DEVICE_ID_VMWARE_NET        0x0720

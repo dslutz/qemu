@@ -17,11 +17,17 @@
 #ifndef VMWARE_UTILS_H
 #define VMWARE_UTILS_H
 
+#include "qemu/range.h"
+
 #ifndef VMW_SHPRN
 #define VMW_SHPRN(fmt, ...) do {} while (0)
 #endif
 
-/* Shared memory access functions with byte swap support */
+/*
+ * Shared memory access functions with byte swap support
+ * Each function contains printout for reverse-engineering needs
+ *
+ */
 static inline void
 vmw_shmem_read(hwaddr addr, void *buf, int len)
 {
@@ -116,11 +122,22 @@ vmw_shmem_st64(hwaddr addr, uint64_t value)
     stq_le_phys(addr, value);
 }
 
-/* MACROS for simplification of operations on array-style registers */
-#define IS_MULTIREG_ADDR(addr, base, cnt, regsize)                 \
-    (((addr + 1) > (base)) && ((addr) < (base) + (cnt) * (regsize)))
+/* Macros for simplification of operations on array-style registers */
 
-#define MULTIREG_IDX_BY_ADDR(addr, base, regsize)                  \
+/*
+ * Whether <addr> lies inside of array-style register defined by <base>,
+ * number of elements (<cnt>) and element size (<regsize>)
+ *
+*/
+#define VMW_IS_MULTIREG_ADDR(addr, base, cnt, regsize)                 \
+    range_covers_byte(base, cnt * regsize, addr)
+
+/*
+ * Returns index of given register (<addr>) in array-style register defined by
+ * <base> and element size (<regsize>)
+ *
+*/
+#define VMW_MULTIREG_IDX_BY_ADDR(addr, base, regsize)                  \
     (((addr) - (base)) / (regsize))
 
 #endif

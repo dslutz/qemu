@@ -19,7 +19,8 @@
 #include "virtio-net.h"
 #include "vmxnet_utils.h"
 #include "net/checksum.h"
-#include "iov.h"
+#include "qemu/iov.h"
+#include "net/tap.h"
 
 void eth_setup_vlan_headers(struct eth_header *ehdr, uint16_t vlan_tag,
     bool *is_new)
