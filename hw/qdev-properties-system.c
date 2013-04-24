@@ -11,7 +11,7 @@
  */
 
 #include "net/net.h"
-#include "qdev.h"
+#include "hw/qdev.h"
 #include "qapi/qmp/qerror.h"
 #include "sysemu/blockdev.h"
 #include "hw/block-common.h"
@@ -43,7 +43,7 @@ static void set_pointer(Object *obj, Visitor *v, Property *prop,
     int ret;
 
     if (dev->realized) {
-        error_set(errp, QERR_PERMISSION_DENIED);
+        qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 
@@ -123,11 +123,10 @@ static int parse_chr(DeviceState *dev, const char *str, void **ptr)
     if (chr == NULL) {
         return -ENOENT;
     }
-    if (chr->avail_connections < 1) {
+    if (qemu_chr_fe_claim(chr) != 0) {
         return -EEXIST;
     }
     *ptr = chr;
-    --chr->avail_connections;
     return 0;
 }
 
@@ -136,9 +135,11 @@ static void release_chr(Object *obj, const char *name, void *opaque)
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     CharDriverState **ptr = qdev_get_prop_ptr(dev, prop);
+    CharDriverState *chr = *ptr;
 
-    if (*ptr) {
-        qemu_chr_add_handlers(*ptr, NULL, NULL, NULL, NULL);
+    if (chr) {
+        qemu_chr_add_handlers(chr, NULL, NULL, NULL, NULL);
+        qemu_chr_fe_release(chr);
     }
 }
 
@@ -287,7 +288,7 @@ static void set_vlan(Object *obj, Visitor *v, void *opaque,
     NetClientState *hubport;
 
     if (dev->realized) {
-        error_set(errp, QERR_PERMISSION_DENIED);
+        qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 

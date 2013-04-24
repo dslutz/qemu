@@ -29,9 +29,9 @@
 #include <stdarg.h>
 #include <sys/mman.h>
 
-#include "hw.h"
+#include "hw/hw.h"
 #include "char/char.h"
-#include "xen_backend.h"
+#include "hw/xen_backend.h"
 
 #include <xen/io/console.h>
 
@@ -241,9 +241,17 @@ static int con_initialise(struct XenDevice *xendev)
 	return -1;
 
     xen_be_bind_evtchn(&con->xendev);
-    if (con->chr)
-        qemu_chr_add_handlers(con->chr, xencons_can_receive, xencons_receive,
-                              NULL, con);
+    if (con->chr) {
+        if (qemu_chr_fe_claim(con->chr) == 0) {
+            qemu_chr_add_handlers(con->chr, xencons_can_receive,
+                                  xencons_receive, NULL, con);
+        } else {
+            xen_be_printf(xendev, 0,
+                          "xen_console_init error chardev %s already used\n",
+                          con->chr->label);
+            con->chr = NULL;
+        }
+    }
 
     xen_be_printf(xendev, 1, "ring mfn %d, remote port %d, local port %d, limit %zd\n",
 		  con->ring_ref,
@@ -260,8 +268,10 @@ static void con_disconnect(struct XenDevice *xendev)
     if (!xendev->dev) {
         return;
     }
-    if (con->chr)
+    if (con->chr) {
         qemu_chr_add_handlers(con->chr, NULL, NULL, NULL, NULL);
+        qemu_chr_fe_release(con->chr);
+    }
     xen_be_unbind_evtchn(&con->xendev);
 
     if (con->sring) {

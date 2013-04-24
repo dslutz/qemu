@@ -23,16 +23,16 @@
  * Contributions after 2012-01-13 are licensed under the terms of the
  * GNU GPL, version 2 or (at your option) any later version.
  */
-#include "hw.h"
-#include "pc.h"
-#include "pci/pci.h"
+#include "hw/hw.h"
+#include "hw/pc.h"
+#include "hw/pci/pci.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
-#include "acpi.h"
+#include "hw/acpi.h"
 #include "sysemu/kvm.h"
 #include "exec/address-spaces.h"
 
-#include "ich9.h"
+#include "hw/ich9.h"
 
 //#define DEBUG
 
@@ -212,7 +212,7 @@ void ich9_pm_init(PCIDevice *lpc_pci, ICH9LPCPMRegs *pm,
 
     acpi_pm_tmr_init(&pm->acpi_regs, ich9_pm_update_sci_fn, &pm->io);
     acpi_pm1_evt_init(&pm->acpi_regs, ich9_pm_update_sci_fn, &pm->io);
-    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io);
+    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, 2);
 
     acpi_gpe_init(&pm->acpi_regs, ICH9_PMIO_GPE0_LEN);
     memory_region_init_io(&pm->io_gpe, &ich9_gpe_ops, pm, "apci-gpe0",

@@ -19,13 +19,13 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "pci/pci_bridge.h"
-#include "pci/pci_ids.h"
-#include "pci/msi.h"
-#include "pci/shpc.h"
-#include "pci/slotid_cap.h"
+#include "hw/pci/pci_bridge.h"
+#include "hw/pci/pci_ids.h"
+#include "hw/pci/msi.h"
+#include "hw/pci/shpc.h"
+#include "hw/pci/slotid_cap.h"
 #include "exec/memory.h"
-#include "pci/pci_bus.h"
+#include "hw/pci/pci_bus.h"
 
 struct PCIBridgeDev {
     PCIBridge bridge;
@@ -37,22 +37,13 @@ struct PCIBridgeDev {
 };
 typedef struct PCIBridgeDev PCIBridgeDev;
 
-/* Mapping mandated by PCI-to-PCI Bridge architecture specification,
- * revision 1.2 */
-/* Table 9-1: Interrupt Binding for Devices Behind a Bridge */
-static int pci_bridge_dev_map_irq_fn(PCIDevice *dev, int irq_num)
-{
-    return (irq_num + PCI_SLOT(dev->devfn)) % PCI_NUM_PINS;
-}
-
 static int pci_bridge_dev_initfn(PCIDevice *dev)
 {
     PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
     PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
     int err;
 
-    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
-    err = pci_bridge_initfn(dev);
+    err = pci_bridge_initfn(dev, TYPE_PCI_BUS);
     if (err) {
         goto bridge_error;
     }

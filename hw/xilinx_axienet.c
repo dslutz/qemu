@@ -22,12 +22,13 @@
  * THE SOFTWARE.
  */
 
-#include "sysbus.h"
+#include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "net/net.h"
 #include "net/checksum.h"
+#include "qapi/qmp/qerror.h"
 
-#include "stream.h"
+#include "hw/stream.h"
 
 #define DPHY(x)
 
@@ -515,6 +516,8 @@ static void enet_write(void *opaque, hwaddr addr,
             s->rcw[addr & 1] = value;
             if ((addr & 1) && value & RCW1_RST) {
                 axienet_rx_reset(s);
+            } else {
+                qemu_flush_queued_packets(qemu_get_queue(s->nic));
             }
             break;
 
@@ -869,9 +872,11 @@ static int xilinx_enet_init(SysBusDevice *dev)
 static void xilinx_enet_initfn(Object *obj)
 {
     struct XilinxAXIEnet *s = FROM_SYSBUS(typeof(*s), SYS_BUS_DEVICE(obj));
+    Error *errp = NULL;
 
     object_property_add_link(obj, "axistream-connected", TYPE_STREAM_SLAVE,
-                             (Object **) &s->tx_dev, NULL);
+                             (Object **) &s->tx_dev, &errp);
+    assert_no_error(errp);
 }
 
 static Property xilinx_enet_properties[] = {

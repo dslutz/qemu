@@ -21,9 +21,9 @@
 #include "qemu-common.h"
 #include "char/char.h"
 #include "qemu/timer.h"
-#include "irq.h"
+#include "hw/irq.h"
 #include "bt/bt.h"
-#include "bt.h"
+#include "hw/bt.h"
 
 struct csrhci_s {
     int enable;
@@ -439,6 +439,7 @@ CharDriverState *uart_hci_init(qemu_irq wakeup)
     s->chr.opaque = s;
     s->chr.chr_write = csrhci_write;
     s->chr.chr_ioctl = csrhci_ioctl;
+    s->chr.avail_connections = 1;
 
     s->hci = qemu_next_hci();
     s->hci->opaque = s;

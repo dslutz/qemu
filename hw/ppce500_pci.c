@@ -14,12 +14,12 @@
  * (at your option) any later version.
  */
 
-#include "hw.h"
+#include "hw/hw.h"
 #include "hw/ppc/e500-ccsr.h"
-#include "pci/pci.h"
-#include "pci/pci_host.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
 #include "qemu/bswap.h"
-#include "ppce500_pci.h"
+#include "hw/ppce500_pci.h"
 
 #ifdef DEBUG_PCI
 #define pci_debug(fmt, ...) fprintf(stderr, fmt, ## __VA_ARGS__)
@@ -356,7 +356,7 @@ static int e500_pcihost_initfn(SysBusDevice *dev)
 
     b = pci_register_bus(DEVICE(dev), NULL, mpc85xx_pci_set_irq,
                          mpc85xx_pci_map_irq, s->irq, address_space_mem,
-                         &s->pio, PCI_DEVFN(s->first_slot, 0), 4);
+                         &s->pio, PCI_DEVFN(s->first_slot, 0), 4, TYPE_PCI_BUS);
     h->bus = b;
 
     pci_create_simple(b, 0, "e500-host-bridge");

@@ -10,7 +10,7 @@
  * Tamir Shomer <tamirs@daynix.com>
  * Yan Vugenfirer <yan@daynix.com>
  *
- * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * This work is licensed under the terms of the GNU GPL, version 2.
  * See the COPYING file in the top-level directory.
  *
  */
@@ -44,7 +44,7 @@
 #define VMXNET3_MSIX_BAR_IDX  (2)
 
 #define VMXNET3_OFF_MSIX_TABLE (0x000)
-#define VMXNET3_OFF_MSIX_PBA   (0x1000)
+#define VMXNET3_OFF_MSIX_PBA   (0x1000) // was 0x800
 
 /* Link speed in Mbps should be shifted by 16 */
 #define VMXNET3_LINK_SPEED      (1000 << 16)
@@ -108,7 +108,9 @@
 
 #define VMXNET_FLAG_IS_SET(field, flag) (((field) & (flag)) == (flag))
 
+#define TYPE_VMXNET3 "vmxnet3"
 #define VMXNET3(pci_dev) container_of((pci_dev), VMXNET3State, parent_obj)
+//#define VMXNET3(obj) OBJECT_CHECK(VMXNET3State, (obj), TYPE_VMXNET3)
 
 /* Cyclic ring abstraction */
 typedef struct {
@@ -386,12 +388,9 @@ static void vmxnet3_update_interrupt_line_state(VMXNET3State *s, int lidx)
 static void vmxnet3_trigger_interrupt(VMXNET3State *s, int lidx)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    VMW_WRPRN("trig int start");
     s->interrupt_states[lidx].is_pending = true;
-    VMW_WRPRN("trig int set pending");
     vmxnet3_update_interrupt_line_state(s, lidx);
 
-    VMW_WRPRN("trig int updated line state");
     if (s->msix_used && msix_enabled(d) && s->auto_int_masking) {
         goto do_automask;
     }
@@ -974,7 +973,7 @@ vmxnet3_indicate_packet(VMXNET3State *s)
     struct Vmxnet3_RxDesc rxd;
     bool is_head = true;
     uint32_t rxd_idx;
-    uint32_t rx_ridx;
+    uint32_t rx_ridx = 0;
 
     struct Vmxnet3_RxCompDesc rxcd;
     uint32_t new_rxcd_gen = VMXNET3_INIT_GEN;
@@ -1907,7 +1906,7 @@ static void vmxnet3_net_init(VMXNET3State *s)
 
     s->link_status_and_speed = VMXNET3_LINK_SPEED | VMXNET3_LINK_STATUS_UP;
 
-    //VMW_CFPRN("Permanent MAC: " MAC_FMT, MAC_ARG(s->perm_mac.a));
+    VMW_CFPRN("Permanent MAC: " MAC_FMT, MAC_ARG(s->perm_mac.a));
 
     s->nic = qemu_new_nic(&net_vmxnet3_info, &s->conf,
                           object_get_typename(OBJECT(s)),
@@ -1985,7 +1984,7 @@ vmxnet3_init_msix(VMXNET3State *s)
 {
 #ifdef USE_MSIX
     PCIDevice *d = PCI_DEVICE(s);
-     int res = msix_init(d, VMXNET3_MAX_INTRS,
+    int res = msix_init(d, VMXNET3_MAX_INTRS,
                         &s->msix_bar,
                         VMXNET3_MSIX_BAR_IDX, VMXNET3_OFF_MSIX_TABLE,
                         &s->msix_bar,
@@ -2040,7 +2039,6 @@ vmxnet3_init_msi(VMXNET3State *s)
         VMW_WRPRN("Failed to initialize MSI, error %d", res);
         s->msi_used = false;
     } else {
-        VMW_CFPRN("Using MSI");
         s->msi_used = true;
     }
 
@@ -2154,18 +2152,14 @@ static void vmxnet3_pci_uninit(PCIDevice *pci_dev)
     VMW_CBPRN("Starting uninit...");
 
     unregister_savevm(dev, "vmxnet3-msix", s);
-    VMW_CBPRN("Unregistered savevm...");
 
     vmxnet3_net_uninit(s);
-    VMW_CBPRN("net_uninit...");
 
 #ifdef USE_MSIX
     vmxnet3_cleanup_msix(s);
-    VMW_CBPRN("cleanup msix...");
 #endif
 
     vmxnet3_cleanup_msi(s);
-    VMW_CBPRN("cleanup msi...");
 
     memory_region_destroy(&s->bar0);
     memory_region_destroy(&s->bar1);
@@ -2420,7 +2414,11 @@ static const VMStateDescription vmstate_vmxnet3 = {
     .pre_save = vmxnet3_pre_save,
     .post_load = vmxnet3_post_load,
     .fields      = (VMStateField[]) {
+#ifdef USE_PCIE
             VMSTATE_PCIE_DEVICE(parent_obj, VMXNET3State),
+#else
+            VMSTATE_PCI_DEVICE(parent_obj, VMXNET3State),
+#endif
             VMSTATE_BOOL(rx_packets_compound, VMXNET3State),
             VMSTATE_BOOL(rx_vlan_stripping, VMXNET3State),
             VMSTATE_BOOL(lro_supported, VMXNET3State),
@@ -2492,7 +2490,9 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
         c->revision = PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION;
     }
     c->class_id = PCI_CLASS_NETWORK_ETHERNET;
+#ifdef USE_PCIE
     c->is_express = 1;
+#endif
     c->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     c->subsystem_id = PCI_DEVICE_ID_VMWARE_VMXNET3;
     c->config_write = vmxnet3_write_config,
@@ -2503,7 +2503,7 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
 }
 
 static const TypeInfo vmxnet3_info = {
-    .name          = "vmxnet3",
+    .name          = TYPE_VMXNET3,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VMXNET3State),
     .class_init    = vmxnet3_class_init,

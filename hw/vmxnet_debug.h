@@ -20,14 +20,14 @@
 
 #define VMXNET_DEVICE_NAME "vmxnet3"
 
-#define VMXNET_DEBUG_CB
+/* #define VMXNET_DEBUG_CB */
 #define VMXNET_DEBUG_WARNINGS
 #define VMXNET_DEBUG_ERRORS
-#define VMXNET_DEBUG_INTERRUPTS
-#define VMXNET_DEBUG_CONFIG
-#define VMXNET_DEBUG_RINGS
-/*#define VMXNET_DEBUG_PACKETS */
-#define VMXNET_DEBUG_SHMEM_ACCESS
+/* #define VMXNET_DEBUG_INTERRUPTS */
+/* #define VMXNET_DEBUG_CONFIG */
+/* #define VMXNET_DEBUG_RINGS */
+/* #define VMXNET_DEBUG_PACKETS */
+/* #define VMXNET_DEBUG_SHMEM_ACCESS */
 
 #ifdef VMXNET_DEBUG_SHMEM_ACCESS
 #define VMW_SHPRN(fmt, ...)                                                   \

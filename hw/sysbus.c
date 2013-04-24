@@ -17,7 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "sysbus.h"
+#include "hw/sysbus.h"
 #include "monitor/monitor.h"
 #include "exec/address-spaces.h"
 
@@ -48,7 +48,8 @@ void sysbus_connect_irq(SysBusDevice *dev, int n, qemu_irq irq)
     }
 }
 
-void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr)
+static void sysbus_mmio_map_common(SysBusDevice *dev, int n, hwaddr addr,
+                                   bool may_overlap, unsigned priority)
 {
     assert(n >= 0 && n < dev->num_mmio);
 
@@ -61,11 +62,29 @@ void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr)
         memory_region_del_subregion(get_system_memory(), dev->mmio[n].memory);
     }
     dev->mmio[n].addr = addr;
-    memory_region_add_subregion(get_system_memory(),
-                                addr,
-                                dev->mmio[n].memory);
+    if (may_overlap) {
+        memory_region_add_subregion_overlap(get_system_memory(),
+                                            addr,
+                                            dev->mmio[n].memory,
+                                            priority);
+    }
+    else {
+        memory_region_add_subregion(get_system_memory(),
+                                    addr,
+                                    dev->mmio[n].memory);
+    }
 }
 
+void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr)
+{
+    sysbus_mmio_map_common(dev, n, addr, false, 0);
+}
+
+void sysbus_mmio_map_overlap(SysBusDevice *dev, int n, hwaddr addr,
+                             unsigned priority)
+{
+    sysbus_mmio_map_common(dev, n, addr, true, priority);
+}
 
 /* Request an IRQ source.  The actual IRQ object may be populated later.  */
 void sysbus_init_irq(SysBusDevice *dev, qemu_irq *p)
@@ -118,6 +137,9 @@ static int sysbus_device_init(DeviceState *dev)
     SysBusDevice *sd = SYS_BUS_DEVICE(dev);
     SysBusDeviceClass *sbc = SYS_BUS_DEVICE_GET_CLASS(sd);
 
+    if (!sbc->init) {
+        return 0;
+    }
     return sbc->init(sd);
 }
 
@@ -212,24 +234,6 @@ static char *sysbus_get_fw_dev_path(DeviceState *dev)
     }
 
     return g_strdup(path);
-}
-
-void sysbus_add_memory(SysBusDevice *dev, hwaddr addr,
-                       MemoryRegion *mem)
-{
-    memory_region_add_subregion(get_system_memory(), addr, mem);
-}
-
-void sysbus_add_memory_overlap(SysBusDevice *dev, hwaddr addr,
-                               MemoryRegion *mem, unsigned priority)
-{
-    memory_region_add_subregion_overlap(get_system_memory(), addr, mem,
-                                        priority);
-}
-
-void sysbus_del_memory(SysBusDevice *dev, MemoryRegion *mem)
-{
-    memory_region_del_subregion(get_system_memory(), mem);
 }
 
 void sysbus_add_io(SysBusDevice *dev, hwaddr addr,

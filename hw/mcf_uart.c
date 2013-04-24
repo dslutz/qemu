@@ -5,8 +5,8 @@
  *
  * This code is licensed under the GPL
  */
-#include "hw.h"
-#include "mcf.h"
+#include "hw/hw.h"
+#include "hw/mcf.h"
 #include "char/char.h"
 #include "exec/address-spaces.h"
 
@@ -280,6 +280,7 @@ void *mcf_uart_init(qemu_irq irq, CharDriverState *chr)
     s->chr = chr;
     s->irq = irq;
     if (chr) {
+        qemu_chr_fe_claim_no_fail(chr);
         qemu_chr_add_handlers(chr, mcf_uart_can_receive, mcf_uart_receive,
                               mcf_uart_event, s);
     }

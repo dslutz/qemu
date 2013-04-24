@@ -19,10 +19,10 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "pci/pci_ids.h"
-#include "pci/msi.h"
-#include "pci/pcie.h"
-#include "xio3130_downstream.h"
+#include "hw/pci/pci_ids.h"
+#include "hw/pci/msi.h"
+#include "hw/pci/pcie.h"
+#include "hw/xio3130_downstream.h"
 
 #define PCI_DEVICE_ID_TI_XIO3130D       0x8233  /* downstream port */
 #define XIO3130_REVISION                0x1
@@ -61,7 +61,7 @@ static int xio3130_downstream_initfn(PCIDevice *d)
     PCIESlot *s = DO_UPCAST(PCIESlot, port, p);
     int rc;
 
-    rc = pci_bridge_initfn(d);
+    rc = pci_bridge_initfn(d, TYPE_PCIE_BUS);
     if (rc < 0) {
         return rc;
     }

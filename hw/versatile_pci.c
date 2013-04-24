@@ -7,9 +7,9 @@
  * This code is licensed under the LGPL.
  */
 
-#include "sysbus.h"
-#include "pci/pci.h"
-#include "pci/pci_host.h"
+#include "hw/sysbus.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
 #include "exec/address-spaces.h"
 
 typedef struct {
@@ -70,7 +70,7 @@ static int pci_vpb_init(SysBusDevice *dev)
     bus = pci_register_bus(&dev->qdev, "pci",
                            pci_vpb_set_irq, pci_vpb_map_irq, s->irq,
                            get_system_memory(), get_system_io(),
-                           PCI_DEVFN(11, 0), 4);
+                           PCI_DEVFN(11, 0), 4, TYPE_PCI_BUS);
 
     /* ??? Register memory space.  */
 

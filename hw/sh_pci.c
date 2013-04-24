@@ -21,10 +21,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "sysbus.h"
-#include "sh.h"
-#include "pci/pci.h"
-#include "pci/pci_host.h"
+#include "hw/sysbus.h"
+#include "hw/sh.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
 #include "qemu/bswap.h"
 #include "exec/address-spaces.h"
 
@@ -124,7 +124,7 @@ static int sh_pci_device_init(SysBusDevice *dev)
                               s->irq,
                               get_system_memory(),
                               get_system_io(),
-                              PCI_DEVFN(0, 0), 4);
+                              PCI_DEVFN(0, 0), 4, TYPE_PCI_BUS);
     memory_region_init_io(&s->memconfig_p4, &sh_pci_reg_ops, s,
                           "sh_pci", 0x224);
     memory_region_init_alias(&s->memconfig_a7, "sh_pci.2", &s->memconfig_p4,

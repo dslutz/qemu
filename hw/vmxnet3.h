@@ -1,5 +1,5 @@
 /*
- * QEMU VMWARE VMXNET3 paravirtual NIC
+ * QEMU VMWARE VMXNET3 paravirtual NIC interface definitions
  *
  * Copyright (c) 2012 Ravello Systems LTD (http://ravellosystems.com)
  *

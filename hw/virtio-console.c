@@ -13,13 +13,25 @@
 #include "char/char.h"
 #include "qemu/error-report.h"
 #include "trace.h"
-#include "virtio-serial.h"
+#include "hw/virtio-serial.h"
 
 typedef struct VirtConsole {
     VirtIOSerialPort port;
     CharDriverState *chr;
 } VirtConsole;
 
+/*
+ * Callback function that's called from chardevs when backend becomes
+ * writable.
+ */
+static gboolean chr_write_unblocked(GIOChannel *chan, GIOCondition cond,
+                                    void *opaque)
+{
+    VirtConsole *vcon = opaque;
+
+    virtio_serial_throttle_port(&vcon->port, false);
+    return FALSE;
+}
 
 /* Callback function that's called when the guest sends us data */
 static ssize_t flush_buf(VirtIOSerialPort *port, const uint8_t *buf, size_t len)
@@ -35,43 +47,34 @@ static ssize_t flush_buf(VirtIOSerialPort *port, const uint8_t *buf, size_t len)
     ret = qemu_chr_fe_write(vcon->chr, buf, len);
     trace_virtio_console_flush_buf(port->id, len, ret);
 
-    if (ret < 0) {
+    if (ret <= 0) {
+        VirtIOSerialPortClass *k = VIRTIO_SERIAL_PORT_GET_CLASS(port);
+
         /*
          * Ideally we'd get a better error code than just -1, but
          * that's what the chardev interface gives us right now.  If
          * we had a finer-grained message, like -EPIPE, we could close
-         * this connection.  Absent such error messages, the most we
-         * can do is to return 0 here.
-         *
-         * This will prevent stray -1 values to go to
-         * virtio-serial-bus.c and cause abort()s in
-         * do_flush_queued_data().
+         * this connection.
          */
         ret = 0;
+        if (!k->is_console) {
+            virtio_serial_throttle_port(port, true);
+            qemu_chr_fe_add_watch(vcon->chr, G_IO_OUT, chr_write_unblocked,
+                                  vcon);
+        }
     }
     return ret;
 }
 
-/* Callback function that's called when the guest opens the port */
-static void guest_open(VirtIOSerialPort *port)
+/* Callback function that's called when the guest opens/closes the port */
+static void set_guest_connected(VirtIOSerialPort *port, int guest_connected)
 {
     VirtConsole *vcon = DO_UPCAST(VirtConsole, port, port);
 
     if (!vcon->chr) {
         return;
     }
-    qemu_chr_fe_open(vcon->chr);
-}
-
-/* Callback function that's called when the guest closes the port */
-static void guest_close(VirtIOSerialPort *port)
-{
-    VirtConsole *vcon = DO_UPCAST(VirtConsole, port, port);
-
-    if (!vcon->chr) {
-        return;
-    }
-    qemu_chr_fe_close(vcon->chr);
+    qemu_chr_fe_set_open(vcon->chr, guest_connected);
 }
 
 /* Readiness of the guest to accept data on a port */
@@ -117,6 +120,7 @@ static int virtconsole_initfn(VirtIOSerialPort *port)
     }
 
     if (vcon->chr) {
+        vcon->chr->explicit_fe_open = 1;
         qemu_chr_add_handlers(vcon->chr, chr_can_read, chr_read, chr_event,
                               vcon);
     }
@@ -137,8 +141,7 @@ static void virtconsole_class_init(ObjectClass *klass, void *data)
     k->is_console = true;
     k->init = virtconsole_initfn;
     k->have_data = flush_buf;
-    k->guest_open = guest_open;
-    k->guest_close = guest_close;
+    k->set_guest_connected = set_guest_connected;
     dc->props = virtconsole_properties;
 }
 
@@ -161,8 +164,7 @@ static void virtserialport_class_init(ObjectClass *klass, void *data)
 
     k->init = virtconsole_initfn;
     k->have_data = flush_buf;
-    k->guest_open = guest_open;
-    k->guest_close = guest_close;
+    k->set_guest_connected = set_guest_connected;
     dc->props = virtserialport_properties;
 }
 

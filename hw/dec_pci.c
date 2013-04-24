@@ -23,12 +23,12 @@
  * THE SOFTWARE.
  */
 
-#include "dec_pci.h"
-#include "sysbus.h"
-#include "pci/pci.h"
-#include "pci/pci_host.h"
-#include "pci/pci_bridge.h"
-#include "pci/pci_bus.h"
+#include "hw/dec_pci.h"
+#include "hw/sysbus.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
+#include "hw/pci/pci_bridge.h"
+#include "hw/pci/pci_bus.h"
 
 /* debug DEC */
 //#define DEBUG_DEC
@@ -51,12 +51,17 @@ static int dec_map_irq(PCIDevice *pci_dev, int irq_num)
     return irq_num;
 }
 
+static int dec_pci_bridge_initfn(PCIDevice *pci_dev)
+{
+    return pci_bridge_initfn(pci_dev, TYPE_PCI_BUS);
+}
+
 static void dec_21154_pci_bridge_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_bridge_initfn;
+    k->init = dec_pci_bridge_initfn;
     k->exit = pci_bridge_exitfn;
     k->vendor_id = PCI_VENDOR_ID_DEC;
     k->device_id = PCI_DEVICE_ID_DEC_21154;

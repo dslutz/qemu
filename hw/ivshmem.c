@@ -16,10 +16,10 @@
  * Contributions after 2012-01-13 are licensed under the terms of the
  * GNU GPL, version 2 or (at your option) any later version.
  */
-#include "hw.h"
-#include "pc.h"
-#include "pci/pci.h"
-#include "pci/msix.h"
+#include "hw/hw.h"
+#include "hw/pc.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/msix.h"
 #include "sysemu/kvm.h"
 #include "migration/migration.h"
 #include "qapi/qmp/qerror.h"
@@ -292,6 +292,7 @@ static CharDriverState* create_eventfd_chr_device(void * opaque, EventNotifier *
         fprintf(stderr, "creating eventfd for eventfd %d failed\n", eventfd);
         exit(-1);
     }
+    qemu_chr_fe_claim_no_fail(chr);
 
     /* if MSI is supported we need multiple interrupts */
     if (ivshmem_has_feature(s, IVSHMEM_MSI)) {

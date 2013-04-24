@@ -25,8 +25,8 @@
 #include "qemu-common.h"
 #include "ui/console.h"
 #include "ui/pixel_ops.h"
-#include "sysbus.h"
-#include "qdev-addr.h"
+#include "hw/sysbus.h"
+#include "hw/qdev-addr.h"
 
 #define MAXX 1024
 #define MAXY 768
@@ -37,8 +37,7 @@
 
 typedef struct TCXState {
     SysBusDevice busdev;
-    hwaddr addr;
-    DisplayState *ds;
+    QemuConsole *con;
     uint8_t *vram;
     uint32_t *vram24, *cplane;
     MemoryRegion vram_mem;
@@ -75,9 +74,11 @@ static void tcx24_set_dirty(TCXState *s)
 
 static void update_palette_entries(TCXState *s, int start, int end)
 {
+    DisplaySurface *surface = qemu_console_surface(s->con);
     int i;
-    for(i = start; i < end; i++) {
-        switch(ds_get_bits_per_pixel(s->ds)) {
+
+    for (i = start; i < end; i++) {
+        switch (surface_bits_per_pixel(surface)) {
         default:
         case 8:
             s->palette[i] = rgb_to_pixel8(s->r[i], s->g[i], s->b[i]);
@@ -89,10 +90,11 @@ static void update_palette_entries(TCXState *s, int start, int end)
             s->palette[i] = rgb_to_pixel16(s->r[i], s->g[i], s->b[i]);
             break;
         case 32:
-            if (is_surface_bgr(s->ds->surface))
+            if (is_surface_bgr(surface)) {
                 s->palette[i] = rgb_to_pixel32bgr(s->r[i], s->g[i], s->b[i]);
-            else
+            } else {
                 s->palette[i] = rgb_to_pixel32(s->r[i], s->g[i], s->b[i]);
+            }
             break;
         }
     }
@@ -151,12 +153,13 @@ static inline void tcx24_draw_line32(TCXState *s1, uint8_t *d,
                                      const uint32_t *cplane,
                                      const uint32_t *s24)
 {
+    DisplaySurface *surface = qemu_console_surface(s1->con);
     int x, bgr, r, g, b;
     uint8_t val, *p8;
     uint32_t *p = (uint32_t *)d;
     uint32_t dval;
 
-    bgr = is_surface_bgr(s1->ds->surface);
+    bgr = is_surface_bgr(surface);
     for(x = 0; x < width; x++, s++, s24++) {
         if ((be32_to_cpu(*cplane++) & 0xff000000) == 0x03000000) {
             // 24-bit direct, BGR order
@@ -213,23 +216,26 @@ static inline void reset_dirty(TCXState *ts, ram_addr_t page_min,
 static void tcx_update_display(void *opaque)
 {
     TCXState *ts = opaque;
+    DisplaySurface *surface = qemu_console_surface(ts->con);
     ram_addr_t page, page_min, page_max;
     int y, y_start, dd, ds;
     uint8_t *d, *s;
     void (*f)(TCXState *s1, uint8_t *dst, const uint8_t *src, int width);
 
-    if (ds_get_bits_per_pixel(ts->ds) == 0)
+    if (surface_bits_per_pixel(surface) == 0) {
         return;
+    }
+
     page = 0;
     y_start = -1;
     page_min = -1;
     page_max = 0;
-    d = ds_get_data(ts->ds);
+    d = surface_data(surface);
     s = ts->vram;
-    dd = ds_get_linesize(ts->ds);
+    dd = surface_stride(surface);
     ds = 1024;
 
-    switch (ds_get_bits_per_pixel(ts->ds)) {
+    switch (surface_bits_per_pixel(surface)) {
     case 32:
         f = tcx_draw_line32;
         break;
@@ -269,7 +275,7 @@ static void tcx_update_display(void *opaque)
         } else {
             if (y_start >= 0) {
                 /* flush to display */
-                dpy_gfx_update(ts->ds, 0, y_start,
+                dpy_gfx_update(ts->con, 0, y_start,
                                ts->width, y - y_start);
                 y_start = -1;
             }
@@ -279,7 +285,7 @@ static void tcx_update_display(void *opaque)
     }
     if (y_start >= 0) {
         /* flush to display */
-        dpy_gfx_update(ts->ds, 0, y_start,
+        dpy_gfx_update(ts->con, 0, y_start,
                        ts->width, y - y_start);
     }
     /* reset modified pages */
@@ -293,24 +299,27 @@ static void tcx_update_display(void *opaque)
 static void tcx24_update_display(void *opaque)
 {
     TCXState *ts = opaque;
+    DisplaySurface *surface = qemu_console_surface(ts->con);
     ram_addr_t page, page_min, page_max, cpage, page24;
     int y, y_start, dd, ds;
     uint8_t *d, *s;
     uint32_t *cptr, *s24;
 
-    if (ds_get_bits_per_pixel(ts->ds) != 32)
+    if (surface_bits_per_pixel(surface) != 32) {
             return;
+    }
+
     page = 0;
     page24 = ts->vram24_offset;
     cpage = ts->cplane_offset;
     y_start = -1;
     page_min = -1;
     page_max = 0;
-    d = ds_get_data(ts->ds);
+    d = surface_data(surface);
     s = ts->vram;
     s24 = ts->vram24;
     cptr = ts->cplane;
-    dd = ds_get_linesize(ts->ds);
+    dd = surface_stride(surface);
     ds = 1024;
 
     for(y = 0; y < ts->height; y += 4, page += TARGET_PAGE_SIZE,
@@ -345,7 +354,7 @@ static void tcx24_update_display(void *opaque)
         } else {
             if (y_start >= 0) {
                 /* flush to display */
-                dpy_gfx_update(ts->ds, 0, y_start,
+                dpy_gfx_update(ts->con, 0, y_start,
                                ts->width, y - y_start);
                 y_start = -1;
             }
@@ -357,7 +366,7 @@ static void tcx24_update_display(void *opaque)
     }
     if (y_start >= 0) {
         /* flush to display */
-        dpy_gfx_update(ts->ds, 0, y_start,
+        dpy_gfx_update(ts->con, 0, y_start,
                        ts->width, y - y_start);
     }
     /* reset modified pages */
@@ -371,7 +380,7 @@ static void tcx_invalidate_display(void *opaque)
     TCXState *s = opaque;
 
     tcx_set_dirty(s);
-    qemu_console_resize(s->ds, s->width, s->height);
+    qemu_console_resize(s->con, s->width, s->height);
 }
 
 static void tcx24_invalidate_display(void *opaque)
@@ -380,7 +389,7 @@ static void tcx24_invalidate_display(void *opaque)
 
     tcx_set_dirty(s);
     tcx24_set_dirty(s);
-    qemu_console_resize(s->ds, s->width, s->height);
+    qemu_console_resize(s->con, s->width, s->height);
 }
 
 static int vmstate_tcx_post_load(void *opaque, int version_id)
@@ -558,21 +567,21 @@ static int tcx_init1(SysBusDevice *dev)
                                  &s->vram_mem, vram_offset, size);
         sysbus_init_mmio(dev, &s->vram_cplane);
 
-        s->ds = graphic_console_init(tcx24_update_display,
-                                     tcx24_invalidate_display,
-                                     tcx24_screen_dump, NULL, s);
+        s->con = graphic_console_init(tcx24_update_display,
+                                      tcx24_invalidate_display,
+                                      tcx24_screen_dump, NULL, s);
     } else {
         /* THC 8 bit (dummy) */
         memory_region_init_io(&s->thc8, &dummy_ops, s, "tcx.thc8",
                               TCX_THC_NREGS_8);
         sysbus_init_mmio(dev, &s->thc8);
 
-        s->ds = graphic_console_init(tcx_update_display,
-                                     tcx_invalidate_display,
-                                     tcx_screen_dump, NULL, s);
+        s->con = graphic_console_init(tcx_update_display,
+                                      tcx_invalidate_display,
+                                      tcx_screen_dump, NULL, s);
     }
 
-    qemu_console_resize(s->ds, s->width, s->height);
+    qemu_console_resize(s->con, s->width, s->height);
     return 0;
 }
 
@@ -697,7 +706,6 @@ write_err:
 }
 
 static Property tcx_properties[] = {
-    DEFINE_PROP_TADDR("addr",      TCXState, addr,      -1),
     DEFINE_PROP_HEX32("vram_size", TCXState, vram_size, -1),
     DEFINE_PROP_UINT16("width",    TCXState, width,     -1),
     DEFINE_PROP_UINT16("height",   TCXState, height,    -1),

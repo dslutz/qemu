@@ -21,50 +21,9 @@
 #include "qemu/iov.h"
 #include "monitor/monitor.h"
 #include "qemu/queue.h"
-#include "sysbus.h"
+#include "hw/sysbus.h"
 #include "trace.h"
-#include "virtio-serial.h"
-
-/* The virtio-serial bus on top of which the ports will ride as devices */
-struct VirtIOSerialBus {
-    BusState qbus;
-
-    /* This is the parent device that provides the bus for ports. */
-    VirtIOSerial *vser;
-
-    /* The maximum number of ports that can ride on top of this bus */
-    uint32_t max_nr_ports;
-};
-
-typedef struct VirtIOSerialPostLoad {
-    QEMUTimer *timer;
-    uint32_t nr_active_ports;
-    struct {
-        VirtIOSerialPort *port;
-        uint8_t host_connected;
-    } *connected;
-} VirtIOSerialPostLoad;
-
-struct VirtIOSerial {
-    VirtIODevice vdev;
-
-    VirtQueue *c_ivq, *c_ovq;
-    /* Arrays of ivqs and ovqs: one per port */
-    VirtQueue **ivqs, **ovqs;
-
-    VirtIOSerialBus bus;
-
-    DeviceState *qdev;
-
-    QTAILQ_HEAD(, VirtIOSerialPort) ports;
-
-    /* bitmap for identifying active ports */
-    uint32_t *ports_map;
-
-    struct virtio_console_config config;
-
-    struct VirtIOSerialPostLoad *post_load;
-};
+#include "hw/virtio-serial.h"
 
 static VirtIOSerialPort *find_port_by_id(VirtIOSerial *vser, uint32_t id)
 {
@@ -172,24 +131,7 @@ static void do_flush_queued_data(VirtIOSerialPort *port, VirtQueue *vq,
                                   port->elem.out_sg[i].iov_base
                                   + port->iov_offset,
                                   buf_size);
-            if (ret < 0 && ret != -EAGAIN) {
-                /* We don't handle any other type of errors here */
-                abort();
-            }
-            if (ret == -EAGAIN || (ret >= 0 && ret < buf_size)) {
-		/*
-                 * this is a temporary check until chardevs can signal to
-                 * frontends that they are writable again. This prevents
-                 * the console from going into throttled mode (forever)
-                 * if virtio-console is connected to a pty without a
-                 * listener. Otherwise the guest spins forever.
-                 * We can revert this if
-                 * 1: chardevs can notify frondends
-                 * 2: the guest driver does not spin in these cases
-                 */
-                if (!vsc->is_console) {
-                    virtio_serial_throttle_port(port, true);
-                }
+            if (port->throttled) {
                 port->iov_idx = i;
                 if (ret > 0) {
                     port->iov_offset += ret;
@@ -430,14 +372,9 @@ static void handle_control_message(VirtIOSerial *vser, void *buf, size_t len)
 
     case VIRTIO_CONSOLE_PORT_OPEN:
         port->guest_connected = cpkt.value;
-        if (cpkt.value && vsc->guest_open) {
+        if (vsc->set_guest_connected) {
             /* Send the guest opened notification if an app is interested */
-            vsc->guest_open(port);
-        }
-
-        if (!cpkt.value && vsc->guest_close) {
-            /* Send the guest closed notification if an app is interested */
-            vsc->guest_close(port);
+            vsc->set_guest_connected(port, cpkt.value);
         }
         break;
     }
@@ -542,9 +479,9 @@ static void guest_reset(VirtIOSerial *vser)
         vsc = VIRTIO_SERIAL_PORT_GET_CLASS(port);
         if (port->guest_connected) {
             port->guest_connected = false;
-
-            if (vsc->guest_close)
-                vsc->guest_close(port);
+            if (vsc->set_guest_connected) {
+                vsc->set_guest_connected(port, false);
+            }
         }
     }
 }
@@ -642,6 +579,7 @@ static void virtio_serial_post_load_timer_cb(void *opaque)
     VirtIOSerial *s = opaque;
     VirtIOSerialPort *port;
     uint8_t host_connected;
+    VirtIOSerialPortClass *vsc;
 
     if (!s->post_load) {
         return;
@@ -656,6 +594,10 @@ static void virtio_serial_post_load_timer_cb(void *opaque)
              */
             send_control_event(s, port->id, VIRTIO_CONSOLE_PORT_OPEN,
                                port->host_connected);
+        }
+        vsc = VIRTIO_SERIAL_PORT_GET_CLASS(port);
+        if (vsc->set_guest_connected) {
+            vsc->set_guest_connected(port, port->guest_connected);
         }
     }
     g_free(s->post_load->connected);

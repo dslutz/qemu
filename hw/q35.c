@@ -27,8 +27,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "hw.h"
-#include "q35.h"
+#include "hw/hw.h"
+#include "hw/q35.h"
 
 /****************************************************************************
  * Q35 host
@@ -54,7 +54,8 @@ static int q35_host_init(SysBusDevice *dev)
         return -1;
     }
     b = pci_bus_new(&s->host.pci.busdev.qdev, "pcie.0",
-                    s->mch.pci_address_space, s->mch.address_space_io, 0);
+                    s->mch.pci_address_space, s->mch.address_space_io,
+                    0, TYPE_PCIE_BUS);
     s->host.pci.bus = b;
     qdev_set_parent_bus(DEVICE(&s->mch), BUS(b));
     qdev_init_nofail(DEVICE(&s->mch));

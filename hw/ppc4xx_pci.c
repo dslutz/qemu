@@ -19,11 +19,11 @@
 /* This file implements emulation of the 32-bit PCI controller found in some
  * 4xx SoCs, such as the 440EP. */
 
-#include "hw.h"
-#include "ppc.h"
-#include "ppc4xx.h"
-#include "pci/pci.h"
-#include "pci/pci_host.h"
+#include "hw/hw.h"
+#include "hw/ppc.h"
+#include "hw/ppc4xx.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
 #include "exec/address-spaces.h"
 
 #undef DEBUG
@@ -349,7 +349,7 @@ static int ppc4xx_pcihost_initfn(SysBusDevice *dev)
 
     b = pci_register_bus(DEVICE(dev), NULL, ppc4xx_pci_set_irq,
                          ppc4xx_pci_map_irq, s->irq, get_system_memory(),
-                         get_system_io(), 0, 4);
+                         get_system_io(), 0, 4, TYPE_PCI_BUS);
     h->bus = b;
 
     pci_create_simple(b, 0, "ppc4xx-host-bridge");

@@ -23,9 +23,9 @@
  * THE SOFTWARE.
  */
 
-#include "pci/pci_host.h"
-#include "ppc/mac.h"
-#include "pci/pci.h"
+#include "hw/pci/pci_host.h"
+#include "hw/ppc/mac.h"
+#include "hw/pci/pci.h"
 
 /* debug Grackle */
 //#define DEBUG_GRACKLE
@@ -88,7 +88,7 @@ PCIBus *pci_grackle_init(uint32_t base, qemu_irq *pic,
                                 pic,
                                 &d->pci_mmio,
                                 address_space_io,
-                                0, 4);
+                                0, 4, TYPE_PCI_BUS);
 
     pci_create_simple(phb->bus, 0, "grackle");
 

@@ -39,11 +39,11 @@
 
 #include <assert.h>
 
-#include "hw.h"
-#include "pci/pci.h"
-#include "pc.h"
-#include "mips.h"
-#include "pci/pci_host.h"
+#include "hw/hw.h"
+#include "hw/pci/pci.h"
+#include "hw/pc.h"
+#include "hw/mips.h"
+#include "hw/pci/pci_host.h"
 #include "sysemu/sysemu.h"
 #include "exec/address-spaces.h"
 
@@ -707,7 +707,7 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     phb->bus = pci_register_bus(DEVICE(dev), "pci",
                                 pci_bonito_set_irq, pci_bonito_map_irq, dev,
                                 get_system_memory(), get_system_io(),
-                                0x28, 32);
+                                0x28, 32, TYPE_PCI_BUS);
 
     return 0;
 }

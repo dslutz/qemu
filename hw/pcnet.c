@@ -35,14 +35,14 @@
  * http://www.ibiblio.org/pub/historic-linux/early-ports/Sparc/NCR/NCR92C990.txt
  */
 
-#include "qdev.h"
+#include "hw/qdev.h"
 #include "net/net.h"
 #include "qemu/timer.h"
 #include "qemu/sockets.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
 
-#include "pcnet.h"
+#include "hw/pcnet.h"
 
 //#define PCNET_DEBUG
 //#define PCNET_DEBUG_IO

@@ -35,6 +35,9 @@ GENERATED_HEADERS = config-host.h qemu-options.def
 GENERATED_HEADERS += qmp-commands.h qapi-types.h qapi-visit.h
 GENERATED_SOURCES += qmp-marshal.c qapi-types.c qapi-visit.c
 
+GENERATED_HEADERS += trace/generated-events.h
+GENERATED_SOURCES += trace/generated-events.c
+
 GENERATED_HEADERS += trace/generated-tracers.h
 ifeq ($(TRACE_BACKEND),dtrace)
 GENERATED_HEADERS += trace/generated-tracers-dtrace.h
@@ -66,7 +69,7 @@ endif
 
 SUBDIR_MAKEFLAGS=$(if $(V),,--no-print-directory) BUILD_DIR=$(BUILD_DIR)
 SUBDIR_DEVICES_MAK=$(patsubst %, %/config-devices.mak, $(TARGET_DIRS))
-SUBDIR_DEVICES_MAK_DEP=$(patsubst %, %/config-devices.mak.d, $(TARGET_DIRS))
+SUBDIR_DEVICES_MAK_DEP=$(patsubst %, %-config-devices.mak.d, $(TARGET_DIRS))
 
 ifeq ($(SUBDIR_DEVICES_MAK),)
 config-all-devices.mak:
@@ -123,6 +126,9 @@ qemu-options.def: $(SRC_PATH)/qemu-options.hx
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
 
 SUBDIR_RULES=$(patsubst %,subdir-%, $(TARGET_DIRS))
+SOFTMMU_SUBDIR_RULES=$(filter %-softmmu,$(SUBDIR_RULES))
+
+$(SOFTMMU_SUBDIR_RULES): config-all-devices.mak
 
 subdir-%:
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $* V="$(V)" TARGET_DIR="$*/" all,)
@@ -314,6 +320,9 @@ ifneq ($(BLOBS),)
 		$(INSTALL_DATA) $(SRC_PATH)/pc-bios/$$x "$(DESTDIR)$(qemu_datadir)"; \
 	done
 endif
+ifeq ($(CONFIG_GTK),y)
+	$(MAKE) -C po $@
+endif
 	$(INSTALL_DIR) "$(DESTDIR)$(qemu_datadir)/keymaps"
 	set -e; for x in $(KEYMAPS); do \
 		$(INSTALL_DATA) $(SRC_PATH)/pc-bios/keymaps/$$x "$(DESTDIR)$(qemu_datadir)/keymaps"; \
@@ -328,7 +337,8 @@ test speed: all
 
 .PHONY: TAGS
 TAGS:
-	find "$(SRC_PATH)" -name '*.[hc]' -print0 | xargs -0 etags
+	rm -f $@
+	find "$(SRC_PATH)" -name '*.[hc]' -exec etags --append {} +
 
 cscope:
 	rm -f ./cscope.*
