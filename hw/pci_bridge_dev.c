@@ -87,8 +87,8 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
     uint8_t *conf = dev->config;
     int err;
 
-    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
-    err = pci_bridge_initfn(dev);
+    //pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
+    err = pci_bridge_initfn(dev, "AGP"); //XXX
     if (err) {
         goto bridge_error;
     }
@@ -138,8 +138,8 @@ static int vmware_bridge_dev_initfn(PCIDevice *dev)
     uint8_t *conf = dev->config;
     int err;
 
-    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
-    err = pci_bridge_initfn(dev);
+    //pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
+    err = pci_bridge_initfn(dev, TYPE_PCI_BUS);
     if (err) {
         goto bridge_error;
     }
@@ -176,8 +176,8 @@ static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
     uint8_t *conf = dev->config;
     int err;
 
-    pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
-    err = pci_bridge_initfn(dev);
+    //pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
+    err = pci_bridge_initfn(dev, TYPE_PCIE_BUS);
     if (err) {
         goto bridge_error;
     }

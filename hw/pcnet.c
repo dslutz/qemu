@@ -1077,7 +1077,8 @@ static void vmxnet_rdte_poll(PCNetVmxState *vs)
 int vlance_can_receive(NetClientState *nc)
 {
     NetClientState *nc0 = nc - nc->queue_index;
-    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    //PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    PCNetVmxState *vs = ((NICState *) ((void *)nc0 - nc->info->size))->opaque;
     PCNetState *s = &vs->s1;
     Vmxnet2_RxRingEntry  rmd;
     hwaddr addr;
@@ -1289,7 +1290,8 @@ void pcnet_set_link_status(NetClientState *nc)
 void vlance_set_link_status(NetClientState *nc)
 {
     NetClientState *nc0 = nc - nc->queue_index;
-    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    //PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    PCNetVmxState *vs = ((NICState *) ((void *)nc0 - nc->info->size))->opaque;
 
     vs->s1.lnkst = nc->link_down ? 0 : 0x40;
     vs->s2.link_down_reported = 0;
@@ -1581,7 +1583,8 @@ static inline void vmxnet_rmd_store_pass_host(PCNetState *s, Vmxnet2_RxRingEntry
 ssize_t vlance_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 {
     NetClientState *nc0 = nc - nc->queue_index;
-    PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    //PCNetVmxState *vs = DO_UPCAST(NICState, ncs[0], nc0)->opaque;
+    PCNetVmxState *vs = ((NICState *) ((void *)nc0 - nc->info->size))->opaque;
     PCNetState *s = &vs->s1;
     PCNetStateVmx *s2 = &vs->s2;
     int is_padr = 0, is_bcast = 0, is_ladr = 0;

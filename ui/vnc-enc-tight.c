@@ -704,32 +704,6 @@ check_solid_tile32(VncState *vs, int x, int y, int w, int h,
 static bool check_solid_tile(VncState *vs, int x, int y, int w, int h,
                              uint32_t* color, bool samecolor)
 {
-    if (x < 0) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (x >= ds_get_width(vs->ds)) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (w < 0) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (x + w >= ds_get_width(vs->ds)) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (y < 0) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (y >= ds_get_height(vs->ds)) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (h < 0) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    } else if (y + h >= ds_get_height(vs->ds)) {
-        trace_check_solid_tile(vs, x, y, w, h, ds_get_width(vs->ds), ds_get_height(vs->ds));
-        return false;
-    }
-
     switch(VNC_SERVER_FB_BYTES) {
     case 4:
         return check_solid_tile32(vs, x, y, w, h, color, samecolor);
