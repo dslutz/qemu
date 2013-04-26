@@ -3437,7 +3437,9 @@ static void mpt_xfer_complete(SCSIRequest *req, uint32_t len)
 static void mpt_finish_context_reply(MptState *s,
                                      uint32_t message_context)
 {
-    assert(!s->doorbell);
+    if (s->doorbell) {
+        fprintf(stderr, "%s: We are in a doorbell function\n", __func__);
+    }
 
     /* Write message context ID into reply post queue. */
     s->reply_post_queue[s->reply_post_queue_next_entry_free_write++] =
@@ -3535,8 +3537,35 @@ static void mpt_command_cancel(SCSIRequest *req)
     }
 }
 
-static void mpt_map_sgl(MptState *s, MptCmd *cmd,
-                        hwaddr sgl_pa, uint32_t chain_offset)
+static void vms_dump(FILE *f, const uint8_t *buf, int size)
+{
+    int len, i, j, c;
+
+    for(i=0;i<size;i+=16) {
+        len = size - i;
+        if (len > 16)
+            len = 16;
+        for(j=len;j<16;j++) {
+            fprintf(f, (j!=15)&&((j&3) == 3)?"   ":"  ");
+        }
+        for(j=len - 1;j>=0;j--) {
+            fprintf(f,
+                    (j!=15)&&((j&3) == 3)?" %02x":"%02x",
+                    buf[i+j]);
+        }
+        fprintf(f, "  %08x: ", i);
+        for(j=0;j<len;j++) {
+            c = buf[i+j];
+            if (c < ' ' || c > '~')
+                c = '.';
+            fprintf(f, "%c", c);
+        }
+        fprintf(f, "\n");
+    }
+}
+
+static int mpt_map_sgl(MptState *s, MptCmd *cmd,
+                       hwaddr sgl_pa, uint32_t chain_offset)
 {
     uint32_t iov_count = 0;
     bool do_mapping = false;
@@ -3560,11 +3589,17 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
                 MptSGEntryUnion sge;
                 cpu_physical_memory_read(next_sge_pa, &sge,
                                          sizeof(MptSGEntryUnion));
-                assert(sge.simple_32.element_type == MPTSGENTRYTYPE_SIMPLE);
+                if (sge.simple_32.element_type != MPTSGENTRYTYPE_SIMPLE) {
+                    fprintf(stderr,
+                            "%s: element_type(%d) not simple. sge@0x%lx:\n",
+                            __func__, sge.simple_32.element_type, (long)next_sge_pa);
+                    vms_dump(stderr, (void*)&sge, sizeof(MptSGEntryUnion));
+                    return 1;
+                }
                 if (sge.simple_32.length == 0 && sge.simple_32.end_of_list &&
                     sge.simple_32.end_of_buffer) {
                     cmd->sge_cnt = 0;
-                    return;
+                    return 0;
                 }
                 if (sge.simple_32.bit_address) {
                     next_sge_pa += sizeof(MptSGEntrySimple64);
@@ -3606,11 +3641,13 @@ static void mpt_map_sgl(MptState *s, MptCmd *cmd,
         }
         do_mapping = true;
     }
+    return 0;
 }
 
 static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
 {
     struct SCSIDevice *sdev = NULL;
+    int ret = 0;
 
     if (cmd->request.scsi_io.target_id < s->max_devices &&
         cmd->request.scsi_io.bus == 0) {
@@ -3631,8 +3668,17 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             }
 
             if (cmd->iov_size) {
-                mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
-                            sizeof(MptSCSIIORequest), chain_offset);
+                if (mpt_map_sgl(s, cmd, cmd->host_msg_frame_pa +
+                                sizeof(MptSCSIIORequest), chain_offset)) {
+                    fprintf(stderr,
+                            "%s: mpt_map_sgl() failed pa=0x%lx(0x%lx):\n",
+                            __func__, (long)cmd->host_msg_frame_pa,
+                            (long)(cmd->host_msg_frame_pa + sizeof(MptSCSIIORequest)));
+                    cmd->reply.scsi_io_error.ioc_status =
+                        MPT_SCSI_IO_ERROR_IOCSTATUS_DEVICE_NOT_THERE + 1;
+                    ret = 1;
+                    goto bad_req;
+                }
             }
             is_write = MPT_SCSIIO_REQUEST_CONTROL_TXDIR_GET(
                 cmd->request.scsi_io.control) ==
@@ -3684,7 +3730,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
             } else {
                 trace_mpt_scsi_nodata(cmd->index);
             }
-            return 0;
+            return ret;
         } else {
             cmd->reply.scsi_io_error.ioc_status =
                 MPT_SCSI_IO_ERROR_IOCSTATUS_DEVICE_NOT_THERE;
@@ -3698,6 +3744,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
                 MPT_SCSI_IO_ERROR_IOCSTATUS_INVALID_TARGETID;
         }
     }
+bad_req:
     cmd->reply.scsi_io_error.target_id = cmd->request.scsi_io.target_id;
     cmd->reply.scsi_io_error.bus = cmd->request.scsi_io.bus;
     cmd->reply.scsi_io_error.message_length = sizeof(MptSCSIIOErrorReply) / 4;
@@ -3719,7 +3766,7 @@ static int mpt_process_scsi_io_Request(MptState *s, MptCmd *cmd)
     mpt_finish_address_reply(s, &cmd->reply, false);
     g_free(cmd);
 
-    return 0;
+    return ret;
 }
 
 static void mpt_process_message(MptState *s, MptMessageHdr *msg,
@@ -3798,7 +3845,12 @@ static bool mpt_queue_consumer(MptState *s)
                 cpu_physical_memory_read(host_msg_frame_pa,
                                          &cmd->request.header, cb_request);
                 cmd->host_msg_frame_pa = host_msg_frame_pa;
-                mpt_process_scsi_io_Request(s, cmd);
+                if (mpt_process_scsi_io_Request(s, cmd)) {
+                    fprintf(stderr,
+                            "%s: mpt_process_scsi_io_Request() failed pa=0x%lx:\n",
+                            __func__, (long)host_msg_frame_pa);
+                    vms_dump(stderr, (void*)&cmd->request.header, cb_request);
+                }
             } else {
                 MptReplyUnion Reply;
                 cpu_physical_memory_read(host_msg_frame_pa, &request.header,
@@ -4545,7 +4597,7 @@ static const char *mpt_msg_desc[] = {
 static void mpt_process_message(MptState *s, MptMessageHdr *msg,
                                 MptReplyUnion *reply)
 {
-    bool fForceReplyPostFifo = false;
+    bool force_reply_post_fifo = false;
 
     memset(reply, 0, sizeof(MptReplyUnion));
 
@@ -4560,7 +4612,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
         reply->scsi_task_management.task_type =
             p_task_mgmt_req->task_type;
         reply->scsi_task_management.termination_count = 0;
-        fForceReplyPostFifo = true;
+        force_reply_post_fifo = true;
         break;
     }
 
@@ -4770,7 +4822,7 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
     reply->header.function = msg->function;
     reply->header.message_context = msg->message_context;
 
-    mpt_finish_address_reply(s, reply, fForceReplyPostFifo);
+    mpt_finish_address_reply(s, reply, force_reply_post_fifo);
 }
 
 static uint64_t mpt_mmio_read_internal(void *opaque, hwaddr addr,
@@ -6324,7 +6376,7 @@ static Property mptsas_properties[] = {
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
     DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
     DEFINE_PROP_BIT("use_msi", MptState, flags,
-                    MPT_FLAG_USE_MSI, true),
+                    MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
     DEFINE_PROP_BIT("use_msix", MptState, flags,
                     MPT_FLAG_USE_MSIX, false),

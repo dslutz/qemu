@@ -172,9 +172,12 @@ static void pc_init1(MemoryRegion *system_memory,
 
     pc_vga_init(isa_bus, pci_enabled ? pci_bus : NULL);
     if (xen_enabled() && xen_platform_pci) {
-        printf("%s: vmware_hw=%d xen_platform_pci=%d\n",
-               __func__, vmware_hw, xen_platform_pci);
-        pci_create_simple(pci_bus, -1, "xen-platform");
+        fprintf(stderr,
+                "%s: vmware_hw=%d xen_platform_pci=%d(0x%02x.0x%x)\n",
+                __func__, vmware_hw, xen_platform_pci,
+                xen_platform_pci >> 3, xen_platform_pci & 0x7);
+        pci_create_simple(pci_bus, xen_platform_pci,
+                          "xen-platform");
     }
 
     /* init basic PC hardware */
