@@ -24,15 +24,15 @@
 #include "monitor/monitor.h"
 #include "hw/loader.h"
 #include "elf.h"
-#include "hw/virtio.h"
-#include "hw/virtio-rng.h"
-#include "hw/virtio-serial.h"
-#include "hw/virtio-net.h"
+#include "hw/virtio/virtio.h"
+#include "hw/virtio/virtio-rng.h"
+#include "hw/virtio/virtio-serial.h"
+#include "hw/virtio/virtio-net.h"
 #include "hw/sysbus.h"
 #include "sysemu/kvm.h"
 
 #include "hw/s390x/s390-virtio-bus.h"
-#include "hw/virtio-bus.h"
+#include "hw/virtio/virtio-bus.h"
 
 /* #define DEBUG_S390 */
 
@@ -181,25 +181,34 @@ static void s390_virtio_blk_instance_init(Object *obj)
     object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
 }
 
-static int s390_virtio_serial_init(VirtIOS390Device *dev)
+static int s390_virtio_serial_init(VirtIOS390Device *s390_dev)
 {
+    VirtIOSerialS390 *dev = VIRTIO_SERIAL_S390(s390_dev);
+    DeviceState *vdev = DEVICE(&dev->vdev);
+    DeviceState *qdev = DEVICE(s390_dev);
     VirtIOS390Bus *bus;
-    VirtIODevice *vdev;
     int r;
 
-    bus = DO_UPCAST(VirtIOS390Bus, bus, dev->qdev.parent_bus);
+    bus = DO_UPCAST(VirtIOS390Bus, bus, qdev->parent_bus);
 
-    vdev = virtio_serial_init((DeviceState *)dev, &dev->serial);
-    if (!vdev) {
+    qdev_set_parent_bus(vdev, BUS(&s390_dev->bus));
+    if (qdev_init(vdev) < 0) {
         return -1;
     }
 
-    r = s390_virtio_device_init(dev, vdev);
+    r = s390_virtio_device_init(s390_dev, VIRTIO_DEVICE(vdev));
     if (!r) {
-        bus->console = dev;
+        bus->console = s390_dev;
     }
 
     return r;
+}
+
+static void s390_virtio_serial_instance_init(Object *obj)
+{
+    VirtIOSerialS390 *dev = VIRTIO_SERIAL_S390(obj);
+    object_initialize(OBJECT(&dev->vdev), TYPE_VIRTIO_SERIAL);
+    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
 }
 
 static int s390_virtio_scsi_init(VirtIOS390Device *s390_dev)
@@ -465,8 +474,7 @@ static const TypeInfo s390_virtio_blk = {
 };
 
 static Property s390_virtio_serial_properties[] = {
-    DEFINE_PROP_UINT32("max_ports", VirtIOS390Device,
-                       serial.max_virtserial_ports, 31),
+    DEFINE_VIRTIO_SERIAL_PROPERTIES(VirtIOSerialS390, vdev.serial),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -480,9 +488,10 @@ static void s390_virtio_serial_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo s390_virtio_serial = {
-    .name          = "virtio-serial-s390",
+    .name          = TYPE_VIRTIO_SERIAL_S390,
     .parent        = TYPE_VIRTIO_S390_DEVICE,
-    .instance_size = sizeof(VirtIOS390Device),
+    .instance_size = sizeof(VirtIOSerialS390),
+    .instance_init = s390_virtio_serial_instance_init,
     .class_init    = s390_virtio_serial_class_init,
 };
 

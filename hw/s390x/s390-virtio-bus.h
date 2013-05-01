@@ -19,12 +19,12 @@
 #ifndef HW_S390_VIRTIO_BUS_H
 #define HW_S390_VIRTIO_BUS_H 1
 
-#include "hw/virtio-blk.h"
-#include "hw/virtio-net.h"
-#include "hw/virtio-rng.h"
-#include "hw/virtio-serial.h"
-#include "hw/virtio-scsi.h"
-#include "hw/virtio-bus.h"
+#include "hw/virtio/virtio-blk.h"
+#include "hw/virtio/virtio-net.h"
+#include "hw/virtio/virtio-rng.h"
+#include "hw/virtio/virtio-serial.h"
+#include "hw/virtio/virtio-scsi.h"
+#include "hw/virtio/virtio-bus.h"
 
 #define VIRTIO_DEV_OFFS_TYPE		0	/* 8 bits */
 #define VIRTIO_DEV_OFFS_NUM_VQ		1	/* 8 bits */
@@ -91,7 +91,6 @@ struct VirtIOS390Device {
     VirtIODevice *vdev;
     NICConf nic;
     uint32_t host_features;
-    virtio_serial_conf serial;
     virtio_net_conf net;
     VirtIORNGConf rng;
     VirtioBusState bus;
@@ -140,5 +139,16 @@ typedef struct VirtIOSCSIS390 {
     VirtIOS390Device parent_obj;
     VirtIOSCSI vdev;
 } VirtIOSCSIS390;
+
+/* virtio-serial-s390 */
+
+#define TYPE_VIRTIO_SERIAL_S390 "virtio-serial-s390"
+#define VIRTIO_SERIAL_S390(obj) \
+        OBJECT_CHECK(VirtIOSerialS390, (obj), TYPE_VIRTIO_SERIAL_S390)
+
+typedef struct VirtIOSerialS390 {
+    VirtIOS390Device parent_obj;
+    VirtIOSerial vdev;
+} VirtIOSerialS390;
 
 #endif

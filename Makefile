@@ -76,7 +76,10 @@ config-all-devices.mak:
 	$(call quiet-command,echo '# no devices' > $@,"  GEN   $@")
 else
 config-all-devices.mak: $(SUBDIR_DEVICES_MAK)
-	$(call quiet-command,cat $(SUBDIR_DEVICES_MAK) | grep =y | sort -u > $@,"  GEN   $@")
+	$(call quiet-command, sed -n \
+             's|^\([^=]*\)=\(.*\)$$|\1:=$$(findstring y,$$(\1)\2)|p' \
+             $(SUBDIR_DEVICES_MAK) | sort -u > $@, \
+             "  GEN   $@")
 endif
 
 -include $(SUBDIR_DEVICES_MAK_DEP)
@@ -272,6 +275,8 @@ acpi-dsdt.aml q35-acpi-dsdt.aml \
 ppc_rom.bin openbios-sparc32 openbios-sparc64 openbios-ppc \
 pxe-e1000.rom pxe-eepro100.rom pxe-ne2k_pci.rom \
 pxe-pcnet.rom pxe-rtl8139.rom pxe-virtio.rom \
+efi-e1000.rom efi-eepro100.rom efi-ne2k_pci.rom \
+efi-pcnet.rom efi-rtl8139.rom efi-virtio.rom \
 qemu-icon.bmp \
 bamboo.dtb petalogix-s3adsp1800.dtb petalogix-ml605.dtb \
 multiboot.bin linuxboot.bin kvmvapic.bin \

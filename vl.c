@@ -117,12 +117,12 @@ int main(int argc, char **argv)
 #include "hw/boards.h"
 #include "hw/usb.h"
 #include "hw/pcmcia.h"
-#include "hw/pc.h"
-#include "hw/isa.h"
+#include "hw/i386/pc.h"
+#include "hw/isa/isa.h"
 #include "hw/bt.h"
-#include "hw/watchdog.h"
-#include "hw/smbios.h"
-#include "hw/xen.h"
+#include "sysemu/watchdog.h"
+#include "hw/i386/smbios.h"
+#include "hw/xen/xen.h"
 #include "hw/qdev.h"
 #include "hw/loader.h"
 #include "monitor/qdev.h"
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 #include "char/char.h"
 #include "qemu/cache-utils.h"
 #include "sysemu/blockdev.h"
-#include "hw/block-common.h"
+#include "hw/block/block.h"
 #include "migration/block.h"
 #include "tpm/tpm.h"
 #include "sysemu/dma.h"
@@ -680,11 +680,6 @@ StatusInfo *qmp_query_status(Error **errp)
     info->status = current_run_state;
 
     return info;
-}
-
-int64_t qmp_query_cpu_max(Error **errp)
-{
-    return current_machine->max_cpus;
 }
 
 /***********************************************************/
@@ -1637,6 +1632,7 @@ MachineInfoList *qmp_query_machines(Error **errp)
         }
 
         info->name = g_strdup(m->name);
+        info->cpu_max = !m->max_cpus ? 1 : m->max_cpus;
 
         entry = g_malloc0(sizeof(*entry));
         entry->value = info;

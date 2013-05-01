@@ -594,65 +594,59 @@ int recv_all(int fd, void *_buf, int len1, bool single_read)
 
 typedef struct IOWatchPoll
 {
+    GSource parent;
+
+    GIOChannel *channel;
     GSource *src;
-    int max_size;
 
     IOCanReadHandler *fd_can_read;
+    GSourceFunc fd_read;
     void *opaque;
-
-    QTAILQ_ENTRY(IOWatchPoll) node;
 } IOWatchPoll;
-
-static QTAILQ_HEAD(, IOWatchPoll) io_watch_poll_list =
-    QTAILQ_HEAD_INITIALIZER(io_watch_poll_list);
 
 static IOWatchPoll *io_watch_poll_from_source(GSource *source)
 {
-    IOWatchPoll *i;
-
-    QTAILQ_FOREACH(i, &io_watch_poll_list, node) {
-        if (i->src == source) {
-            return i;
-        }
-    }
-
-    return NULL;
+    return container_of(source, IOWatchPoll, parent);
 }
 
 static gboolean io_watch_poll_prepare(GSource *source, gint *timeout_)
 {
     IOWatchPoll *iwp = io_watch_poll_from_source(source);
-
-    iwp->max_size = iwp->fd_can_read(iwp->opaque);
-    if (iwp->max_size == 0) {
+    bool now_active = iwp->fd_can_read(iwp->opaque) > 0;
+    bool was_active = iwp->src != NULL;
+    if (was_active == now_active) {
         return FALSE;
     }
 
-    return g_io_watch_funcs.prepare(source, timeout_);
+    if (now_active) {
+        iwp->src = g_io_create_watch(iwp->channel, G_IO_IN | G_IO_ERR | G_IO_HUP);
+        g_source_set_callback(iwp->src, iwp->fd_read, iwp->opaque, NULL);
+        g_source_attach(iwp->src, NULL);
+    } else {
+        g_source_destroy(iwp->src);
+        g_source_unref(iwp->src);
+        iwp->src = NULL;
+    }
+    return FALSE;
 }
 
 static gboolean io_watch_poll_check(GSource *source)
 {
-    IOWatchPoll *iwp = io_watch_poll_from_source(source);
-
-    if (iwp->max_size == 0) {
-        return FALSE;
-    }
-
-    return g_io_watch_funcs.check(source);
+    return FALSE;
 }
 
 static gboolean io_watch_poll_dispatch(GSource *source, GSourceFunc callback,
                                        gpointer user_data)
 {
-    return g_io_watch_funcs.dispatch(source, callback, user_data);
+    abort();
 }
 
 static void io_watch_poll_finalize(GSource *source)
 {
     IOWatchPoll *iwp = io_watch_poll_from_source(source);
-    QTAILQ_REMOVE(&io_watch_poll_list, iwp, node);
-    g_io_watch_funcs.finalize(source);
+    g_source_destroy(iwp->src);
+    g_source_unref(iwp->src);
+    iwp->src = NULL;
 }
 
 static GSourceFuncs io_watch_poll_funcs = {
@@ -669,23 +663,17 @@ static guint io_add_watch_poll(GIOChannel *channel,
                                gpointer user_data)
 {
     IOWatchPoll *iwp;
-    GSource *src;
-    guint tag;
+    int tag;
 
-    src = g_io_create_watch(channel, G_IO_IN | G_IO_ERR | G_IO_HUP);
-    g_source_set_funcs(src, &io_watch_poll_funcs);
-    g_source_set_callback(src, (GSourceFunc)fd_read, user_data, NULL);
-    tag = g_source_attach(src, NULL);
-    g_source_unref(src);
-
-    iwp = g_malloc0(sizeof(*iwp));
-    iwp->src = src;
-    iwp->max_size = 0;
+    iwp = (IOWatchPoll *) g_source_new(&io_watch_poll_funcs, sizeof(IOWatchPoll));
     iwp->fd_can_read = fd_can_read;
     iwp->opaque = user_data;
+    iwp->channel = channel;
+    iwp->fd_read = (GSourceFunc) fd_read;
+    iwp->src = NULL;
 
-    QTAILQ_INSERT_HEAD(&io_watch_poll_list, iwp, node);
-
+    tag = g_source_attach(&iwp->parent, NULL);
+    g_source_unref(&iwp->parent);
     return tag;
 }
 
@@ -2794,70 +2782,6 @@ static CharDriverState *qemu_chr_open_socket(QemuOpts *opts)
         g_free(chr);
     }
     return NULL;
-}
-
-/***********************************************************/
-/* Memory chardev */
-typedef struct {
-    size_t outbuf_size;
-    size_t outbuf_capacity;
-    uint8_t *outbuf;
-} MemoryDriver;
-
-static int mem_chr_write(CharDriverState *chr, const uint8_t *buf, int len)
-{
-    MemoryDriver *d = chr->opaque;
-
-    /* TODO: the QString implementation has the same code, we should
-     * introduce a generic way to do this in cutils.c */
-    if (d->outbuf_capacity < d->outbuf_size + len) {
-        /* grow outbuf */
-        d->outbuf_capacity += len;
-        d->outbuf_capacity *= 2;
-        d->outbuf = g_realloc(d->outbuf, d->outbuf_capacity);
-    }
-
-    memcpy(d->outbuf + d->outbuf_size, buf, len);
-    d->outbuf_size += len;
-
-    return len;
-}
-
-void qemu_chr_init_mem(CharDriverState *chr)
-{
-    MemoryDriver *d;
-
-    d = g_malloc(sizeof(*d));
-    d->outbuf_size = 0;
-    d->outbuf_capacity = 4096;
-    d->outbuf = g_malloc0(d->outbuf_capacity);
-
-    memset(chr, 0, sizeof(*chr));
-    chr->opaque = d;
-    chr->chr_write = mem_chr_write;
-}
-
-QString *qemu_chr_mem_to_qs(CharDriverState *chr)
-{
-    MemoryDriver *d = chr->opaque;
-    return qstring_from_substr((char *) d->outbuf, 0, d->outbuf_size - 1);
-}
-
-/* NOTE: this driver can not be closed with qemu_chr_delete()! */
-void qemu_chr_close_mem(CharDriverState *chr)
-{
-    MemoryDriver *d = chr->opaque;
-
-    g_free(d->outbuf);
-    g_free(chr->opaque);
-    chr->opaque = NULL;
-    chr->chr_write = NULL;
-}
-
-size_t qemu_chr_mem_osize(const CharDriverState *chr)
-{
-    const MemoryDriver *d = chr->opaque;
-    return d->outbuf_size;
 }
 
 /*********************************************************/

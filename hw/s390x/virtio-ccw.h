@@ -12,13 +12,13 @@
 #ifndef HW_S390X_VIRTIO_CCW_H
 #define HW_S390X_VIRTIO_CCW_H
 
-#include <hw/virtio-blk.h>
-#include <hw/virtio-net.h>
-#include <hw/virtio-serial.h>
-#include <hw/virtio-scsi.h>
-#include "hw/virtio-balloon.h"
-#include <hw/virtio-rng.h>
-#include <hw/virtio-bus.h>
+#include <hw/virtio/virtio-blk.h>
+#include <hw/virtio/virtio-net.h>
+#include <hw/virtio/virtio-serial.h>
+#include <hw/virtio/virtio-scsi.h>
+#include <hw/virtio/virtio-balloon.h>
+#include <hw/virtio/virtio-rng.h>
+#include <hw/virtio/virtio-bus.h>
 
 #define VIRTUAL_CSSID 0xfe
 
@@ -75,7 +75,6 @@ struct VirtioCcwDevice {
     char *bus_id;
     NICConf nic;
     uint32_t host_features[VIRTIO_CCW_FEATURE_SIZE];
-    virtio_serial_conf serial;
     virtio_net_conf net;
     VirtIORNGConf rng;
     VirtioBusState bus;
@@ -126,6 +125,17 @@ typedef struct VirtIOBalloonCcw {
     VirtioCcwDevice parent_obj;
     VirtIOBalloon vdev;
 } VirtIOBalloonCcw;
+
+/* virtio-serial-ccw */
+
+#define TYPE_VIRTIO_SERIAL_CCW "virtio-serial-ccw"
+#define VIRTIO_SERIAL_CCW(obj) \
+        OBJECT_CHECK(VirtioSerialCcw, (obj), TYPE_VIRTIO_SERIAL_CCW)
+
+typedef struct VirtioSerialCcw {
+    VirtioCcwDevice parent_obj;
+    VirtIOSerial vdev;
+} VirtioSerialCcw;
 
 VirtualCssBus *virtual_css_bus_init(void);
 void virtio_ccw_device_update_status(SubchDev *sch);

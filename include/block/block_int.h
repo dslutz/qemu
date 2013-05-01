@@ -164,8 +164,8 @@ struct BlockDriver {
                                   const char *snapshot_name);
     int (*bdrv_get_info)(BlockDriverState *bs, BlockDriverInfo *bdi);
 
-    int (*bdrv_save_vmstate)(BlockDriverState *bs, const uint8_t *buf,
-                             int64_t pos, int size);
+    int (*bdrv_save_vmstate)(BlockDriverState *bs, QEMUIOVector *qiov,
+                             int64_t pos);
     int (*bdrv_load_vmstate)(BlockDriverState *bs, uint8_t *buf,
                              int64_t pos, int size);
 
@@ -252,11 +252,10 @@ struct BlockDriverState {
     unsigned int copy_on_read_in_flight;
 
     /* the time for latest disk I/O */
-    int64_t slice_time;
     int64_t slice_start;
     int64_t slice_end;
     BlockIOLimit io_limits;
-    BlockIOBaseValue  io_base;
+    BlockIOBaseValue slice_submitted;
     CoQueue      throttled_reqs;
     QEMUTimer    *block_timer;
     bool         io_limits_enabled;
