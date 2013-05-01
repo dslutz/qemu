@@ -245,6 +245,7 @@ static void type_initialize(TypeImpl *ti)
 
         g_assert(parent->class_size <= ti->class_size);
         memcpy(ti->class, parent->class, parent->class_size);
+        ti->class->interfaces = NULL;
 
         for (e = parent->class->interfaces; e; e = e->next) {
             ObjectClass *iface = e->data;
@@ -362,11 +363,11 @@ static void object_property_del_child(Object *obj, Object *child, Error **errp)
 void object_unparent(Object *obj)
 {
     object_ref(obj);
-    if (obj->parent) {
-        object_property_del_child(obj->parent, obj, NULL);
-    }
     if (obj->class->unparent) {
         (obj->class->unparent)(obj);
+    }
+    if (obj->parent) {
+        object_property_del_child(obj->parent, obj, NULL);
     }
     object_unref(obj);
 }
@@ -448,7 +449,8 @@ ObjectClass *object_class_dynamic_cast(ObjectClass *class,
     TypeImpl *type = class->type;
     ObjectClass *ret = NULL;
 
-    if (type->num_interfaces && type_is_ancestor(target_type, type_interface)) {
+    if (type->class->interfaces &&
+            type_is_ancestor(target_type, type_interface)) {
         int found = 0;
         GSList *i;
 
@@ -627,7 +629,18 @@ void object_property_add(Object *obj, const char *name, const char *type,
                          ObjectPropertyRelease *release,
                          void *opaque, Error **errp)
 {
-    ObjectProperty *prop = g_malloc0(sizeof(*prop));
+    ObjectProperty *prop;
+
+    QTAILQ_FOREACH(prop, &obj->properties, node) {
+        if (strcmp(prop->name, name) == 0) {
+            error_setg(errp, "attempt to add duplicate property '%s'"
+                       " to object (type '%s')", name,
+                       object_get_typename(obj));
+            return;
+        }
+    }
+
+    prop = g_malloc0(sizeof(*prop));
 
     prop->name = g_strdup(name);
     prop->type = g_strdup(type);
