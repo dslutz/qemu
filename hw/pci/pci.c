@@ -81,6 +81,11 @@ static const TypeInfo pcie_bus_info = {
     .parent = TYPE_PCI_BUS,
 };
 
+static const TypeInfo agp_bus_info = {
+    .name = TYPE_AGP_BUS,
+    .parent = TYPE_PCI_BUS,
+};
+
 static PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num);
 static void pci_update_mappings(PCIDevice *d);
 static void pci_set_irq(void *opaque, int irq_num, int level);
@@ -2270,6 +2275,7 @@ static void pci_register_types(void)
 {
     type_register_static(&pci_bus_info);
     type_register_static(&pcie_bus_info);
+    type_register_static(&agp_bus_info);
     type_register_static(&pci_device_type_info);
 }
 

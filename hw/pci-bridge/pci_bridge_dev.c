@@ -87,8 +87,7 @@ static int agp_bridge_dev_initfn(PCIDevice *dev)
     uint8_t *conf = dev->config;
     int err;
 
-    //pci_bridge_map_irq(br, NULL, pci_bridge_dev_map_irq_fn);
-    err = pci_bridge_initfn(dev, "AGP"); //XXX
+    err = pci_bridge_initfn(dev, TYPE_AGP_BUS);
     if (err) {
         goto bridge_error;
     }

@@ -351,6 +351,7 @@ typedef int (*pci_hotplug_fn)(DeviceState *qdev, PCIDevice *pci_dev,
 #define TYPE_PCI_BUS "PCI"
 #define PCI_BUS(obj) OBJECT_CHECK(PCIBus, (obj), TYPE_PCI_BUS)
 #define TYPE_PCIE_BUS "PCIE"
+#define TYPE_AGP_BUS "AGP"
 
 bool pci_bus_is_express(PCIBus *bus);
 bool pci_bus_is_root(PCIBus *bus);
