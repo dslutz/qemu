@@ -99,6 +99,8 @@ void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque)
     unsigned long size;
     struct rlimit rlimit_as;
 
+    trace_xen_map_cache_init(f, opaque, MCACHE_BUCKET_SIZE);
+
     mapcache = g_malloc0(sizeof (MapCache));
 
     mapcache->phys_offset_to_gaddr = f;
@@ -151,7 +153,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
     unsigned int i;
     hwaddr nb_pfn = size >> XC_PAGE_SHIFT;
 
-    trace_xen_remap_bucket(address_index);
+    trace_xen_remap_bucket(address_index, size);
 
     pfns = g_malloc0(nb_pfn * sizeof (xen_pfn_t));
     err = g_malloc0(nb_pfn * sizeof (int));
@@ -208,7 +210,7 @@ tryagain:
     address_index  = phys_addr >> MCACHE_BUCKET_SHIFT;
     address_offset = phys_addr & (MCACHE_BUCKET_SIZE - 1);
 
-    trace_xen_map_cache(phys_addr);
+    trace_xen_map_cache(phys_addr, size, lock);
 
     if (address_index == mapcache->last_address_index && !lock && !__size) {
         trace_xen_map_cache_return(mapcache->last_address_vaddr + address_offset);
@@ -282,6 +284,8 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
     hwaddr size;
     int found = 0;
 
+    trace_xen_ram_addr_from_mapcache(ptr);
+
     QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
         if (reventry->vaddr_req == ptr) {
             paddr_index = reventry->paddr_index;
@@ -319,6 +323,8 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
     hwaddr paddr_index;
     hwaddr size;
     int found = 0;
+
+    trace_xen_invalidate_map_cache_entry(buffer);
 
     QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
         if (reventry->vaddr_req == buffer) {
@@ -370,6 +376,8 @@ void xen_invalidate_map_cache(void)
 {
     unsigned long i;
     MapCacheRev *reventry;
+
+    trace_xen_invalidate_map_cache();
 
     /* Flush pending AIO before destroying the mapcache */
     bdrv_drain_all();
