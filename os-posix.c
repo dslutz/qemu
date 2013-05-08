@@ -126,6 +126,7 @@ static void bt_sighandler(int sig, siginfo_t *info, void *secret)
         msg = "SIG?";
         fprintf(stderr, "QEMU: Got signal %d\n", sig);
     }
+    fflush(stderr);
 
     trace_size = backtrace (trace, 16);
     /* overwrite sigaction with caller's address */
@@ -137,6 +138,8 @@ static void bt_sighandler(int sig, siginfo_t *info, void *secret)
         sym_lookup(msg, i, trace[i]);
     }
     fprintf(stderr, "QEMU: [bt] Done.\n");
+    fflush(stderr);
+
     qemu_system_killed(info->si_signo, info->si_pid);
 
 #if defined HOST_I386
