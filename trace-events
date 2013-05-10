@@ -832,12 +832,19 @@ xen_client_set_memory(uint64_t start_addr, unsigned long size, bool log_dirty) "
 
 # xen-mapcache.c
 xen_map_cache_init(uint64_t f, void *opaque, uint64_t bkt_size) "f %#"PRIx64" opaque %p bkt_size %#"PRIx64
+xen_map_cache_init_1(long nr_buckets, long size) "nr_buckets = %lx size %lu"
 xen_remap_bucket(uint64_t index, uint64_t size) "index %#"PRIx64" size %#"PRIx64
 xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_return(void* ptr) "%p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"
+xen_ram_addr_from_mapcache_1(uint64_t paddr_index, void *vaddr_req) "%#"PRIx64" -> %p is present"
+xen_ram_addr_from_mapcache_2(void *ptr) "Trying to find address %p that is not in the mapcache"
 xen_invalidate_map_cache_entry(void* ptr) "%p"
+xen_invalidate_map_cache_entry_1(void* ptr) "could not find %p"
+xen_invalidate_map_cache_entry_2(uint64_t paddr_index, void *vaddr_req) "%#"PRIx64" -> %p is present"
+xen_invalidate_map_cache_entry_3(void* ptr) "Trying to unmap address %p that is not in the mapcache"
 xen_invalidate_map_cache(void) ""
+xen_invalidate_map_cache_1(uint64_t paddr_index, void *vaddr_req) "There should be no locked mappings at this time, but %#"PRIx64" -> %p is present"
 qemu_ram_ptr_length(uint64_t phys_addr, uint64_t size) "want %#"PRIx64" size %#"PRIx64
 
 # exec.c

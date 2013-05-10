@@ -23,16 +23,6 @@
 #include "trace.h"
 
 
-//#define MAPCACHE_DEBUG
-
-#ifdef MAPCACHE_DEBUG
-#  define DPRINTF(fmt, ...) do { \
-    fprintf(stderr, "xen_mapcache: " fmt, ## __VA_ARGS__); \
-} while (0)
-#else
-#  define DPRINTF(fmt, ...) do { } while (0)
-#endif
-
 #if defined(__i386__)
 #  define MCACHE_BUCKET_SHIFT 16
 #  define MCACHE_MAX_SIZE     (1UL<<31) /* 2GB Cap */
@@ -138,8 +128,7 @@ void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque)
 
     size = mapcache->nr_buckets * sizeof (MapCacheEntry);
     size = (size + XC_PAGE_SIZE - 1) & ~(XC_PAGE_SIZE - 1);
-    DPRINTF("%s, nr_buckets = %lx size %lu\n", __func__,
-            mapcache->nr_buckets, size);
+    trace_xen_map_cache_init_1(mapcache->nr_buckets, size);
     mapcache->entry = g_malloc0(size);
 }
 
@@ -297,8 +286,8 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
     if (!found) {
         fprintf(stderr, "%s, could not find %p\n", __func__, ptr);
         QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
-            DPRINTF("   "TARGET_FMT_plx" -> %p is present\n", reventry->paddr_index,
-                    reventry->vaddr_req);
+            trace_xen_ram_addr_from_mapcache_1(reventry->paddr_index,
+                                               reventry->vaddr_req);
         }
         abort();
         return 0;
@@ -309,7 +298,7 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
         entry = entry->next;
     }
     if (!entry) {
-        DPRINTF("Trying to find address %p that is not in the mapcache!\n", ptr);
+        trace_xen_ram_addr_from_mapcache_2(ptr);
         return 0;
     }
     return (reventry->paddr_index << MCACHE_BUCKET_SHIFT) +
@@ -335,9 +324,10 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
         }
     }
     if (!found) {
-        DPRINTF("%s, could not find %p\n", __func__, buffer);
+        trace_xen_invalidate_map_cache_entry_1(buffer);
         QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
-            DPRINTF("   "TARGET_FMT_plx" -> %p is present\n", reventry->paddr_index, reventry->vaddr_req);
+            trace_xen_invalidate_map_cache_entry_2(reventry->paddr_index,
+                                                   reventry->vaddr_req);
         }
         return;
     }
@@ -355,7 +345,7 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
         entry = entry->next;
     }
     if (!entry) {
-        DPRINTF("Trying to unmap address %p that is not in the mapcache!\n", buffer);
+        trace_xen_invalidate_map_cache_entry_3(buffer);
         return;
     }
     entry->lock--;
@@ -383,9 +373,8 @@ void xen_invalidate_map_cache(void)
     bdrv_drain_all();
 
     QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
-        DPRINTF("There should be no locked mappings at this time, "
-                "but "TARGET_FMT_plx" -> %p is present\n",
-                reventry->paddr_index, reventry->vaddr_req);
+        trace_xen_invalidate_map_cache_1(reventry->paddr_index,
+                                         reventry->vaddr_req);
     }
 
     mapcache_lock();
