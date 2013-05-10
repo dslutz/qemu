@@ -833,7 +833,7 @@ xen_client_set_memory(uint64_t start_addr, unsigned long size, bool log_dirty) "
 # xen-mapcache.c
 xen_map_cache_init(uint64_t f, void *opaque, uint64_t bkt_size) "f %#"PRIx64" opaque %p bkt_size %#"PRIx64
 xen_remap_bucket(uint64_t index, uint64_t size) "index %#"PRIx64" size %#"PRIx64
-xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" size %d"
+xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_return(void* ptr) "%p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"
 xen_invalidate_map_cache_entry(void* ptr) "%p"
