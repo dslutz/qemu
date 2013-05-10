@@ -838,6 +838,7 @@ xen_map_cache_return(void* ptr) "%p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"
 xen_invalidate_map_cache_entry(void* ptr) "%p"
 xen_invalidate_map_cache(void) ""
+qemu_ram_ptr_length(uint64_t phys_addr, uint64_t size) "want %#"PRIx64" size %#"PRIx64
 
 # exec.c
 qemu_put_ram_ptr(void* addr) "%p"
