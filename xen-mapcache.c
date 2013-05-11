@@ -141,6 +141,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
     int *err;
     unsigned int i;
     hwaddr nb_pfn = size >> XC_PAGE_SHIFT;
+    long err_cnt = 0;
 
     trace_xen_remap_bucket(address_index, size);
 
@@ -179,6 +180,16 @@ static void xen_remap_bucket(MapCacheEntry *entry,
     for (i = 0; i < nb_pfn; i++) {
         if (!err[i]) {
             bitmap_set(entry->valid_mapping, i, 1);
+        } else {
+            err_cnt++;
+        }
+    }
+    if (err_cnt) {
+        trace_xen_remap_bucket_1(err_cnt, nb_pfn);
+        for (i = 0; i < nb_pfn; i++) {
+            if (err[i]) {
+                trace_xen_remap_bucket_2(i, err[i]);
+            }
         }
     }
 
@@ -208,10 +219,8 @@ tryagain:
 
     /* size is always a multiple of MCACHE_BUCKET_SIZE */
     if (size) {
-        __size = size + address_offset;
-        if (__size % MCACHE_BUCKET_SIZE) {
-            __size += MCACHE_BUCKET_SIZE - (__size % MCACHE_BUCKET_SIZE);
-        }
+        __size = size + MCACHE_BUCKET_SIZE - 1;
+        __size -= __size % MCACHE_BUCKET_SIZE;
     } else {
         __size = MCACHE_BUCKET_SIZE;
     }
