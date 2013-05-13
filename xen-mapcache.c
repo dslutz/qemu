@@ -219,8 +219,10 @@ tryagain:
 
     /* size is always a multiple of MCACHE_BUCKET_SIZE */
     if (size) {
-        __size = size + MCACHE_BUCKET_SIZE - 1;
-        __size -= __size % MCACHE_BUCKET_SIZE;
+        __size = size + address_offset;
+        if (__size % MCACHE_BUCKET_SIZE) {
+            __size += MCACHE_BUCKET_SIZE - (__size % MCACHE_BUCKET_SIZE);
+        }
     } else {
         __size = MCACHE_BUCKET_SIZE;
     }
