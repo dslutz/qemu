@@ -50,6 +50,7 @@ typedef struct MapCacheEntry {
     hwaddr size;
     struct MapCacheEntry *next;
     long err_cnt;
+    long err_idx;
 } MapCacheEntry;
 
 typedef struct MapCacheRev {
@@ -179,16 +180,21 @@ static void xen_remap_bucket(MapCacheEntry *entry,
             BITS_TO_LONGS(size >> XC_PAGE_SHIFT));
 
     bitmap_zero(entry->valid_mapping, nb_pfn);
+    entry->err_idx = -1;
     for (i = 0; i < nb_pfn; i++) {
         if (!err[i]) {
             bitmap_set(entry->valid_mapping, i, 1);
         } else {
+            if (entry->err_idx == -1)
+                entry->err_idx = i;
+            else if ((entry->err_idx > 0) && ((entry->err_idx + err_cnt) != i))
+                entry->err_idx == -2;
             err_cnt++;
         }
     }
     entry->err_cnt = err_cnt;
-    trace_xen_remap_bucket_1(vaddr_base, err_cnt, nb_pfn);
-    if (err_cnt) {
+    trace_xen_remap_bucket_1(vaddr_base, err_cnt, entry->err_idx, nb_pfn);
+    if (err_cnt && (entry->err_idx < 0)) {
         for (i = 0; i < nb_pfn; i++) {
             if (err[i]) {
                 trace_xen_remap_bucket_2(((hwaddr)pfns[i]) << XC_PAGE_SHIFT, i, err[i]);
@@ -240,29 +246,15 @@ tryagain:
         entry = entry->next;
     }
     if (!entry) {
-        int retry;
-
         entry = g_malloc0(sizeof (MapCacheEntry));
         pentry->next = entry;
-        for (retry = 0; retry < 3; retry++) {
-            xen_remap_bucket(entry, __size, address_index);
-            if (entry->err_cnt == 0)
-                break;
-            trace_xen_map_cache_1(retry, entry->err_cnt);
-        }
+        xen_remap_bucket(entry, __size, address_index);
     } else if (!entry->lock) {
         if (!entry->vaddr_base || entry->paddr_index != address_index ||
                 entry->size != __size ||
                 !test_bits(address_offset >> XC_PAGE_SHIFT, size >> XC_PAGE_SHIFT,
                     entry->valid_mapping)) {
-            int retry;
-
-            for (retry = 0; retry < 3; retry++) {
-                xen_remap_bucket(entry, __size, address_index);
-                if (entry->err_cnt == 0)
-                    break;
-                trace_xen_map_cache_2(retry, entry->err_cnt);
-            }
+            xen_remap_bucket(entry, __size, address_index);
         }
     }
 
