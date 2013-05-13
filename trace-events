@@ -835,7 +835,7 @@ xen_map_cache_init(void *f, void *opaque, uint64_t bkt_size) "f %p opaque %p bkt
 xen_map_cache_init_1(long nr_buckets, long size) "nr_buckets = %lx size %lu"
 xen_remap_bucket(uint64_t index, uint64_t size) "index %#"PRIx64" size %#"PRIx64
 xen_remap_bucket_1(long err_cnt, long nb_pfn) "err_cnt %ld nb_pfn %ld"
-xen_remap_bucket_2(unsigned int i, int err) "i %u err %d"
+xen_remap_bucket_2(uint64_t phys_addr, unsigned int i, int err) "miss %#"PRIx64" i %u err %d"
 xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_return(void* ptr) "%p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"

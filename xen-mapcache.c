@@ -188,7 +188,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
         trace_xen_remap_bucket_1(err_cnt, nb_pfn);
         for (i = 0; i < nb_pfn; i++) {
             if (err[i]) {
-                trace_xen_remap_bucket_2(i, err[i]);
+                trace_xen_remap_bucket_2(((hwaddr)pfns[i]) << XC_PAGE_SHIFT, i, err[i]);
             }
         }
     }
