@@ -188,7 +188,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
             if (entry->err_idx == -1)
                 entry->err_idx = i;
             else if ((entry->err_idx > 0) && ((entry->err_idx + err_cnt) != i))
-                entry->err_idx == -2;
+                entry->err_idx = -2;
             err_cnt++;
         }
     }
