@@ -49,6 +49,7 @@ typedef struct MapCacheEntry {
     uint8_t lock;
     hwaddr size;
     struct MapCacheEntry *next;
+    long err_cnt;
 } MapCacheEntry;
 
 typedef struct MapCacheRev {
@@ -149,6 +150,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
     err = g_malloc0(nb_pfn * sizeof (int));
 
     if (entry->vaddr_base != NULL) {
+        trace_xen_remap_bucket_3(entry->paddr_index, entry->size, entry->vaddr_base);
         if (munmap(entry->vaddr_base, entry->size) != 0) {
             perror("unmap fails");
             exit(-1);
@@ -184,8 +186,9 @@ static void xen_remap_bucket(MapCacheEntry *entry,
             err_cnt++;
         }
     }
+    entry->err_cnt = err_cnt;
+    trace_xen_remap_bucket_1(vaddr_base, err_cnt, nb_pfn);
     if (err_cnt) {
-        trace_xen_remap_bucket_1(err_cnt, nb_pfn);
         for (i = 0; i < nb_pfn; i++) {
             if (err[i]) {
                 trace_xen_remap_bucket_2(((hwaddr)pfns[i]) << XC_PAGE_SHIFT, i, err[i]);
@@ -237,15 +240,29 @@ tryagain:
         entry = entry->next;
     }
     if (!entry) {
+        int retry;
+
         entry = g_malloc0(sizeof (MapCacheEntry));
         pentry->next = entry;
-        xen_remap_bucket(entry, __size, address_index);
+        for (retry = 0; retry < 3; retry++) {
+            xen_remap_bucket(entry, __size, address_index);
+            if (entry->err_cnt == 0)
+                break;
+            trace_xen_map_cache_1(retry, entry->err_cnt);
+        }
     } else if (!entry->lock) {
         if (!entry->vaddr_base || entry->paddr_index != address_index ||
                 entry->size != __size ||
                 !test_bits(address_offset >> XC_PAGE_SHIFT, size >> XC_PAGE_SHIFT,
                     entry->valid_mapping)) {
-            xen_remap_bucket(entry, __size, address_index);
+            int retry;
+
+            for (retry = 0; retry < 3; retry++) {
+                xen_remap_bucket(entry, __size, address_index);
+                if (entry->err_cnt == 0)
+                    break;
+                trace_xen_map_cache_2(retry, entry->err_cnt);
+            }
         }
     }
 
@@ -365,6 +382,7 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
     }
 
     pentry->next = entry->next;
+    trace_xen_invalidate_map_cache_entry_4(entry->paddr_index, entry->size, entry->vaddr_base);
     if (munmap(entry->vaddr_base, entry->size) != 0) {
         perror("unmap fails");
         exit(-1);
