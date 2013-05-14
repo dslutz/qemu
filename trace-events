@@ -838,6 +838,7 @@ xen_remap_bucket_1(void* vaddr_base, long err_cnt, long err_idx, long nb_pfn) "v
 xen_remap_bucket_2(uint64_t phys_addr, unsigned int i, int err) "miss %#"PRIx64" i %u err %d"
 xen_remap_bucket_3(uint64_t paddr_index, uint64_t size, void* vaddr_base) "free %#"PRIx64" size %#"PRIx64" vaddr_base %p"
 xen_remap_bucket_4(uint64_t phys_addr_start, uint64_t phys_addr_end, int err) "miss %#"PRIx64"-%#"PRIx64" err %d"
+xen_remap_bucket_5(uint64_t paddr_index, uint64_t size, void* vaddr_base) "free %#"PRIx64" size %#"PRIx64" vaddr_base %p"
 xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_return(void* ptr) "%p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"
