@@ -880,9 +880,9 @@ xen_invalidate_map_cache_entry_3(void* ptr) "Trying to unmap address %p that is 
 xen_invalidate_map_cache_entry_4(uint64_t paddr_index, uint64_t size, void* vaddr_base) "free %#"PRIx64" size %#"PRIx64" vaddr_base %p"
 xen_invalidate_map_cache(void) ""
 xen_invalidate_map_cache_1(uint64_t paddr_index, void *vaddr_req) "There should be no locked mappings at this time, but %#"PRIx64" -> %p is present"
-qemu_ram_ptr_length(uint64_t phys_addr, uint64_t size) "want %#"PRIx64" size %#"PRIx64
 
 # exec.c
+qemu_ram_ptr_length(uint64_t phys_addr, uint64_t size) "want %#"PRIx64" size %#"PRIx64
 qemu_put_ram_ptr(void* addr) "%p"
 address_space_rw_write_not_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
 address_space_rw_write_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
