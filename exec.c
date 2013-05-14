@@ -1317,6 +1317,7 @@ static void *qemu_ram_ptr_length(ram_addr_t addr, ram_addr_t *size)
         return NULL;
     }
     if (xen_enabled()) {
+        trace_qemu_ram_ptr_length(addr, *size);
         return xen_map_cache(addr, *size, 1);
     } else {
         RAMBlock *block;
@@ -1325,6 +1326,7 @@ static void *qemu_ram_ptr_length(ram_addr_t addr, ram_addr_t *size)
             if (addr - block->offset < block->length) {
                 if (addr - block->offset + *size > block->length)
                     *size = block->length - addr + block->offset;
+                trace_qemu_ram_ptr_length(addr, *size);
                 return block->host + (addr - block->offset);
             }
         }

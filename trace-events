@@ -867,13 +867,28 @@ xen_ram_alloc(unsigned long ram_addr, unsigned long size) "requested: %#lx, size
 xen_client_set_memory(uint64_t start_addr, unsigned long size, bool log_dirty) "%#"PRIx64" size %#lx, log_dirty %i"
 
 # xen-mapcache.c
-xen_map_cache(uint64_t phys_addr) "want %#"PRIx64
-xen_remap_bucket(uint64_t index) "index %#"PRIx64
+xen_map_cache_init(void *f, void *opaque, uint64_t bkt_size) "f %p opaque %p bkt_size %#"PRIx64
+xen_map_cache_init_1(long nr_buckets, long size) "nr_buckets = %lx size %lu"
+xen_remap_bucket(uint64_t index, uint64_t size) "index %#"PRIx64" size %#"PRIx64
+xen_remap_bucket_1(void* vaddr_base, long err_cnt, long err_idx, long nb_pfn) "vaddr_base %p err_cnt %ld err_idx %ld nb_pfn %ld"
+xen_remap_bucket_2(uint64_t phys_addr, unsigned int i, int err) "miss %#"PRIx64" i %u err %d"
+xen_remap_bucket_3(uint64_t paddr_index, uint64_t size, void* vaddr_base) "free %#"PRIx64" size %#"PRIx64" vaddr_base %p"
+xen_remap_bucket_4(uint64_t phys_addr_start, uint64_t phys_addr_end, int err) "miss %#"PRIx64"-%#"PRIx64" err %d"
+xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_return(void* ptr) "%p"
-xen_map_block(uint64_t phys_addr, uint64_t size) "%#"PRIx64", size %#"PRIx64
-xen_unmap_block(void* addr, unsigned long size) "%p, size %#lx"
+xen_ram_addr_from_mapcache(void* ptr) "%p"
+xen_ram_addr_from_mapcache_1(uint64_t paddr_index, void *vaddr_req) "%#"PRIx64" -> %p is present"
+xen_ram_addr_from_mapcache_2(void *ptr) "Trying to find address %p that is not in the mapcache"
+xen_invalidate_map_cache_entry(void* ptr) "%p"
+xen_invalidate_map_cache_entry_1(void* ptr) "could not find %p"
+xen_invalidate_map_cache_entry_2(uint64_t paddr_index, void *vaddr_req) "%#"PRIx64" -> %p is present"
+xen_invalidate_map_cache_entry_3(void* ptr) "Trying to unmap address %p that is not in the mapcache"
+xen_invalidate_map_cache_entry_4(uint64_t paddr_index, uint64_t size, void* vaddr_base) "free %#"PRIx64" size %#"PRIx64" vaddr_base %p"
+xen_invalidate_map_cache(void) ""
+xen_invalidate_map_cache_1(uint64_t paddr_index, void *vaddr_req) "There should be no locked mappings at this time, but %#"PRIx64" -> %p is present"
 
 # exec.c
+qemu_ram_ptr_length(uint64_t phys_addr, uint64_t size) "want %#"PRIx64" size %#"PRIx64
 qemu_put_ram_ptr(void* addr) "%p"
 address_space_rw_write_not_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
 address_space_rw_write_ram(void *as, uint64_t addr, void *buf, int len, uint64_t addr1, int l, const char *s) "as=%p addr=%#"PRIx64" buf=%p len=%d addr1=%#"PRIx64" l=%d region %s"
