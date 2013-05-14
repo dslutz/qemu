@@ -194,11 +194,17 @@ static void xen_remap_bucket(MapCacheEntry *entry,
     }
     entry->err_cnt = err_cnt;
     trace_xen_remap_bucket_1(vaddr_base, err_cnt, entry->err_idx, nb_pfn);
-    if (err_cnt && (entry->err_idx < 0)) {
-        for (i = 0; i < nb_pfn; i++) {
-            if (err[i]) {
-                trace_xen_remap_bucket_2(((hwaddr)pfns[i]) << XC_PAGE_SHIFT, i, err[i]);
+    if (err_cnt) {
+        if (entry->err_idx < 0) {
+            for (i = 0; i < nb_pfn; i++) {
+                if (err[i]) {
+                    trace_xen_remap_bucket_2(((hwaddr)pfns[i]) << XC_PAGE_SHIFT, i, err[i]);
+                }
             }
+        } else {
+            trace_xen_remap_bucket_4(((hwaddr)pfns[entry->err_idx]) << XC_PAGE_SHIFT,
+                                     (((hwaddr)pfns[entry->err_idx + err_cnt - 1]) << XC_PAGE_SHIFT) + XC_PAGE_SIZE - 1,
+                                     err[entry->err_idx]);
         }
     }
 
