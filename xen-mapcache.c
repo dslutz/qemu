@@ -349,10 +349,10 @@ tryagain:
         }
     }
 
-    if ((entry->erri[0].err_cnt != 0) && !test_bits(address_offset >> XC_PAGE_SHIFT,
-                                            size >> XC_PAGE_SHIFT,
-                                            entry->valid_mapping)) {
-        mapcache->last_address_index = -1;
+    if ((entry->erri[0].err_cnt != 0) &&
+        !test_bits(address_offset >> XC_PAGE_SHIFT,
+                   size >> XC_PAGE_SHIFT, entry->valid_mapping)) {
+        mapcache->last_entry = NULL;
         if (!translated && mapcache->phys_offset_to_gaddr) {
             phys_addr = mapcache->phys_offset_to_gaddr(phys_addr, size,
                                                        mapcache->opaque);
@@ -469,7 +469,7 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
     g_free(reventry);
 
     if (mapcache->last_entry != NULL &&
-        mapcache->last_entry->paddr_index == paddr_index) {
+        mapcache->last_entry->paddr_index == entry->paddr_index) {
         mapcache->last_entry = NULL;
     }
 
