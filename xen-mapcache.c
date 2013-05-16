@@ -57,6 +57,7 @@ typedef struct MapCacheRev {
     uint8_t *vaddr_req;
     hwaddr paddr_index;
     hwaddr size;
+    MapCacheEntry *entry;
     QTAILQ_ENTRY(MapCacheRev) next;
 } MapCacheRev;
 
@@ -147,10 +148,11 @@ static void xen_remap_bucket(MapCacheEntry *entry,
 
     trace_xen_remap_bucket(address_index, size);
 
-    pfns = g_malloc0(nb_pfn * sizeof (xen_pfn_t));
-    err = g_malloc0(nb_pfn * sizeof (int));
-
     if (entry->vaddr_base != NULL) {
+        if (entry->err_cnt == 0 && size < entry->size) {
+            trace_xen_remap_bucket_5(entry->paddr_index, entry->size, entry->vaddr_base);
+            return;
+        }
         trace_xen_remap_bucket_3(entry->paddr_index, entry->size, entry->vaddr_base);
         if (munmap(entry->vaddr_base, entry->size) != 0) {
             perror("unmap fails");
@@ -161,6 +163,9 @@ static void xen_remap_bucket(MapCacheEntry *entry,
         g_free(entry->valid_mapping);
         entry->valid_mapping = NULL;
     }
+
+    pfns = g_malloc0(nb_pfn * sizeof (xen_pfn_t));
+    err = g_malloc0(nb_pfn * sizeof (int));
 
     for (i = 0; i < nb_pfn; i++) {
         pfns[i] = (address_index << (MCACHE_BUCKET_SHIFT-XC_PAGE_SHIFT)) + i;
@@ -284,6 +289,7 @@ tryagain:
         reventry->vaddr_req = mapcache->last_address_vaddr + address_offset;
         reventry->paddr_index = mapcache->last_address_index;
         reventry->size = entry->size;
+        reventry->entry = entry;
         QTAILQ_INSERT_HEAD(&mapcache->locked_entries, reventry, next);
     }
 
@@ -319,14 +325,7 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
         return 0;
     }
 
-    entry = &mapcache->entry[paddr_index % mapcache->nr_buckets];
-    while (entry && (entry->paddr_index != paddr_index || entry->size != size)) {
-        entry = entry->next;
-    }
-    if (!entry) {
-        trace_xen_ram_addr_from_mapcache_2(ptr);
-        return 0;
-    }
+    entry = reventry->entry;
     return (reventry->paddr_index << MCACHE_BUCKET_SHIFT) +
         ((unsigned long) ptr - (unsigned long) entry->vaddr_base);
 }
@@ -358,6 +357,7 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
         return;
     }
     QTAILQ_REMOVE(&mapcache->locked_entries, reventry, next);
+    entry = reventry->entry;
     g_free(reventry);
 
     if (mapcache->last_address_index == paddr_index) {
@@ -365,16 +365,8 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
         mapcache->last_address_vaddr = NULL;
     }
 
-    entry = &mapcache->entry[paddr_index % mapcache->nr_buckets];
-    while (entry && (entry->paddr_index != paddr_index || entry->size != size)) {
-        pentry = entry;
-        entry = entry->next;
-    }
-    if (!entry) {
-        trace_xen_invalidate_map_cache_entry_3(buffer);
-        return;
-    }
     entry->lock--;
+#ifdef DO_XEN_MAPCACHE_MUNMAP
     if (entry->lock > 0 || pentry == NULL) {
         return;
     }
@@ -387,6 +379,7 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
     }
     g_free(entry->valid_mapping);
     g_free(entry);
+#endif
 }
 
 void xen_invalidate_map_cache(void)
