@@ -556,7 +556,7 @@ void xen_invalidate_map_cache(void)
     mapcache_unlock();
 }
 
-void xen_dump_map_cache(Monitor *mon)
+void xen_dump_map_cache(Monitor *mon, const QDict *qdict)
 {
     unsigned long i;
     MapCacheRev *reventry;
