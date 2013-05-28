@@ -68,6 +68,9 @@
 #include "hmp.h"
 #include "qemu/thread.h"
 
+/* for xen */
+#include "sysemu/xen-mapcache.h"
+
 /* for pic/irq_info */
 #if defined(TARGET_SPARC)
 #include "hw/sun4m.h"
@@ -2728,6 +2731,15 @@ static mon_cmd_t info_cmds[] = {
         .help       = "show available trace-events & their state",
         .mhandler.cmd = do_trace_print_events,
     },
+#ifdef CONFIG_XEN
+    {
+        .name       = "xen-mapcache",
+        .args_type  = "",
+        .params     = "",
+        .help       = "Dump current xen mapcache",
+        .mhandler.cmd = xen_dump_map_cache,
+    },
+#endif
     {
         .name       = NULL,
     },
