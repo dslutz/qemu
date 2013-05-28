@@ -68,6 +68,9 @@
 #include "hmp.h"
 #include "qemu/thread.h"
 
+/* for xen */
+#include "sysemu/xen-mapcache.h"
+
 /* for pic/irq_info */
 #if defined(TARGET_SPARC)
 #include "hw/sun4m.h"
