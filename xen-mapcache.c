@@ -202,8 +202,8 @@ static void xen_remap_bucket(MapCacheEntry *entry,
 
     bitmap_zero(entry->valid_mapping, nb_pfn);
     for (i = 0; i < ERRI_MAX; i++) {
-        entry->erri[0].err_cnt = 0;
-        entry->erri[0].err_idx = -1;
+        entry->erri[i].err_cnt = 0;
+        entry->erri[i].err_idx = -1;
     }
     erri_idx = 0;
     for (i = 0; i < nb_pfn; i++) {
@@ -214,7 +214,7 @@ static void xen_remap_bucket(MapCacheEntry *entry,
                 entry->erri[erri_idx].err_idx = i;
             } else if ((entry->erri[erri_idx].err_idx > 0) &&
                      ((entry->erri[erri_idx].err_idx + entry->erri[erri_idx].err_cnt) != i)) {
-                if (erri_idx < ERRI_MAX) {
+                if (erri_idx < ERRI_MAX - 1) {
                     erri_idx++;
                     entry->erri[erri_idx].err_idx = i;
                 } else {
