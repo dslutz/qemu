@@ -622,7 +622,7 @@ static gboolean io_watch_poll_prepare(GSource *source, gint *timeout_)
         iwp->src = g_io_create_watch(iwp->channel, G_IO_IN | G_IO_ERR | G_IO_HUP);
         g_source_set_callback(iwp->src, iwp->fd_read, iwp->opaque, NULL);
         g_source_attach(iwp->src, NULL);
-    } else {
+    } else if (was_active) {
         g_source_destroy(iwp->src);
         g_source_unref(iwp->src);
         iwp->src = NULL;
@@ -644,9 +644,11 @@ static gboolean io_watch_poll_dispatch(GSource *source, GSourceFunc callback,
 static void io_watch_poll_finalize(GSource *source)
 {
     IOWatchPoll *iwp = io_watch_poll_from_source(source);
-    g_source_destroy(iwp->src);
-    g_source_unref(iwp->src);
-    iwp->src = NULL;
+    if (iwp->src) {
+	g_source_destroy(iwp->src);
+	g_source_unref(iwp->src);
+	iwp->src = NULL;
+    }
 }
 
 static GSourceFuncs io_watch_poll_funcs = {
