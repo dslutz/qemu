@@ -23,7 +23,7 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
 ram_addr_t xen_ram_addr_from_mapcache(void *ptr);
 void xen_invalidate_map_cache_entry(uint8_t *buffer);
 void xen_invalidate_map_cache(void);
-void xen_dump_map_cache(Monitor *mon);
+void xen_dump_map_cache(Monitor *mon, const QDict *qdict);
 
 #else
 
@@ -52,7 +52,7 @@ static inline void xen_invalidate_map_cache(void)
 {
 }
 
-static inline void xen_dump_map_cache(Monitor *mon)
+static inline void xen_dump_map_cache(Monitor *mon, const QDict *qdict)
 {
 }
 
