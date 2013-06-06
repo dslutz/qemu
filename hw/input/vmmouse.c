@@ -52,9 +52,13 @@
 #define DPRINTF(fmt, ...) do { } while (0)
 #endif
 
-typedef struct _VMMouseState
+#define TYPE_VMMOUSE "vmmouse"
+#define VMMOUSE(obj) OBJECT_CHECK(VMMouseState, (obj), TYPE_VMMOUSE)
+
+typedef struct VMMouseState
 {
-    ISADevice dev;
+    ISADevice parent_obj;
+
     uint32_t queue[VMMOUSE_QUEUE_SIZE];
     int32_t queue_size;
     uint16_t nb_queue;
@@ -287,7 +291,7 @@ static const VMStateDescription vmstate_vmmouse = {
 
 static void vmmouse_reset(DeviceState *d)
 {
-    VMMouseState *s = container_of(d, VMMouseState, dev.qdev);
+    VMMouseState *s = VMMOUSE(d);
 
     trace_vmmouse_reset(s);
     s->status = 0xffff;
@@ -298,7 +302,7 @@ static void vmmouse_reset(DeviceState *d)
 
 static int vmmouse_initfn(ISADevice *dev)
 {
-    VMMouseState *s = DO_UPCAST(VMMouseState, dev, dev);
+    VMMouseState *s = VMMOUSE(dev);
 
     trace_vmmouse_initfn(s, dev);
     DPRINTF("vmmouse_init\n");
@@ -327,7 +331,7 @@ static void vmmouse_class_initfn(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo vmmouse_info = {
-    .name          = "vmmouse",
+    .name          = TYPE_VMMOUSE,
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(VMMouseState),
     .class_init    = vmmouse_class_initfn,

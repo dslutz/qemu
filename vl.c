@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 #include "hw/qdev.h"
 #include "hw/loader.h"
 #include "monitor/qdev.h"
-#include "bt/bt.h"
+#include "sysemu/bt.h"
 #include "net/net.h"
 #include "net/slirp.h"
 #include "monitor/monitor.h"
@@ -134,12 +134,12 @@ int main(int argc, char **argv)
 #include "sysemu/sysemu.h"
 #include "exec/gdbstub.h"
 #include "qemu/timer.h"
-#include "char/char.h"
+#include "sysemu/char.h"
 #include "qemu/cache-utils.h"
 #include "sysemu/blockdev.h"
 #include "hw/block/block.h"
 #include "migration/block.h"
-#include "tpm/tpm.h"
+#include "sysemu/tpm.h"
 #include "sysemu/dma.h"
 #include "audio/audio.h"
 #include "migration/migration.h"
@@ -272,7 +272,6 @@ static NotifierList machine_init_done_notifiers =
     NOTIFIER_LIST_INITIALIZER(machine_init_done_notifiers);
 
 static bool tcg_allowed = true;
-bool kvm_allowed;
 bool xen_allowed;
 int vmware_hw = 0;
 int xen_platform_pci = 0;
@@ -522,20 +521,18 @@ static QemuOptsList qemu_tpmdev_opts = {
     .implied_opt_name = "type",
     .head = QTAILQ_HEAD_INITIALIZER(qemu_tpmdev_opts.head),
     .desc = {
+        /* options are defined in the TPM backends */
+        { /* end of list */ }
+    },
+};
+
+static QemuOptsList qemu_realtime_opts = {
+    .name = "realtime",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_realtime_opts.head),
+    .desc = {
         {
-            .name = "type",
-            .type = QEMU_OPT_STRING,
-            .help = "Type of TPM backend",
-        },
-        {
-            .name = "cancel-path",
-            .type = QEMU_OPT_STRING,
-            .help = "Sysfs file entry for canceling TPM commands",
-        },
-        {
-            .name = "path",
-            .type = QEMU_OPT_STRING,
-            .help = "Path to TPM device on the host",
+            .name = "mlock",
+            .type = QEMU_OPT_BOOL,
         },
         { /* end of list */ }
     },
@@ -616,6 +613,7 @@ static const RunStateTransition runstate_transitions_def[] = {
     { RUN_STATE_RUNNING, RUN_STATE_SAVE_VM },
     { RUN_STATE_RUNNING, RUN_STATE_SHUTDOWN },
     { RUN_STATE_RUNNING, RUN_STATE_WATCHDOG },
+    { RUN_STATE_RUNNING, RUN_STATE_GUEST_PANICKED },
 
     { RUN_STATE_SAVE_VM, RUN_STATE_RUNNING },
 
@@ -629,6 +627,9 @@ static const RunStateTransition runstate_transitions_def[] = {
 
     { RUN_STATE_WATCHDOG, RUN_STATE_RUNNING },
     { RUN_STATE_WATCHDOG, RUN_STATE_FINISH_MIGRATE },
+
+    { RUN_STATE_GUEST_PANICKED, RUN_STATE_PAUSED },
+    { RUN_STATE_GUEST_PANICKED, RUN_STATE_FINISH_MIGRATE },
 
     { RUN_STATE_MAX, RUN_STATE_MAX },
 };
@@ -669,6 +670,13 @@ void runstate_set(RunState new_state)
 int runstate_is_running(void)
 {
     return runstate_check(RUN_STATE_RUNNING);
+}
+
+bool runstate_needs_reset(void)
+{
+    return runstate_check(RUN_STATE_INTERNAL_ERROR) ||
+        runstate_check(RUN_STATE_SHUTDOWN) ||
+        runstate_check(RUN_STATE_GUEST_PANICKED);
 }
 
 StatusInfo *qmp_query_status(Error **errp)
@@ -1228,7 +1236,7 @@ void add_boot_device_path(int32_t bootindex, DeviceState *dev,
 
     node = g_malloc0(sizeof(FWBootEntry));
     node->bootindex = bootindex;
-    node->suffix = suffix ? g_strdup(suffix) : NULL;
+    node->suffix = g_strdup(suffix);
     node->dev = dev;
 
     QTAILQ_FOREACH(i, &fw_boot_order, link) {
@@ -1242,6 +1250,24 @@ void add_boot_device_path(int32_t bootindex, DeviceState *dev,
         return;
     }
     QTAILQ_INSERT_TAIL(&fw_boot_order, node, link);
+}
+
+DeviceState *get_boot_device(uint32_t position)
+{
+    uint32_t counter = 0;
+    FWBootEntry *i = NULL;
+    DeviceState *res = NULL;
+
+    if (!QTAILQ_EMPTY(&fw_boot_order)) {
+        QTAILQ_FOREACH(i, &fw_boot_order, link) {
+            if (counter == position) {
+                res = i->dev;
+                break;
+            }
+            counter++;
+        }
+    }
+    return res;
 }
 
 /*
@@ -1438,6 +1464,20 @@ static void smp_parse(const char *optarg)
     smp_threads = threads > 0 ? threads : 1;
     if (max_cpus == 0)
         max_cpus = smp_cpus;
+}
+
+static void configure_realtime(QemuOpts *opts)
+{
+    bool enable_mlock;
+
+    enable_mlock = qemu_opt_get_bool(opts, "mlock", true);
+
+    if (enable_mlock) {
+        if (os_mlock() < 0) {
+            fprintf(stderr, "qemu: locking memory failed\n");
+            exit(1);
+        }
+    }
 }
 
 /***********************************************************/
@@ -1645,55 +1685,6 @@ MachineInfoList *qmp_query_machines(Error **errp)
 
 /***********************************************************/
 /* main execution loop */
-
-static void gui_update(void *opaque)
-{
-    uint64_t interval = GUI_REFRESH_INTERVAL;
-    DisplayState *ds = opaque;
-    DisplayChangeListener *dcl;
-
-    dpy_refresh(ds);
-
-    QLIST_FOREACH(dcl, &ds->listeners, next) {
-        if (dcl->gui_timer_interval &&
-            dcl->gui_timer_interval < interval)
-            interval = dcl->gui_timer_interval;
-    }
-    qemu_mod_timer(ds->gui_timer, interval + qemu_get_clock_ms(rt_clock));
-}
-
-void gui_setup_refresh(DisplayState *ds)
-{
-    DisplayChangeListener *dcl;
-    bool need_timer = false;
-    bool have_gfx = false;
-    bool have_text = false;
-
-    QLIST_FOREACH(dcl, &ds->listeners, next) {
-        if (dcl->ops->dpy_refresh != NULL) {
-            need_timer = true;
-        }
-        if (dcl->ops->dpy_gfx_update != NULL) {
-            have_gfx = true;
-        }
-        if (dcl->ops->dpy_text_update != NULL) {
-            have_text = true;
-        }
-    }
-
-    if (need_timer && ds->gui_timer == NULL) {
-        ds->gui_timer = qemu_new_timer_ms(rt_clock, gui_update, ds);
-        qemu_mod_timer(ds->gui_timer, qemu_get_clock_ms(rt_clock));
-    }
-    if (!need_timer && ds->gui_timer != NULL) {
-        qemu_del_timer(ds->gui_timer);
-        qemu_free_timer(ds->gui_timer);
-        ds->gui_timer = NULL;
-    }
-
-    ds->have_gfx = have_gfx;
-    ds->have_text = have_text;
-}
 
 struct vm_change_state_entry {
     VMChangeStateHandler *cb;
@@ -2023,8 +2014,7 @@ static bool main_loop_should_exit(void)
         cpu_synchronize_all_states();
         qemu_system_reset(VMRESET_REPORT);
         resume_all_vcpus();
-        if (runstate_check(RUN_STATE_INTERNAL_ERROR) ||
-            runstate_check(RUN_STATE_SHUTDOWN)) {
+        if (runstate_needs_reset()) {
             runstate_set(RUN_STATE_PAUSED);
         }
     }
@@ -2931,6 +2921,7 @@ int main(int argc, char **argv, char **envp)
     qemu_add_opts(&qemu_add_fd_opts);
     qemu_add_opts(&qemu_object_opts);
     qemu_add_opts(&qemu_tpmdev_opts);
+    qemu_add_opts(&qemu_realtime_opts);
 
     runstate_init();
 
@@ -3275,18 +3266,10 @@ int main(int argc, char **argv, char **envp)
                 add_device_config(DEV_BT, optarg);
                 break;
             case QEMU_OPTION_audio_help:
-                if (!(audio_available())) {
-                    printf("Option %s not supported for this target\n", popt->name);
-                    exit(1);
-                }
                 AUD_help ();
                 exit (0);
                 break;
             case QEMU_OPTION_soundhw:
-                if (!(audio_available())) {
-                    printf("Option %s not supported for this target\n", popt->name);
-                    exit(1);
-                }
                 select_soundhw (optarg);
                 break;
             case QEMU_OPTION_h:
@@ -3909,6 +3892,13 @@ int main(int argc, char **argv, char **envp)
                     exit(1);
                 }
                 break;
+            case QEMU_OPTION_realtime:
+                opts = qemu_opts_parse(qemu_find_opts("realtime"), optarg, 0);
+                if (!opts) {
+                    exit(1);
+                }
+                configure_realtime(opts);
+                break;
             default:
                 os_parse_cmd_args(popt->index, optarg);
             }
@@ -4152,6 +4142,10 @@ int main(int argc, char **argv, char **envp)
 
     configure_accelerator();
 
+    if (!qtest_enabled() && qtest_chrdev) {
+        qtest_init();
+    }
+
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (machine_opts) {
         kernel_filename = qemu_opt_get(machine_opts, "kernel");
@@ -4346,6 +4340,8 @@ int main(int argc, char **argv, char **envp)
                                  .cpu_model = cpu_model };
     machine->init(&args);
 
+    audio_init();
+
     cpu_synchronize_all_post_init();
 
     set_numa_modes();
@@ -4364,8 +4360,7 @@ int main(int argc, char **argv, char **envp)
 
     net_check_clients();
 
-    /* just use the first displaystate for the moment */
-    ds = get_displaystate();
+    ds = init_displaystate();
 
     /* init local displays */
     switch (display_type) {
@@ -4421,9 +4416,6 @@ int main(int argc, char **argv, char **envp)
     }
 #endif
 
-    /* display setup */
-    text_consoles_set_display(ds);
-
     if (foreach_device_config(DEV_GDB, gdbserver_start) < 0) {
         exit(1);
     }
@@ -4461,7 +4453,6 @@ int main(int argc, char **argv, char **envp)
 
     os_setup_post();
 
-    resume_all_vcpus();
     main_loop();
     bdrv_close_all();
     pause_all_vcpus();

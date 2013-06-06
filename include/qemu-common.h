@@ -46,6 +46,19 @@ extern int vmware_hw;
 extern int xen_platform_pci;
 extern uint64_t pci_hole_min_size;
 
+
+#if defined(__GLIBC__)
+# include <pty.h>
+#elif defined CONFIG_BSD
+# if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+#  include <libutil.h>
+# else
+#  include <util.h>
+# endif
+#elif defined CONFIG_SOLARIS
+# include <stropts.h>
+#endif
+
 #ifdef _WIN32
 #include "sysemu/os-win32.h"
 #endif
@@ -88,20 +101,6 @@ extern uint64_t pci_hole_min_size;
 # error Unknown pointer size
 #endif
 
-#ifndef CONFIG_IOVEC
-#define CONFIG_IOVEC
-struct iovec {
-    void *iov_base;
-    size_t iov_len;
-};
-/*
- * Use the same value as Linux for now.
- */
-#define IOV_MAX		1024
-#else
-#include <sys/uio.h>
-#endif
-
 typedef int (*fprintf_function)(FILE *f, const char *fmt, ...)
     GCC_FMT_ATTR(2, 3);
 
@@ -126,16 +125,12 @@ static inline char *realpath(const char *path, char *resolved_path)
 void configure_icount(const char *option);
 extern int use_icount;
 
-/* FIXME: Remove NEED_CPU_H.  */
-#ifndef NEED_CPU_H
-
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
 
-#else
-
+/* FIXME: Remove NEED_CPU_H.  */
+#ifdef NEED_CPU_H
 #include "cpu.h"
-
 #endif /* !defined(NEED_CPU_H) */
 
 /* main function, renamed */
@@ -453,17 +448,23 @@ int mod_utf8_codepoint(const char *s, size_t n, char **end);
  * Hexdump a buffer to a file. An optional string prefix is added to every line
  */
 
-void hexdump(const char *buf, FILE *fp, const char *prefix, size_t size);
+void qemu_hexdump(const char *buf, FILE *fp, const char *prefix, size_t size);
 
 /* vector definitions */
 #ifdef __ALTIVEC__
 #include <altivec.h>
-#define VECTYPE        vector unsigned char
+/* The altivec.h header says we're allowed to undef these for
+ * C++ compatibility.  Here we don't care about C++, but we
+ * undef them anyway to avoid namespace pollution.
+ */
+#undef vector
+#undef pixel
+#undef bool
+#define VECTYPE        __vector unsigned char
 #define SPLAT(p)       vec_splat(vec_ld(0, p), 0)
 #define ALL_EQ(v1, v2) vec_all_eq(v1, v2)
 /* altivec.h may redefine the bool macro as vector type.
  * Reset it to POSIX semantics. */
-#undef bool
 #define bool _Bool
 #elif defined __SSE2__
 #include <emmintrin.h>
@@ -485,5 +486,10 @@ can_use_buffer_find_nonzero_offset(const void *buf, size_t len)
             && ((uintptr_t) buf) % sizeof(VECTYPE) == 0);
 }
 size_t buffer_find_nonzero_offset(const void *buf, size_t len);
+
+/*
+ * helper to parse debug environment variables
+ */
+int parse_debug_env(const char *name, int max, int initial);
 
 #endif

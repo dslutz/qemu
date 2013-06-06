@@ -1775,6 +1775,7 @@ static void gen_rot_rm_T1(DisasContext *s, int ot, int op1, int is_right)
     if (is_right) {
         tcg_gen_shri_tl(cpu_cc_src2, cpu_T[0], mask - 1);
         tcg_gen_shri_tl(cpu_cc_dst, cpu_T[0], mask);
+        tcg_gen_andi_tl(cpu_cc_dst, cpu_cc_dst, 1);
     } else {
         tcg_gen_shri_tl(cpu_cc_src2, cpu_T[0], mask);
         tcg_gen_andi_tl(cpu_cc_dst, cpu_T[0], 1);
@@ -1870,6 +1871,7 @@ static void gen_rot_rm_im(DisasContext *s, int ot, int op1, int op2,
         if (is_right) {
             tcg_gen_shri_tl(cpu_cc_src2, cpu_T[0], mask - 1);
             tcg_gen_shri_tl(cpu_cc_dst, cpu_T[0], mask);
+            tcg_gen_andi_tl(cpu_cc_dst, cpu_cc_dst, 1);
         } else {
             tcg_gen_shri_tl(cpu_cc_src2, cpu_T[0], mask);
             tcg_gen_andi_tl(cpu_cc_dst, cpu_T[0], 1);
@@ -8289,11 +8291,11 @@ static inline void gen_intermediate_code_internal(CPUX86State *env,
     if (flags & HF_SOFTMMU_MASK) {
         dc->mem_index = (cpu_mmu_index(env) + 1) << 2;
     }
-    dc->cpuid_features = env->cpuid_features;
-    dc->cpuid_ext_features = env->cpuid_ext_features;
-    dc->cpuid_ext2_features = env->cpuid_ext2_features;
-    dc->cpuid_ext3_features = env->cpuid_ext3_features;
-    dc->cpuid_7_0_ebx_features = env->cpuid_7_0_ebx_features;
+    dc->cpuid_features = env->features[FEAT_1_EDX];
+    dc->cpuid_ext_features = env->features[FEAT_1_ECX];
+    dc->cpuid_ext2_features = env->features[FEAT_8000_0001_EDX];
+    dc->cpuid_ext3_features = env->features[FEAT_8000_0001_ECX];
+    dc->cpuid_7_0_ebx_features = env->features[FEAT_7_0_EBX];
 #ifdef TARGET_X86_64
     dc->lma = (flags >> HF_LMA_SHIFT) & 1;
     dc->code64 = (flags >> HF_CS64_SHIFT) & 1;
