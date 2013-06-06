@@ -40,8 +40,6 @@ static void xen_init_pv(QEMUMachineInitArgs *args)
     DriveInfo *dinfo;
     int i;
 
-    xen_enabled();
-
     /* Initialize a dummy CPU */
     if (cpu_model == NULL) {
 #ifdef TARGET_X86_64
