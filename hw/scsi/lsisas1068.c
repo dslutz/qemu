@@ -6346,7 +6346,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
         s->max_devices = s->ports * MPTSCSI_PCI_SAS_DEVICES_PER_PORT_MAX;
     }
 
-    scsi_bus_new(&s->bus, &dev->qdev, &mpt_scsi_info);
+    scsi_bus_new(&s->bus, &dev->qdev, &mpt_scsi_info, NULL);
     scsi_bus_legacy_handle_cmdline(&s->bus);
     return 0;
 }
