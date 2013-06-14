@@ -1476,8 +1476,6 @@ type_init(e1000_register_types)
     phy_reg_init, e1000_reset, and set_interrupt_cause.
 */
 
-#define TYPE_E1000 "e1000" /* Need to declare the parent class */
-
 static void e1000_vmw_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1504,7 +1502,7 @@ static void e1000_vmw_class_init(ObjectClass *klass, void *data)
 
 static TypeInfo e1000_vmw_info = {
     .name          = "e1000_vmw",
-    .parent        = TYPE_E1000,
+    .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(E1000State),
     .class_init    = e1000_vmw_class_init,
 };
