@@ -35,7 +35,7 @@ net_checksum_add(int len, uint8_t *buf)
 static inline uint16_t
 net_raw_checksum(uint8_t *data, int length)
 {
-  return net_checksum_finish(net_checksum_add(length, data));
+    return net_checksum_finish(net_checksum_add(length, data));
 }
 
 /**
