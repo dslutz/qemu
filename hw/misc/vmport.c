@@ -201,7 +201,7 @@ static int vmport_initfn(ISADevice *dev)
     memory_region_init_io(&s->io, &vmport_ops, s, "vmport", 1);
     isa_register_ioport(dev, &s->io, 0x5658);
 
-    if (vmware_hw == 7) {
+    if (vmware_hw >= 7) {
 	memory_region_init_io(&s->io1004, &vmport_ops_4, s, "vmport-1004", 1);
 	isa_register_ioport(dev, &s->io1004, 0x1004);
 
