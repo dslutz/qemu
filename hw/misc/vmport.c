@@ -25,6 +25,7 @@
 #include "hw/isa/isa.h"
 #include "hw/i386/pc.h"
 #include "sysemu/kvm.h"
+#include "sysemu/sysemu.h"
 #include "hw/xen/xen.h"
 #include "hw/qdev.h"
 #include "trace.h"
@@ -40,13 +41,18 @@
 #define TYPE_VMPORT "vmport"
 #define VMPORT(obj) OBJECT_CHECK(VMPortState, (obj), TYPE_VMPORT)
 
+#define VM1004_SUSPEND_OFF (1 << 13)
+
 typedef struct VMPortState
 {
     ISADevice parent_obj;
 
     MemoryRegion io;
+    MemoryRegion io1004;
+    MemoryRegion io1005;
     IOPortReadFunc *func[VMPORT_ENTRIES];
     void *opaque[VMPORT_ENTRIES];
+    uint64_t p1004;
 } VMPortState;
 
 static VMPortState *port_state;
@@ -105,6 +111,26 @@ static void vmport_ioport_write(void *opaque, hwaddr addr,
     env->regs[R_EAX] = vmport_ioport_read(opaque, addr, 4);
 }
 
+static void vmport_ioport_1004_write(void *opaque, hwaddr addr,
+                                uint64_t val, unsigned size)
+{
+    VMPortState *s = opaque;
+
+    if (val == VM1004_SUSPEND_OFF)
+	s->p1004 = val;
+}
+
+static void vmport_ioport_1005_write(void *opaque, hwaddr addr,
+                                uint64_t val, unsigned size)
+{
+    VMPortState *s = opaque;
+
+    if (val == VM1004_SUSPEND_OFF && s->p1004 == VM1004_SUSPEND_OFF)
+	qemu_system_shutdown_request();
+    else
+	s->p1004 = 0;
+}
+
 static uint32_t vmport_cmd_get_version(void *opaque, uint32_t addr)
 {
     CPUX86State *env = cpu_single_env;
@@ -148,12 +174,41 @@ static const MemoryRegionOps vmport_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static const MemoryRegionOps vmport_ops_4 = {
+    //.read = vmport_ioport_1004_read,
+    .write = vmport_ioport_1004_write,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static const MemoryRegionOps vmport_ops_5 = {
+    //.read = vmport_ioport_1005_read,
+    .write = vmport_ioport_1005_write,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
 static int vmport_initfn(ISADevice *dev)
 {
     VMPortState *s = VMPORT(dev);
 
     memory_region_init_io(&s->io, &vmport_ops, s, "vmport", 1);
     isa_register_ioport(dev, &s->io, 0x5658);
+
+    if (vmware_hw >= 7) {
+	memory_region_init_io(&s->io1004, &vmport_ops_4, s, "vmport-1004", 1);
+	isa_register_ioport(dev, &s->io1004, 0x1004);
+
+	memory_region_init_io(&s->io1005, &vmport_ops_5, s, "vmport-1005", 1);
+	isa_register_ioport(dev, &s->io1005, 0x1005);
+	s->p1004 = 0;
+    }
 
     port_state = s;
     /* Register some generic port commands */
