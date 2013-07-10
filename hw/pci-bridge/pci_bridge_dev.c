@@ -261,14 +261,6 @@ static void qdev_pci_bridge_dev_reset(DeviceState *qdev)
     shpc_reset(dev);
 }
 
-static int pci_bridge_dev_post_load(void *opaque, int ver) {
-    PCIDevice *d = opaque;
-    PCIBridge *s = container_of(d, PCIBridge, dev);
-
-    pci_bridge_update_mappings(s);
-    return 0;
-}
-
 static Property pci_bridge_dev_properties[] = {
                     /* Note: 0 is not a legal chassis number. */
     DEFINE_PROP_UINT8("chassis_nr", PCIBridgeDev, chassis_nr, 0),
@@ -284,7 +276,6 @@ static Property vmware_bridge_dev_properties[] = {
 
 static const VMStateDescription pci_bridge_dev_vmstate = {
     .name = "pci_bridge",
-    .post_load = pci_bridge_dev_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
         SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
@@ -294,7 +285,6 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
 
 static const VMStateDescription pcie_bridge_dev_vmstate = {
     .name = "pcie_bridge",
-    .post_load = pci_bridge_dev_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
         SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
@@ -304,7 +294,6 @@ static const VMStateDescription pcie_bridge_dev_vmstate = {
 
 static const VMStateDescription vmware_bridge_dev_vmstate = {
     .name = "vmware_pci_bridge",
-    .post_load = pci_bridge_dev_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
@@ -313,7 +302,6 @@ static const VMStateDescription vmware_bridge_dev_vmstate = {
 
 static const VMStateDescription vmware_pcie_bridge_dev_vmstate = {
     .name = "vmware_pcie_bridge",
-    .post_load = pci_bridge_dev_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
