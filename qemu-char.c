@@ -110,19 +110,9 @@ void qemu_chr_be_event(CharDriverState *s, int event)
     s->chr_event(s->handler_opaque, event);
 }
 
-static gboolean qemu_chr_be_generic_open_bh(gpointer opaque)
-{
-    CharDriverState *s = opaque;
-    qemu_chr_be_event(s, CHR_EVENT_OPENED);
-    s->idle_tag = 0;
-    return FALSE;
-}
-
 void qemu_chr_be_generic_open(CharDriverState *s)
 {
-    if (s->idle_tag == 0) {
-        s->idle_tag = g_idle_add(qemu_chr_be_generic_open_bh, s);
-    }
+    qemu_chr_be_event(s, CHR_EVENT_OPENED);
 }
 
 int qemu_chr_fe_write(CharDriverState *s, const uint8_t *buf, int len)
@@ -247,6 +237,7 @@ static CharDriverState *qemu_chr_open_null(void)
 
     chr = g_malloc0(sizeof(CharDriverState));
     chr->chr_write = null_chr_write;
+    chr->explicit_be_open = true;
     return chr;
 }
 
@@ -503,9 +494,6 @@ static CharDriverState *qemu_chr_open_mux(CharDriverState *drv)
     chr->chr_accept_input = mux_chr_accept_input;
     /* Frontend guest-open / -close notification is not support with muxes */
     chr->chr_set_fe_open = NULL;
-
-    /* Muxes are always open on creation */
-    qemu_chr_be_generic_open(chr);
 
     return chr;
 }
@@ -890,8 +878,6 @@ static CharDriverState *qemu_chr_open_fd(int fd_in, int fd_out)
     chr->chr_update_read_handler = fd_chr_update_read_handler;
     chr->chr_close = fd_chr_close;
 
-    qemu_chr_be_generic_open(chr);
-
     return chr;
 }
 
@@ -986,63 +972,6 @@ static CharDriverState *qemu_chr_open_stdio(ChardevStdio *opts)
 
     return chr;
 }
-
-#ifdef __sun__
-/* Once Solaris has openpty(), this is going to be removed. */
-static int openpty(int *amaster, int *aslave, char *name,
-                   struct termios *termp, struct winsize *winp)
-{
-        const char *slave;
-        int mfd = -1, sfd = -1;
-
-        *amaster = *aslave = -1;
-
-        mfd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
-        if (mfd < 0)
-                goto err;
-
-        if (grantpt(mfd) == -1 || unlockpt(mfd) == -1)
-                goto err;
-
-        if ((slave = ptsname(mfd)) == NULL)
-                goto err;
-
-        if ((sfd = open(slave, O_RDONLY | O_NOCTTY)) == -1)
-                goto err;
-
-        if (ioctl(sfd, I_PUSH, "ptem") == -1 ||
-            (termp != NULL && tcgetattr(sfd, termp) < 0))
-                goto err;
-
-        if (amaster)
-                *amaster = mfd;
-        if (aslave)
-                *aslave = sfd;
-        if (winp)
-                ioctl(sfd, TIOCSWINSZ, winp);
-
-        return 0;
-
-err:
-        if (sfd != -1)
-                close(sfd);
-        close(mfd);
-        return -1;
-}
-
-static void cfmakeraw (struct termios *termios_p)
-{
-        termios_p->c_iflag &=
-                ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON);
-        termios_p->c_oflag &= ~OPOST;
-        termios_p->c_lflag &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
-        termios_p->c_cflag &= ~(CSIZE|PARENB);
-        termios_p->c_cflag |= CS8;
-
-        termios_p->c_cc[VMIN] = 0;
-        termios_p->c_cc[VTIME] = 0;
-}
-#endif
 
 #if defined(__linux__) || defined(__sun__) || defined(__FreeBSD__) \
     || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) \
@@ -1215,34 +1144,24 @@ static CharDriverState *qemu_chr_open_pty(const char *id,
 {
     CharDriverState *chr;
     PtyCharDriver *s;
-    struct termios tty;
     int master_fd, slave_fd;
-#if defined(__OpenBSD__) || defined(__DragonFly__)
     char pty_name[PATH_MAX];
-#define q_ptsname(x) pty_name
-#else
-    char *pty_name = NULL;
-#define q_ptsname(x) ptsname(x)
-#endif
 
-    if (openpty(&master_fd, &slave_fd, pty_name, NULL, NULL) < 0) {
+    master_fd = qemu_openpty_raw(&slave_fd, pty_name);
+    if (master_fd < 0) {
         return NULL;
     }
 
-    /* Set raw attributes on the pty. */
-    tcgetattr(slave_fd, &tty);
-    cfmakeraw(&tty);
-    tcsetattr(slave_fd, TCSAFLUSH, &tty);
     close(slave_fd);
 
     chr = g_malloc0(sizeof(CharDriverState));
 
-    chr->filename = g_strdup_printf("pty:%s", q_ptsname(master_fd));
-    ret->pty = g_strdup(q_ptsname(master_fd));
+    chr->filename = g_strdup_printf("pty:%s", pty_name);
+    ret->pty = g_strdup(pty_name);
     ret->has_pty = true;
 
     fprintf(stderr, "char device redirected to %s (label %s)\n",
-            q_ptsname(master_fd), id);
+            pty_name, id);
 
     s = g_malloc0(sizeof(PtyCharDriver));
     chr->opaque = s;
@@ -1250,6 +1169,7 @@ static CharDriverState *qemu_chr_open_pty(const char *id,
     chr->chr_update_read_handler = pty_chr_update_read_handler;
     chr->chr_close = pty_chr_close;
     chr->chr_add_watch = pty_chr_add_watch;
+    chr->explicit_be_open = true;
 
     s->fd = io_channel_from_fd(master_fd);
     s->timer_tag = 0;
@@ -1602,8 +1522,6 @@ static CharDriverState *qemu_chr_open_pp_fd(int fd)
     chr->chr_close = pp_close;
     chr->opaque = drv;
 
-    qemu_chr_be_generic_open(chr);
-
     return chr;
 }
 #endif /* __linux__ */
@@ -1657,6 +1575,7 @@ static CharDriverState *qemu_chr_open_pp_fd(int fd)
     chr->opaque = (void *)(intptr_t)fd;
     chr->chr_write = null_chr_write;
     chr->chr_ioctl = pp_ioctl;
+    chr->explicit_be_open = true;
     return chr;
 }
 #endif
@@ -1887,7 +1806,6 @@ static CharDriverState *qemu_chr_open_win_path(const char *filename)
         g_free(chr);
         return NULL;
     }
-    qemu_chr_be_generic_open(chr);
     return chr;
 }
 
@@ -1987,7 +1905,6 @@ static CharDriverState *qemu_chr_open_pipe(ChardevHostdev *opts)
         g_free(chr);
         return NULL;
     }
-    qemu_chr_be_generic_open(chr);
     return chr;
 }
 
@@ -2001,7 +1918,6 @@ static CharDriverState *qemu_chr_open_win_file(HANDLE fd_out)
     s->hcom = fd_out;
     chr->opaque = s;
     chr->chr_write = win_chr_write;
-    qemu_chr_be_generic_open(chr);
     return chr;
 }
 
@@ -2336,6 +2252,8 @@ static CharDriverState *qemu_chr_open_udp_fd(int fd)
     chr->chr_write = udp_chr_write;
     chr->chr_update_read_handler = udp_chr_update_read_handler;
     chr->chr_close = udp_chr_close;
+    /* be isn't opened until we get a connection */
+    chr->explicit_be_open = true;
     return chr;
 }
 
@@ -2738,6 +2656,8 @@ static CharDriverState *qemu_chr_open_socket_fd(int fd, bool do_nodelay,
     chr->get_msgfd = tcp_get_msgfd;
     chr->chr_add_client = tcp_chr_add_client;
     chr->chr_add_watch = tcp_chr_add_watch;
+    /* be isn't opened until we get a connection */
+    chr->explicit_be_open = true;
 
     if (is_listen) {
         s->listen_fd = fd;
@@ -3332,6 +3252,12 @@ CharDriverState *qemu_chr_new_from_opts(QemuOpts *opts,
     if (!chr->filename)
         chr->filename = g_strdup(qemu_opt_get(opts, "backend"));
     chr->init = init;
+    /* if we didn't create the chardev via qmp_chardev_add, we
+     * need to send the OPENED event here
+     */
+    if (!chr->explicit_be_open) {
+        qemu_chr_be_event(chr, CHR_EVENT_OPENED);
+    }
     QTAILQ_INSERT_TAIL(&chardevs, chr, next);
 
     if (qemu_opt_get_bool(opts, "mux", 0)) {
@@ -3808,6 +3734,12 @@ ChardevReturn *qmp_chardev_add(const char *id, ChardevBackend *backend,
         chr->label = g_strdup(id);
         chr->avail_connections =
             (backend->kind == CHARDEV_BACKEND_KIND_MUX) ? MAX_MUX : 1;
+        if (!chr->filename) {
+            chr->filename = g_strdup(ChardevBackendKind_lookup[backend->kind]);
+        }
+        if (!chr->explicit_be_open) {
+            qemu_chr_be_event(chr, CHR_EVENT_OPENED);
+        }
         QTAILQ_INSERT_TAIL(&chardevs, chr, next);
         return ret;
     } else {

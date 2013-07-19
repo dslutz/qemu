@@ -175,7 +175,7 @@ static void xen_ram_init(ram_addr_t ram_size)
         below_4g_mem_size = ram_size;
     } else if (ram_size > below_4g_mem_size) {
         /* Xen does not allocate the memory continuously, and keep a hole at
-         * HVM_BELOW_4G_MMIO_START of HVM_BELOW_4G_MMIO_LENGTH
+         * QEMU_BELOW_4G_RAM_END of QEMU_BELOW_4G_MMIO_LENGTH
          */
         block_len += mmio_hole_size();
     }
