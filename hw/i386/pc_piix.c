@@ -112,7 +112,7 @@ static void pc_init1(MemoryRegion *system_memory,
     if (ram_size >= mmio_hole_start ) {
         above_4g_mem_size = ram_size - mmio_hole_start;
         below_4g_mem_size = mmio_hole_start;
-    } else {
+   } else {
         above_4g_mem_size = 0;
         below_4g_mem_size = ram_size;
     }

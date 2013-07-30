@@ -236,6 +236,8 @@ ssize_t qemu_recv_full(int fd, void *buf, size_t count, int flags)
 
 #ifndef _WIN32
 int qemu_pipe(int pipefd[2]);
+/* like openpty() but also makes it raw; return master fd */
+int qemu_openpty_raw(int *aslave, char *pty_name);
 #endif
 
 #ifdef _WIN32

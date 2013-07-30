@@ -328,10 +328,10 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
             ret = -EINVAL;
             break;
         }
-        indicators = ldq_phys(ccw.cda);
-        if (!indicators) {
+        if (!ccw.cda) {
             ret = -EFAULT;
         } else {
+            indicators = ldq_phys(ccw.cda);
             dev->indicators = indicators;
             sch->curr_status.scsw.count = ccw.count - sizeof(indicators);
             ret = 0;
@@ -348,10 +348,10 @@ static int virtio_ccw_cb(SubchDev *sch, CCW1 ccw)
             ret = -EINVAL;
             break;
         }
-        indicators = ldq_phys(ccw.cda);
-        if (!indicators) {
+        if (!ccw.cda) {
             ret = -EFAULT;
         } else {
+            indicators = ldq_phys(ccw.cda);
             dev->indicators2 = indicators;
             sch->curr_status.scsw.count = ccw.count - sizeof(indicators);
             ret = 0;
@@ -744,7 +744,7 @@ static int virtio_ccw_rng_init(VirtioCcwDevice *ccw_dev)
     }
 
     object_property_set_link(OBJECT(dev),
-                             OBJECT(dev->vdev.conf.default_backend), "rng",
+                             OBJECT(dev->vdev.conf.rng), "rng",
                              NULL);
 
     return virtio_ccw_device_init(ccw_dev, VIRTIO_DEVICE(vdev));
