@@ -141,8 +141,8 @@ typedef struct E1000State_st {
     uint32_t compat_flags;
 
 #define IO_SLICE_TIME     100000000
-    int64_t      bps;
-    int64_t      slice_start;      /* values in ns */
+    int64_t      bps_limit;
+    int64_t      slice_start;      /* All time values in ns */
     int64_t      slice_end;
     CoQueue      throttled_pkts;
     QEMUTimer    *pkt_timer;
@@ -176,14 +176,13 @@ e1000_pkt_timer(void *opaque)
 
 /* e1000 I/O throttling */
 static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
-                 double elapsed_time, uint64_t *wait)
+                 uint64_t *wait)
 {
     uint64_t now;
     uint64_t extension;
-    double   bytes_limit, bytes_base;
+    double   bytes_limit;
     double   slice_time, wait_time;
     double   elapsed_time;
-
 
     /*
      * io_limits_enabled should be checked prior to calling this function.
@@ -228,17 +227,17 @@ static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
 
     /* Wait awhile before sending the packet */
     /* Calc approx time to dispatch */
-    wait_time = pkt_size / bps_limit - elapsed_time;
+    wait_time = pkt_size / s->bps_limit - elapsed_time;
 
     /* When the I/O rate at runtime exceeds the limits,
-     * bs->slice_end need to be extended in order that the current statistic
+     * s->slice_end need to be extended in order that the current statistic
      * info can be kept until the timer fire, so it is increased and tuned
      * based on the result of experiment.
      */
     extension = wait_time * NANOSECONDS_PER_SECOND;
     extension = DIV_ROUND_UP(extension, IO_SLICE_TIME) *
                 IO_SLICE_TIME;
-    bs->slice_end += extension;
+    s->slice_end += extension;
     if (wait) {
         *wait = wait_time * NANOSECONDS_PER_SECOND;
     }
@@ -584,7 +583,7 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
-	   while (e1000_exceed_bps_limits(*s, size, &bps_wait)) {
+	   while (e1000_exceed_bps_limit(s, size, &bps_wait)) {
 	       qemu_mod_timer(s->pkt_timer,
 			      bps_wait + qemu_get_clock_ns(vm_clock));
 	       qemu_co_queue_wait_insert_head(&s->throttled_pkts);
