@@ -85,6 +85,8 @@ enum {
                    /* default to E1000_DEV_ID_82540EM */	0xc20
 };
 
+#define NANOSECONDS_PER_SECOND  1000000000.0
+
 typedef struct E1000State_st {
     PCIDevice dev;
     NICState *nic;
@@ -137,6 +139,15 @@ typedef struct E1000State_st {
 #define E1000_FLAG_AUTONEG_BIT 0
 #define E1000_FLAG_AUTONEG (1 << E1000_FLAG_AUTONEG_BIT)
     uint32_t compat_flags;
+
+#define IO_SLICE_TIME     100000000
+    int64_t      bps;
+    int64_t      slice_start;      /* values in ns */
+    int64_t      slice_end;
+    CoQueue      throttled_pkts;
+    QEMUTimer    *pkt_timer;
+    bool         io_limits_enabled;
+
 } E1000State;
 
 #define	defreg(x)	x = (E1000_##x>>2)
@@ -153,6 +164,88 @@ enum {
     defreg(RA),		defreg(MTA),	defreg(CRCERRS),defreg(VFTA),
     defreg(VET),
 };
+
+static void
+e1000_pkt_timer(void *opaque)
+{
+    E1000State *s = opaque;
+
+    qemu_co_queue_next(&s->throttled_pkts);
+}
+
+
+/* e1000 I/O throttling */
+static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
+                 double elapsed_time, uint64_t *wait)
+{
+    uint64_t now;
+    uint64_t extension;
+    double   bytes_limit, bytes_base;
+    double   slice_time, wait_time;
+    double   elapsed_time;
+
+
+    /*
+     * io_limits_enabled should be checked prior to calling this function.
+     */
+
+    /*
+     * The real e1000 is a GigE card so I'm going to assume at this
+     * point that it's running at 1ns / byte. There is packet overhead to
+     * be accounted for and a NECESSARY refinement will be to actually time
+     * the out going packets and base this off actual data.
+     */
+
+    now = qemu_get_clock_ns(vm_clock);
+    if (now > s->slice_end) {
+        s->slice_start = now;
+        s->slice_end   = now + pkt_size;        /* Add an overhead factor here? */
+    }
+
+    elapsed_time  = now - s->slice_start;
+    elapsed_time  /= (NANOSECONDS_PER_SECOND);   
+
+    /* Only called if limits are set so s->bps is valid.       */
+    /* Dave will be putting this value on the command line.    */
+    /* To handle dynamically changing limits, read it from     */
+    /* some TBD location.                                      */
+
+    if (wait)
+      *wait = 0;         /* No waiting unless proven otherwise */
+
+    slice_time = s->slice_end - s->slice_start;   /* ns to send pkt   */
+    slice_time /= (NANOSECONDS_PER_SECOND);       /* secs to send pkt */
+    bytes_limit = s->bps_limit * slice_time;      /* How many bytes we can send */
+                                                  /* without going over limit   */
+
+    if (pkt_size <= bytes_limit) {     /* Under the limit, all is well */
+        if (wait) {
+            *wait = 0;
+        }
+
+        return false;         /* No wait needed */
+    }
+
+    /* Wait awhile before sending the packet */
+    /* Calc approx time to dispatch */
+    wait_time = pkt_size / bps_limit - elapsed_time;
+
+    /* When the I/O rate at runtime exceeds the limits,
+     * bs->slice_end need to be extended in order that the current statistic
+     * info can be kept until the timer fire, so it is increased and tuned
+     * based on the result of experiment.
+     */
+    extension = wait_time * NANOSECONDS_PER_SECOND;
+    extension = DIV_ROUND_UP(extension, IO_SLICE_TIME) *
+                IO_SLICE_TIME;
+    bs->slice_end += extension;
+    if (wait) {
+        *wait = wait_time * NANOSECONDS_PER_SECOND;
+    }
+
+    return true;
+}
+
 
 static void
 e1000_link_down(E1000State *s)
@@ -481,14 +574,26 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
-static void
+static void    /* XXX This is the bottom of the e1000 stack */
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
+    uint64_t bps_wait;
+
     NetClientState *nc = qemu_get_queue(s->nic);
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
         nc->info->receive(nc, buf, size);
     } else {
-        qemu_send_packet(nc, buf, size);
+        if (s->io_limits_enabled) {
+	   while (e1000_exceed_bps_limits(*s, size, &bps_wait)) {
+	       qemu_mod_timer(s->pkt_timer,
+			      bps_wait + qemu_get_clock_ns(vm_clock));
+	       qemu_co_queue_wait_insert_head(&s->throttled_pkts);
+	   }
+
+	   qemu_co_queue_next(&s->throttled_pkts);
+        } else {
+	   qemu_send_packet(nc, buf, size);
+        }
     }
 }
 
@@ -1315,6 +1420,7 @@ pci_e1000_uninit(PCIDevice *dev)
     memory_region_destroy(&d->mmio);
     memory_region_destroy(&d->io);
     qemu_del_nic(d->nic);
+    /* XXX  Tear down the rate limit stuff */
 }
 
 static NetClientInfo net_e1000_info = {
@@ -1417,6 +1523,22 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     add_boot_device_path(d->conf.bootindex, &pci_dev->qdev, "/ethernet-phy@0");
 
     d->autoneg_timer = qemu_new_timer_ms(vm_clock, e1000_autoneg_timer, d);
+
+    /* XXX If rate limits supplied (Dave W has put them on the QEMU command line)
+       init the rate limit code. */
+    d->io_limits_enabled = false;
+    if (0) {
+      qemu_co_queue_init(&d->throttled_pkts);
+      d->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, d);
+      d->io_limits_enabled = true;
+      /* Load the structure with the initial limits here.
+       * Check the limits on each send packet in case they change dynamically
+       */
+      d->slice_start = 0;
+      d->slice_end = 0;
+
+
+    }
 
     return 0;
 }
