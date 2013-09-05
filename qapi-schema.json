@@ -2381,6 +2381,20 @@
 { 'command': 'device_del', 'data': {'id': 'str'} }
 
 ##
+# @device_mod_rate:
+#
+# Change the rate limit parameters on a device
+#
+# @id: the name of the device
+#
+# Returns: Nothing on success
+#          If @id is not a valid device, DeviceNotFound
+#
+# Since: 0.14.0
+##
+{ 'command': 'device_mod_rate', 'data': {'id': 'str', 'bytes_per_int': 'int', 'int_usec': 'int'} }
+
+##
 # @dump-guest-memory
 #
 # Dump guest's memory to vmcore. It is a synchronous operation that can take
