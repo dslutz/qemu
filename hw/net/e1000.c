@@ -141,9 +141,9 @@ typedef struct E1000State_st {
     uint32_t compat_flags;
 
 #define IO_SLICE_TIME     100000000
-    int64_t      bps_limit;
-    int64_t      slice_start;      /* All time values in ns */
-    int64_t      slice_end;
+    uint64_t     bps_limit;
+    uint64_t     slice_start;      /* All time values in ns */
+    uint64_t     slice_end;
     CoQueue      throttled_pkts;
     QEMUTimer    *pkt_timer;
     bool         io_limits_enabled;
@@ -1491,6 +1491,9 @@ static NetClientInfo net_e1000_info = {
 static int pci_e1000_init(PCIDevice *pci_dev)
 {
     E1000State *d = DO_UPCAST(E1000State, dev, pci_dev);
+    //DeviceState *ds = &d->qdev;
+    NICConf *conf = &d->conf;
+
     uint8_t *pci_conf;
     uint16_t checksum = 0;
     int i;
@@ -1584,17 +1587,22 @@ static int pci_e1000_init(PCIDevice *pci_dev)
        init the rate limit code. */
     d->io_limits_enabled = false;
 
-    if (1) {
-      d->bps_limit = 100000;
-      /* Load the structure with the initial limits here.
-       * Check the limits on each send packet in case they change dynamically
-       */
-      d->slice_start = 0;
-      d->slice_end = 0;
+    if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
+        ((10 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
+       // 10 bits per bytes (including the overhead bits)
+       d->bps_limit = 10 * conf->bytes_per_int * 1000000 / conf->int_usec;
+       printf ("setting bps_limit to %lu\n", d->bps_limit);
+       /* Load the structure with the initial limits here.
+        * Check the limits on each send packet in case they change dynamically
+        */
+       d->slice_start = 0;
+       d->slice_end = 0;
 
 
-      e1000_io_limits_enable(d);
-    }
+       e1000_io_limits_enable(d);
+    } else
+       printf ("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
+               conf->bytes_per_int, conf->int_usec);
 
     return 0;
 }
