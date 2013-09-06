@@ -309,6 +309,41 @@ Notes:
 EQMP
 
     {
+        .name       = "device_mod_rate",
+        .args_type  = "id:s,bytes_per_int:l,int_usec:i",
+        .params     = "device,bytes_per_int=value,int_usec=value",
+        .help       = "modify device rate limits, like -device on the command line",
+        .user_print = monitor_user_noop,
+        .mhandler.cmd_new = qmp_marshal_input_device_mod_rate,
+    },
+
+SQMP
+device_mod_rate
+---------------
+
+Modify rate limits for a device.
+
+Arguments:
+
+- "id": the device's ID, must be unique (json-string)
+- device rate limit properties
+
+Example:
+
+-> { "execute": "device_mod_rate", "arguments": { "id": "net0", "bytes_per_int": 1000, "int_usec"=: 1000 } }
+<- { "return": {} }
+
+Notes:
+
+(1) For detailed information about this command, please refer to the
+    'docs/qdev-device-use.txt' file.
+
+(2) It's possible to list device properties by running QEMU with the
+    "-device DEVICE,\?" command-line argument, where DEVICE is the device's name
+
+EQMP
+
+    {
         .name       = "device_del",
         .args_type  = "id:s",
         .mhandler.cmd_new = qmp_marshal_input_device_del,

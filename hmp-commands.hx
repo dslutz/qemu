@@ -663,6 +663,21 @@ Add device.
 ETEXI
 
     {
+        .name       = "device_mod_rate",
+        .args_type  = "id:s",
+        .params     = "id,prop=value[,...]",
+        .help       = "modify device rate limits",
+        .mhandler.cmd = hmp_device_mod_rate,
+    },
+
+STEXI
+@item device_mod_rate @var{id}
+@findex device_mod_rate
+
+Modify rate limits for device @var{id}.
+ETEXI
+
+    {
         .name       = "device_del",
         .args_type  = "id:s",
         .params     = "device",
