@@ -174,6 +174,15 @@ e1000_pkt_timer(void *opaque)
 }
 
 
+static void e1000_io_limits_enable(E1000State *s)
+{
+    qemu_co_queue_init(&s->throttled_pkts);
+    s->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, s);
+    s->io_limits_enabled = true;
+}
+
+
+
 /* e1000 I/O throttling */
 static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
                  uint64_t *wait)
@@ -573,6 +582,25 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
+typedef struct SpCo {
+    E1000State *s;
+    const uint8_t *buf;
+    int size;
+    int ret;
+} SpCo;
+
+static void    /* XXX This is the bottom of the e1000 stack */
+e1000_send_packet(E1000State *s, const uint8_t *buf, int size);
+
+static void coroutine_fn e1000_send_packet_co_entry (void *opaque)
+{
+    SpCo *spco = opaque;
+    E1000State *s = spco->s;
+
+    e1000_send_packet (s, spco->buf, spco->size);
+
+}
+
 static void    /* XXX This is the bottom of the e1000 stack */
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
@@ -583,13 +611,42 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
-	   while (e1000_exceed_bps_limit(s, size, &bps_wait)) {
-	       qemu_mod_timer(s->pkt_timer,
-			      bps_wait + qemu_get_clock_ns(vm_clock));
-	       qemu_co_queue_wait_insert_head(&s->throttled_pkts);
-	   }
+            if (e1000_exceed_bps_limit(s, size, &bps_wait)) {
+                Coroutine *co;
+                SpCo spco = {
+                    .s = s,
+                    .buf = buf,
+                    .size = size,
+                    .ret = 0,
+                };
+              
 
-	   qemu_co_queue_next(&s->throttled_pkts);
+                if (qemu_in_coroutine()) {
+                    /* Fast-path if already in coroutine context */
+                    //e1000_send_packet_co_entry(&spco);
+                    while (e1000_exceed_bps_limit(s, size, &bps_wait)) {
+                        qemu_mod_timer(s->pkt_timer,
+                                       bps_wait + qemu_get_clock_ns(vm_clock));
+                        qemu_co_queue_wait_insert_head(&s->throttled_pkts);
+
+
+                    }
+
+                } else {
+
+                    co = qemu_coroutine_create(e1000_send_packet_co_entry);
+                    qemu_coroutine_enter(co, &spco);
+                }
+                qemu_send_packet(nc, buf, size);
+
+
+                qemu_co_queue_next(&s->throttled_pkts);
+
+            } else {
+                qemu_send_packet(nc, buf, size);
+            }
+            
+
         } else {
 	   qemu_send_packet(nc, buf, size);
         }
@@ -1526,10 +1583,9 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     /* XXX If rate limits supplied (Dave W has put them on the QEMU command line)
        init the rate limit code. */
     d->io_limits_enabled = false;
-    if (0) {
-      qemu_co_queue_init(&d->throttled_pkts);
-      d->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, d);
-      d->io_limits_enabled = true;
+
+    if (1) {
+      d->bps_limit = 100000;
       /* Load the structure with the initial limits here.
        * Check the limits on each send packet in case they change dynamically
        */
@@ -1537,6 +1593,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
       d->slice_end = 0;
 
 
+      e1000_io_limits_enable(d);
     }
 
     return 0;
