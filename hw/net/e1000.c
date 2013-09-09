@@ -85,7 +85,7 @@ enum {
                    /* default to E1000_DEV_ID_82540EM */	0xc20
 };
 
-#define NANOSECONDS_PER_SECOND  1000000000.0
+#define NANOSECONDS_PER_SECOND  1000000000
 
 typedef struct E1000State_st {
     PCIDevice dev;
@@ -142,13 +142,16 @@ typedef struct E1000State_st {
 
 #define IO_SLICE_TIME     100000000
     uint64_t     bps_limit;
-    uint64_t     slice_start;      /* All time values in ns */
     uint64_t     slice_end;
     CoQueue      throttled_pkts;
     QEMUTimer    *pkt_timer;
     bool         io_limits_enabled;
+    int          throttled;
 
 } E1000State;
+
+//static void e1000_next_slice_ns (E1000State *s, int pkt_size);
+//static uint64_t e1000_pkt_wait_time_ns(E1000State *s);
 
 #define	defreg(x)	x = (E1000_##x>>2)
 enum {
@@ -170,6 +173,8 @@ e1000_pkt_timer(void *opaque)
 {
     E1000State *s = opaque;
 
+    printf ("pkt_timer    throttled=false\n");
+    s->throttled = false;
     qemu_co_queue_next(&s->throttled_pkts);
 }
 
@@ -179,19 +184,30 @@ static void e1000_io_limits_enable(E1000State *s)
     qemu_co_queue_init(&s->throttled_pkts);
     s->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, s);
     s->io_limits_enabled = true;
+    s->throttled = false;
+    printf("limits_enable    throttled=false\n");
 }
 
 
 
 /* e1000 I/O throttling */
-static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
-                 uint64_t *wait)
+static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
 {
     uint64_t now;
-    uint64_t extension;
-    double   bytes_limit;
-    double   slice_time, wait_time;
-    double   elapsed_time;
+    now = qemu_get_clock_ns(vm_clock);
+
+    if (now > s->slice_end)
+	return 0;
+    else
+	return (s->slice_end - now);
+}
+
+
+static void e1000_next_slice_ns (E1000State *s, int pkt_size)
+{
+    uint64_t now;
+    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
+    printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
     /*
      * io_limits_enabled should be checked prior to calling this function.
@@ -205,53 +221,7 @@ static bool e1000_exceed_bps_limit(E1000State *s, int pkt_size,
      */
 
     now = qemu_get_clock_ns(vm_clock);
-    if (now > s->slice_end) {
-        s->slice_start = now;
-        s->slice_end   = now + pkt_size;        /* Add an overhead factor here? */
-    }
-
-    elapsed_time  = now - s->slice_start;
-    elapsed_time  /= (NANOSECONDS_PER_SECOND);   
-
-    /* Only called if limits are set so s->bps is valid.       */
-    /* Dave will be putting this value on the command line.    */
-    /* To handle dynamically changing limits, read it from     */
-    /* some TBD location.                                      */
-
-    if (wait)
-      *wait = 0;         /* No waiting unless proven otherwise */
-
-    slice_time = s->slice_end - s->slice_start;   /* ns to send pkt   */
-    slice_time /= (NANOSECONDS_PER_SECOND);       /* secs to send pkt */
-    bytes_limit = s->bps_limit * slice_time;      /* How many bytes we can send */
-                                                  /* without going over limit   */
-
-    if (pkt_size <= bytes_limit) {     /* Under the limit, all is well */
-        if (wait) {
-            *wait = 0;
-        }
-
-        return false;         /* No wait needed */
-    }
-
-    /* Wait awhile before sending the packet */
-    /* Calc approx time to dispatch */
-    wait_time = pkt_size / s->bps_limit - elapsed_time;
-
-    /* When the I/O rate at runtime exceeds the limits,
-     * s->slice_end need to be extended in order that the current statistic
-     * info can be kept until the timer fire, so it is increased and tuned
-     * based on the result of experiment.
-     */
-    extension = wait_time * NANOSECONDS_PER_SECOND;
-    extension = DIV_ROUND_UP(extension, IO_SLICE_TIME) *
-                IO_SLICE_TIME;
-    s->slice_end += extension;
-    if (wait) {
-        *wait = wait_time * NANOSECONDS_PER_SECOND;
-    }
-
-    return true;
+    s->slice_end   = now + pkt_time;        /* Add an overhead factor here? */
 }
 
 
@@ -589,29 +559,29 @@ typedef struct SpCo {
     int ret;
 } SpCo;
 
-static void    /* XXX This is the bottom of the e1000 stack */
+static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size);
+
 
 static void coroutine_fn e1000_send_packet_co_entry (void *opaque)
 {
     SpCo *spco = opaque;
     E1000State *s = spco->s;
 
+    printf ("SPcoentry   e1000_send_packet\n");
     e1000_send_packet (s, spco->buf, spco->size);
-
 }
 
-static void    /* XXX This is the bottom of the e1000 stack */
+
+static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
-    uint64_t bps_wait;
-
     NetClientState *nc = qemu_get_queue(s->nic);
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
-            if (e1000_exceed_bps_limit(s, size, &bps_wait)) {
+            if (e1000_pkt_wait_time_ns(s)) {
                 Coroutine *co;
                 SpCo spco = {
                     .s = s,
@@ -619,33 +589,35 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
                     .size = size,
                     .ret = 0,
                 };
-              
-
+		printf ("sp  exceed_bps_limit\n");
                 if (qemu_in_coroutine()) {
+		    uint64_t now;
+		    printf ("SP  qemu_in_coroutine\n");
                     /* Fast-path if already in coroutine context */
                     //e1000_send_packet_co_entry(&spco);
-                    while (e1000_exceed_bps_limit(s, size, &bps_wait)) {
-                        qemu_mod_timer(s->pkt_timer,
-                                       bps_wait + qemu_get_clock_ns(vm_clock));
+                    while ((now = e1000_pkt_wait_time_ns(s))) {
+			printf ("SP  qemu_in_coroutine  exceed_bps_limit throttled = true time=%ld\n", now);
+			s->throttled = true;
+                        qemu_mod_timer(s->pkt_timer, s->slice_end);
                         qemu_co_queue_wait_insert_head(&s->throttled_pkts);
-
-
                     }
-
                 } else {
-
+		    printf ("SP  not on coroutine\n");
                     co = qemu_coroutine_create(e1000_send_packet_co_entry);
                     qemu_coroutine_enter(co, &spco);
                 }
+		printf ("SP throttled = false qemu_send_packet\n");
+		s->throttled = false;
+		e1000_next_slice_ns (s, size);
                 qemu_send_packet(nc, buf, size);
-
-
                 qemu_co_queue_next(&s->throttled_pkts);
 
             } else {
+		printf ("SP !exceed_bps_limit   throttled = false  qemu_send_packet\n");
+		e1000_next_slice_ns (s, size);
+		s->throttled = false;
                 qemu_send_packet(nc, buf, size);
             }
-            
 
         } else {
 	   qemu_send_packet(nc, buf, size);
@@ -839,7 +811,7 @@ start_xmit(E1000State *s)
         return;
     }
 
-    while (s->mac_reg[TDH] != s->mac_reg[TDT]) {
+    while ((s->mac_reg[TDH] != s->mac_reg[TDT]) && !s->throttled) {
         base = tx_desc_base(s) +
                sizeof(struct e1000_tx_desc) * s->mac_reg[TDH];
         pci_dma_read(&s->dev, base, &desc, sizeof(desc));
@@ -864,6 +836,7 @@ start_xmit(E1000State *s)
             break;
         }
     }
+
     set_ics(s, 0, cause);
 }
 
@@ -1588,18 +1561,16 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->io_limits_enabled = false;
 
     if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
-        ((10 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
-       // 10 bits per bytes (including the overhead bits)
-       d->bps_limit = 10 * conf->bytes_per_int * 1000000 / conf->int_usec;
+        ((8 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
+       d->bps_limit = 8 * conf->bytes_per_int * 1000000 / conf->int_usec;
        printf ("setting bps_limit to %lu\n", d->bps_limit);
        /* Load the structure with the initial limits here.
         * Check the limits on each send packet in case they change dynamically
         */
-       d->slice_start = 0;
        d->slice_end = 0;
 
-
        e1000_io_limits_enable(d);
+
     } else
        printf ("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
                conf->bytes_per_int, conf->int_usec);
@@ -1699,3 +1670,9 @@ static void e1000_vmw_register_types(void)
 }
 
 type_init(e1000_vmw_register_types)
+
+/*
+ * Local variables:
+ * c-basic-offset: 4
+ * End:
+ */
