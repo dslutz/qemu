@@ -163,7 +163,7 @@ static uint64_t mmio_hole_size(void)
     return sz;
 }
 
-static void xen_ram_init(ram_addr_t ram_size)
+static void xen_ram_init(ram_addr_t ram_size, MemoryRegion **ram_memory_p)
 {
     MemoryRegion *sysmem = get_system_memory();
     ram_addr_t below_4g_mem_size, above_4g_mem_size = 0;
@@ -180,6 +180,7 @@ static void xen_ram_init(ram_addr_t ram_size)
         block_len += mmio_hole_size();
     }
     memory_region_init_ram(&ram_memory, NULL, "xen.ram", block_len);
+    *ram_memory_p = &ram_memory;
     vmstate_register_ram_global(&ram_memory);
 
     if (ram_size >= below_4g_mem_size) {
@@ -479,7 +480,6 @@ static void xen_set_memory(struct MemoryListener *listener,
 static void xen_region_add(MemoryListener *listener,
                            MemoryRegionSection *section)
 {
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(section->mr);
     xen_set_memory(listener, section, true);
 }
@@ -791,54 +791,47 @@ static void cpu_ioreq_move(ioreq_t *req)
 }
 
 # if defined(__i386__) || defined(__x86_64__)
-//static bool env_hack = false;
-//static CPUX86State *vmmouse_env;
+CPUX86State *vmmouse_env;
+static bool env_hack;
 static void sync_regs_from_shared(ioreq_t *req)
 {
-#if 0
-    X86CPU *cpu = X86_CPU(current_cpu);
-    CPUX86State *env = &cpu->env;
-    //CPUX86State *env = &current_cpu->env;
+    X86CPU *cpu;
+    CPUX86State *env = NULL;
 
-#if 0
-    if (!current_cpu->env) {
-        if (!vmmouse_env)
-            vmmouse_env = g_malloc(sizeof (CPUX86State));
-        //current_cpu = vmmouse_env;
-	env = vmouse_env;
-        env_hack = true;
+    if (!current_cpu) {
+        if (!vmmouse_env) {
+	    vmmouse_env = g_malloc(sizeof (CPUX86State));
+	}
+	env = vmmouse_env;
+	env_hack = true;
     }
-    else
-#endif
+    else {
+	cpu = X86_CPU(current_cpu);
+	env = &cpu->env;
+    }
     env->regs[R_EAX] = req->vmdata[0];
     env->regs[R_EBX] = req->vmdata[1];
     env->regs[R_ECX] = req->vmdata[2];
     env->regs[R_EDX] = req->vmdata[3];
     env->regs[R_ESI] = req->vmdata[4];
     env->regs[R_EDI] = req->vmdata[5];
-#endif
 }
 
 static void sync_regs_to_shared(ioreq_t *req)
 {
-#if 0
     X86CPU *cpu = X86_CPU(current_cpu);
     CPUX86State *env = &cpu->env;
 
+    if (env_hack) {
+	env = vmmouse_env;
+	env_hack = false;
+    }
     req->vmdata[0] = env->regs[R_EAX];
     req->vmdata[1] = env->regs[R_EBX];
     req->vmdata[2] = env->regs[R_ECX];
     req->vmdata[3] = env->regs[R_EDX];
     req->vmdata[4] = env->regs[R_ESI];
     req->vmdata[5] = env->regs[R_EDI];
-
-#if 0
-    if (env_hack) {
-	current_cpu = NULL;
-	env_hack = false;
-    }
-#endif
-#endif
 }
 #endif
 
@@ -1160,7 +1153,7 @@ static void xen_read_physmap(XenIOState *state)
     free(entries);
 }
 
-int xen_hvm_init(void)
+int xen_hvm_init(MemoryRegion **ram_memory)
 {
     int i, rc;
     unsigned long ioreq_pfn;
@@ -1235,7 +1228,7 @@ int xen_hvm_init(void)
 
     /* Init RAM management */
     xen_map_cache_init(xen_phys_offset_to_gaddr, state);
-    xen_ram_init(ram_size);
+    xen_ram_init(ram_size, ram_memory);
 
     qemu_add_vm_change_state_handler(xen_hvm_change_state_handler, state);
 

@@ -280,7 +280,6 @@ static void flatview_insert(FlatView *view, unsigned pos, FlatRange *range)
     memmove(view->ranges + pos + 1, view->ranges + pos,
             (view->nr - pos) * sizeof(FlatRange));
     view->ranges[pos] = *range;
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(range->mr);
     ++view->nr;
 }
@@ -1040,7 +1039,6 @@ void memory_region_init_alias(MemoryRegion *mr,
                               uint64_t size)
 {
     memory_region_init(mr, owner, name, size);
-    printf("%s: %s orig: %p\n", __FUNCTION__, name, orig); //XXXDMK
     memory_region_ref(orig);
     mr->destructor = memory_region_destructor_alias;
     mr->alias = orig;
@@ -1426,7 +1424,6 @@ static void memory_region_add_subregion_common(MemoryRegion *mr,
     memory_region_transaction_begin();
 
     assert(!subregion->parent);
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(subregion);
     subregion->parent = mr;
     subregion->addr = offset;
@@ -1518,7 +1515,6 @@ void memory_region_set_address(MemoryRegion *mr, hwaddr addr)
     }
 
     memory_region_transaction_begin();
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(mr);
     memory_region_del_subregion(parent, mr);
     if (may_overlap) {
@@ -1616,7 +1612,6 @@ MemoryRegionSection memory_region_find(MemoryRegion *mr,
     ret.size = range.size;
     ret.offset_within_address_space = int128_get64(range.start);
     ret.readonly = fr->readonly;
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(ret.mr);
 
     flatview_unref(view);

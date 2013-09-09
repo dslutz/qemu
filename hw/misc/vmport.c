@@ -43,6 +43,8 @@
 
 #define VM1004_SUSPEND_OFF (1 << 13)
 
+extern CPUX86State *vmmouse_env;
+
 typedef struct VMPortState
 {
     ISADevice parent_obj;
@@ -80,6 +82,9 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
     uint32_t eax;
 
     trace_vmport_ioport_read(opaque, addr, size);
+    if (!cs)
+	env = vmmouse_env;
+
     cpu_synchronize_state(cs);
 
     eax = env->regs[R_EAX];
@@ -108,9 +113,12 @@ static void vmport_ioport_write(void *opaque, hwaddr addr,
                                 uint64_t val, unsigned size)
 {
     X86CPU *cpu = X86_CPU(current_cpu);
+    CPUX86State *env = &cpu->env;
 
+    if (!cpu)
+	env = vmmouse_env;
     trace_vmport_ioport_write(opaque, addr, val, size);
-    cpu->env.regs[R_EAX] = vmport_ioport_read(opaque, addr, 4);
+    env->regs[R_EAX] = vmport_ioport_read(opaque, addr, 4);
 }
 
 static void vmport_ioport_1004_write(void *opaque, hwaddr addr,
@@ -136,16 +144,23 @@ static void vmport_ioport_1005_write(void *opaque, hwaddr addr,
 static uint32_t vmport_cmd_get_version(void *opaque, uint32_t addr)
 {
     X86CPU *cpu = X86_CPU(current_cpu);
+    CPUX86State *env = &cpu->env;
 
-    cpu->env.regs[R_EBX] = VMPORT_MAGIC;
+    if (!current_cpu)
+	env = vmmouse_env;
+    env->regs[R_EBX] = VMPORT_MAGIC;
     return 6;
 }
 
 static uint32_t vmport_cmd_ram_size(void *opaque, uint32_t addr)
 {
     X86CPU *cpu = X86_CPU(current_cpu);
+    CPUX86State *env = &cpu->env;
 
-    cpu->env.regs[R_EBX] = 0x1177;
+    if (!current_cpu)
+	env = vmmouse_env;
+
+    env->regs[R_EBX] = 0x1177;
     return ram_size;
 }
 
@@ -154,6 +169,9 @@ void vmmouse_get_data(uint32_t *data)
 {
     X86CPU *cpu = X86_CPU(current_cpu);
     CPUX86State *env = &cpu->env;
+
+    if (!current_cpu)
+	env = vmmouse_env;
 
     data[0] = env->regs[R_EAX]; data[1] = env->regs[R_EBX];
     data[2] = env->regs[R_ECX]; data[3] = env->regs[R_EDX];
@@ -164,6 +182,9 @@ void vmmouse_set_data(const uint32_t *data)
 {
     X86CPU *cpu = X86_CPU(current_cpu);
     CPUX86State *env = &cpu->env;
+
+    if (!current_cpu)
+	env = vmmouse_env;
 
     env->regs[R_EAX] = data[0]; env->regs[R_EBX] = data[1];
     env->regs[R_ECX] = data[2]; env->regs[R_EDX] = data[3];

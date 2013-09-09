@@ -779,7 +779,6 @@ static uint16_t phys_section_add(MemoryRegionSection *section)
                                     next_map.sections_nb_alloc);
     }
     next_map.sections[next_map.sections_nb] = *section;
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(section->mr);
     return next_map.sections_nb++;
 }
@@ -1819,7 +1818,6 @@ void address_space_destroy_dispatch(AddressSpace *as)
 static void memory_map_init(void)
 {
     system_memory = g_malloc(sizeof(*system_memory));
-    printf("%s: sys_mem: %p (@ %p)\n", __FUNCTION__, system_memory, &system_memory); //XXXDMK
     memory_region_init(system_memory, NULL, "system", INT64_MAX);
     address_space_init(&address_space_memory, system_memory, "memory");
 
@@ -2176,7 +2174,6 @@ void *address_space_map(AddressSpace *as,
         bounce.addr = addr;
         bounce.len = l;
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
         memory_region_ref(mr);
         bounce.mr = mr;
         if (!is_write) {
@@ -2205,7 +2202,6 @@ void *address_space_map(AddressSpace *as,
         }
     }
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(mr);
     *plen = done;
     return qemu_ram_ptr_length(raddr + base, plen);
