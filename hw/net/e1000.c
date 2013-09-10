@@ -371,6 +371,8 @@ static void e1000_reset(void *opaque)
     int i;
 
     //printf("e1000_reset\n");
+    if (d->co_running)
+	d->co_shutdown = true;
     qemu_del_timer(d->autoneg_timer);
     memset(d->phy_reg, 0, sizeof d->phy_reg);
     memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
@@ -382,11 +384,7 @@ static void e1000_reset(void *opaque)
     if (qemu_get_queue(d->nic)->link_down) {
         e1000_link_down(d);
     }
-    //XXX
-#if 0 //
-    if (d->co_running)
-	d->co_shutdown = true;
-#endif
+
     /* Some guests expect pre-initialized RAH/RAL (AddrValid flag + MACaddr) */
     d->mac_reg[RA] = 0;
     d->mac_reg[RA + 1] = E1000_RAH_AV;
@@ -581,7 +579,8 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 		/* Fast-path if already in coroutine context */
 		while ((now = e1000_pkt_wait_time_ns(s))) {
 		    //printf ("SP  qemu_in_coroutine  exceed_bps_limit throttled = true time=%ld\n", now);
-		    qemu_mod_timer(s->pkt_timer, s->slice_end);
+		    //qemu_mod_timer(s->pkt_timer, s->slice_end);
+		    usleep(now/1000);
 		}
 		//printf ("SP throttled = false qemu_send_packet\n");
 		e1000_next_slice_ns (s, size);
