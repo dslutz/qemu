@@ -34,6 +34,7 @@
 #include "sysemu/dma.h"
 
 #include "e1000_regs.h"
+#include <time.h>
 
 #define E1000_DEBUG
 
@@ -147,7 +148,8 @@ typedef struct E1000State_st {
     QEMUTimer    *pkt_timer;
     bool         io_limits_enabled;
     int          throttled;
-
+    bool         co_running;
+    bool         co_shutdown;
 } E1000State;
 
 //static void e1000_next_slice_ns (E1000State *s, int pkt_size);
@@ -173,7 +175,7 @@ e1000_pkt_timer(void *opaque)
 {
     E1000State *s = opaque;
 
-    printf ("pkt_timer    throttled=false\n");
+    //printf ("pkt_timer    throttled=false\n");
     s->throttled = false;
     qemu_co_queue_next(&s->throttled_pkts);
 }
@@ -185,7 +187,7 @@ static void e1000_io_limits_enable(E1000State *s)
     s->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, s);
     s->io_limits_enabled = true;
     s->throttled = false;
-    printf("limits_enable    throttled=false\n");
+    //printf("limits_enable    throttled=false\n");
 }
 
 
@@ -207,7 +209,7 @@ static void e1000_next_slice_ns (E1000State *s, int pkt_size)
 {
     uint64_t now;
     uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
-    printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
+    //printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
     /*
      * io_limits_enabled should be checked prior to calling this function.
@@ -368,6 +370,7 @@ static void e1000_reset(void *opaque)
     uint8_t *macaddr = d->conf.macaddr.a;
     int i;
 
+    //printf("e1000_reset\n");
     qemu_del_timer(d->autoneg_timer);
     memset(d->phy_reg, 0, sizeof d->phy_reg);
     memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
@@ -379,7 +382,11 @@ static void e1000_reset(void *opaque)
     if (qemu_get_queue(d->nic)->link_down) {
         e1000_link_down(d);
     }
-
+    //XXX
+#if 0 //
+    if (d->co_running)
+	d->co_shutdown = true;
+#endif
     /* Some guests expect pre-initialized RAH/RAL (AddrValid flag + MACaddr) */
     d->mac_reg[RA] = 0;
     d->mac_reg[RA + 1] = E1000_RAH_AV;
@@ -560,20 +567,6 @@ typedef struct SpCo {
 } SpCo;
 
 static void
-e1000_send_packet(E1000State *s, const uint8_t *buf, int size);
-
-
-static void coroutine_fn e1000_send_packet_co_entry (void *opaque)
-{
-    SpCo *spco = opaque;
-    E1000State *s = spco->s;
-
-    printf ("SPcoentry   e1000_send_packet\n");
-    e1000_send_packet (s, spco->buf, spco->size);
-}
-
-
-static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
@@ -582,40 +575,20 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
     } else {
         if (s->io_limits_enabled) {
             if (e1000_pkt_wait_time_ns(s)) {
-                Coroutine *co;
-                SpCo spco = {
-                    .s = s,
-                    .buf = buf,
-                    .size = size,
-                    .ret = 0,
-                };
-		printf ("sp  exceed_bps_limit\n");
-                if (qemu_in_coroutine()) {
-		    uint64_t now;
-		    printf ("SP  qemu_in_coroutine\n");
-                    /* Fast-path if already in coroutine context */
-                    //e1000_send_packet_co_entry(&spco);
-                    while ((now = e1000_pkt_wait_time_ns(s))) {
-			printf ("SP  qemu_in_coroutine  exceed_bps_limit throttled = true time=%ld\n", now);
-			s->throttled = true;
-                        qemu_mod_timer(s->pkt_timer, s->slice_end);
-                        qemu_co_queue_wait_insert_head(&s->throttled_pkts);
-                    }
-                } else {
-		    printf ("SP  not on coroutine\n");
-                    co = qemu_coroutine_create(e1000_send_packet_co_entry);
-                    qemu_coroutine_enter(co, &spco);
-                }
-		printf ("SP throttled = false qemu_send_packet\n");
-		s->throttled = false;
+		//printf ("sp  exceed_bps_limit\n");
+		uint64_t now;
+		//printf ("SP  qemu_in_coroutine\n");
+		/* Fast-path if already in coroutine context */
+		while ((now = e1000_pkt_wait_time_ns(s))) {
+		    //printf ("SP  qemu_in_coroutine  exceed_bps_limit throttled = true time=%ld\n", now);
+		    qemu_mod_timer(s->pkt_timer, s->slice_end);
+		}
+		//printf ("SP throttled = false qemu_send_packet\n");
 		e1000_next_slice_ns (s, size);
                 qemu_send_packet(nc, buf, size);
-                qemu_co_queue_next(&s->throttled_pkts);
-
             } else {
-		printf ("SP !exceed_bps_limit   throttled = false  qemu_send_packet\n");
+		//printf ("SP !exceed_bps_limit   throttled = false  qemu_send_packet\n");
 		e1000_next_slice_ns (s, size);
-		s->throttled = false;
                 qemu_send_packet(nc, buf, size);
             }
 
@@ -799,19 +772,17 @@ static uint64_t tx_desc_base(E1000State *s)
     return (bah << 32) + bal;
 }
 
+
 static void
-start_xmit(E1000State *s)
+start_xmit_co(E1000State *s)
 {
     dma_addr_t base;
     struct e1000_tx_desc desc;
     uint32_t tdh_start = s->mac_reg[TDH], cause = E1000_ICS_TXQE;
 
-    if (!(s->mac_reg[TCTL] & E1000_TCTL_EN)) {
-        DBGOUT(TX, "tx disabled\n");
-        return;
-    }
+    //printf ("coroutine entered\n");
 
-    while ((s->mac_reg[TDH] != s->mac_reg[TDT]) && !s->throttled) {
+    while ((s->mac_reg[TDH] != s->mac_reg[TDT]) && !s->co_shutdown) {
         base = tx_desc_base(s) +
                sizeof(struct e1000_tx_desc) * s->mac_reg[TDH];
         pci_dma_read(&s->dev, base, &desc, sizeof(desc));
@@ -838,6 +809,40 @@ start_xmit(E1000State *s)
     }
 
     set_ics(s, 0, cause);
+}
+
+static void coroutine_fn e1000_xmit_co_entry (void *opaque)
+{
+    E1000State *s = opaque;
+
+    //    while (!s->co_shutdown) {
+	start_xmit_co(s);
+	
+	//    }
+    s->co_running = false;
+}
+
+static void
+start_xmit(E1000State *s)
+{
+    //printf("start_xmit\n");
+    if (!(s->mac_reg[TCTL] & E1000_TCTL_EN)) {
+        DBGOUT(TX, "tx disabled\n");
+        return;
+    }
+
+    if (s->io_limits_enabled) {
+	if (!s->co_running) {
+	    Coroutine *co;
+	    s->co_running = true;
+	    //printf("e1000 starting corouting\n");
+	    co = qemu_coroutine_create(e1000_xmit_co_entry);
+	    qemu_coroutine_enter(co, s);
+	}
+    }
+    else
+	start_xmit_co(s);
+
 }
 
 static int
@@ -1559,6 +1564,8 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     /* XXX If rate limits supplied (Dave W has put them on the QEMU command line)
        init the rate limit code. */
     d->io_limits_enabled = false;
+    d->co_running = false;
+    d->co_shutdown = false;
 
     if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
         ((8 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
@@ -1568,7 +1575,6 @@ static int pci_e1000_init(PCIDevice *pci_dev)
         * Check the limits on each send packet in case they change dynamically
         */
        d->slice_end = 0;
-
        e1000_io_limits_enable(d);
 
     } else
