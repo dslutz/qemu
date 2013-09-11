@@ -148,6 +148,9 @@ typedef struct E1000State_st {
     bool         co_running;
     bool         co_shutdown;
     GThread      *co_thread;
+    GCond        co_cond;
+    GMutex       co_mutex;
+    bool         co_nudge;
 } E1000State;
 
 #define	defreg(x)	x = (E1000_##x>>2)
@@ -167,6 +170,8 @@ enum {
 
 static void e1000_io_limits_enable(E1000State *s)
 {
+    g_cond_init(&s->co_cond);
+    g_mutex_init(&s->co_mutex);
     s->io_limits_enabled = true;
 }
 
@@ -353,10 +358,7 @@ static void e1000_reset(void *opaque)
     //printf("e1000_reset\n");
     if (d->co_running) {
 	d->co_shutdown = true;
-	if (d->co_thread != NULL) {
-	    g_thread_join(d->co_thread);
-	    d->co_thread = NULL;
-	}
+	g_cond_signal(&d->co_cond);
     }
     qemu_del_timer(d->autoneg_timer);
     memset(d->phy_reg, 0, sizeof d->phy_reg);
@@ -804,9 +806,14 @@ static gpointer e1000_xmit_co_entry (gpointer opaque)
     E1000State *s = (E1000State *)opaque;
 
     printf("xmit_co_entry: s=%p\n", opaque);
-    while(1) {
+    while(!s->co_shutdown) {
+	g_mutex_lock(&s->co_mutex);
 	start_xmit_co(s);
-	usleep(100);  //XXX replace with wait/sleep so we can poke it
+	if (!s->co_nudge) {
+	    g_cond_wait(&s->co_cond, &s->co_mutex);
+	}
+	s->co_nudge = false;
+	g_mutex_unlock(&s->co_mutex);
     }
     s->co_running = false;
     return NULL;
@@ -821,6 +828,7 @@ start_xmit(E1000State *s)
     }
 
     if (s->io_limits_enabled) {
+	s->co_nudge = true;
         if (!s->co_running) {
             s->co_running = true;
             printf("e1000 starting coroutine: s=%p\n", s);
@@ -828,6 +836,8 @@ start_xmit(E1000State *s)
                                 (gpointer) s, 0, TRUE, TRUE,
                                 G_THREAD_PRIORITY_NORMAL, NULL);
         }
+	else
+	    g_cond_signal(&s->co_cond);
     }
     else
         start_xmit_co(s);
