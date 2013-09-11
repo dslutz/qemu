@@ -32,9 +32,9 @@
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
+#include <time.h>
 
 #include "e1000_regs.h"
-#include <time.h>
 
 #define E1000_DEBUG
 
@@ -144,16 +144,11 @@ typedef struct E1000State_st {
 #define IO_SLICE_TIME     100000000
     uint64_t     bps_limit;
     uint64_t     slice_end;
-    CoQueue      throttled_pkts;
-    QEMUTimer    *pkt_timer;
     bool         io_limits_enabled;
-    int          throttled;
     bool         co_running;
     bool         co_shutdown;
+    GThread      *co_thread;
 } E1000State;
-
-//static void e1000_next_slice_ns (E1000State *s, int pkt_size);
-//static uint64_t e1000_pkt_wait_time_ns(E1000State *s);
 
 #define	defreg(x)	x = (E1000_##x>>2)
 enum {
@@ -170,24 +165,9 @@ enum {
     defreg(VET),
 };
 
-static void
-e1000_pkt_timer(void *opaque)
-{
-    E1000State *s = opaque;
-
-    //printf ("pkt_timer    throttled=false\n");
-    s->throttled = false;
-    qemu_co_queue_next(&s->throttled_pkts);
-}
-
-
 static void e1000_io_limits_enable(E1000State *s)
 {
-    qemu_co_queue_init(&s->throttled_pkts);
-    s->pkt_timer = qemu_new_timer_ns(vm_clock, e1000_pkt_timer, s);
     s->io_limits_enabled = true;
-    s->throttled = false;
-    //printf("limits_enable    throttled=false\n");
 }
 
 
@@ -371,8 +351,13 @@ static void e1000_reset(void *opaque)
     int i;
 
     //printf("e1000_reset\n");
-    if (d->co_running)
+    if (d->co_running) {
 	d->co_shutdown = true;
+	if (d->co_thread != NULL) {
+	    g_thread_join(d->co_thread);
+	    d->co_thread = NULL;
+	}
+    }
     qemu_del_timer(d->autoneg_timer);
     memset(d->phy_reg, 0, sizeof d->phy_reg);
     memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
@@ -564,23 +549,27 @@ typedef struct SpCo {
     int ret;
 } SpCo;
 
+#define FUDGE 2000 /* nanosleep + overhead */
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
+
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
             if (e1000_pkt_wait_time_ns(s)) {
+		struct timespec req, rem;
 		//printf ("sp  exceed_bps_limit\n");
-		uint64_t now;
+		uint64_t delay;
 		//printf ("SP  qemu_in_coroutine\n");
 		/* Fast-path if already in coroutine context */
-		while ((now = e1000_pkt_wait_time_ns(s))) {
-		    //printf ("SP  qemu_in_coroutine  exceed_bps_limit throttled = true time=%ld\n", now);
-		    //qemu_mod_timer(s->pkt_timer, s->slice_end);
-		    usleep(now/1000);
+		if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
+		    //printf ("SP  qemu_in_coroutine  exceed_bps_limit time=%ld\n", delay);
+		    req.tv_sec = 0;
+		    req.tv_nsec = delay - FUDGE;
+		    nanosleep(&req, &rem);
 		}
 		//printf ("SP throttled = false qemu_send_packet\n");
 		e1000_next_slice_ns (s, size);
@@ -810,37 +799,38 @@ start_xmit_co(E1000State *s)
     set_ics(s, 0, cause);
 }
 
-static void coroutine_fn e1000_xmit_co_entry (void *opaque)
+static gpointer e1000_xmit_co_entry (gpointer opaque)
 {
-    E1000State *s = opaque;
+    E1000State *s = (E1000State *)opaque;
 
-    //    while (!s->co_shutdown) {
+    printf("xmit_co_entry: s=%p\n", opaque);
+    while(1) {
 	start_xmit_co(s);
-	
-	//    }
+	usleep(100);  //XXX replace with wait/sleep so we can poke it
+    }
     s->co_running = false;
+    return NULL;
 }
 
 static void
 start_xmit(E1000State *s)
 {
-    //printf("start_xmit\n");
     if (!(s->mac_reg[TCTL] & E1000_TCTL_EN)) {
         DBGOUT(TX, "tx disabled\n");
         return;
     }
 
     if (s->io_limits_enabled) {
-	if (!s->co_running) {
-	    Coroutine *co;
-	    s->co_running = true;
-	    //printf("e1000 starting corouting\n");
-	    co = qemu_coroutine_create(e1000_xmit_co_entry);
-	    qemu_coroutine_enter(co, s);
-	}
+        if (!s->co_running) {
+            s->co_running = true;
+            printf("e1000 starting coroutine: s=%p\n", s);
+            s->co_thread = g_thread_create_full(e1000_xmit_co_entry,
+                                (gpointer) s, 0, TRUE, TRUE,
+                                G_THREAD_PRIORITY_NORMAL, NULL);
+        }
     }
     else
-	start_xmit_co(s);
+        start_xmit_co(s);
 
 }
 
@@ -1448,6 +1438,10 @@ pci_e1000_uninit(PCIDevice *dev)
 {
     E1000State *d = DO_UPCAST(E1000State, dev, dev);
 
+    if (d->co_thread != NULL) {
+        g_thread_join(d->co_thread);
+        d->co_thread = NULL;
+    }
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
     memory_region_destroy(&d->mmio);
@@ -1565,6 +1559,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->io_limits_enabled = false;
     d->co_running = false;
     d->co_shutdown = false;
+    d->co_thread = NULL;
 
     if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
         ((8 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
