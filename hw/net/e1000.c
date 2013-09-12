@@ -43,10 +43,11 @@ enum {
     DEBUG_GENERAL,	DEBUG_IO,	DEBUG_MMIO,	DEBUG_INTERRUPT,
     DEBUG_RX,		DEBUG_TX,	DEBUG_MDIC,	DEBUG_EEPROM,
     DEBUG_UNKNOWN,	DEBUG_TXSUM,	DEBUG_TXERR,	DEBUG_RXERR,
-    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,
+    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,	DEBUG_RATE,
 };
 #define DBGBIT(x)	(1<<DEBUG_##x)
 static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
+//XXX static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL) | DBGBIT(RATE);
 
 #define	DBGOUT(what, fmt, ...) do { \
     if (debugflags & DBGBIT(what)) \
@@ -544,14 +545,7 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
-typedef struct SpCo {
-    E1000State *s;
-    const uint8_t *buf;
-    int size;
-    int ret;
-} SpCo;
-
-#define FUDGE 2000 /* nanosleep + overhead */
+#define FUDGE 8000 /* nanosleep + overhead */
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
@@ -561,30 +555,17 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
-            if (e1000_pkt_wait_time_ns(s)) {
-		struct timespec req, rem;
-		//printf ("sp  exceed_bps_limit\n");
-		uint64_t delay;
-		//printf ("SP  qemu_in_coroutine\n");
-		/* Fast-path if already in coroutine context */
-		if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
-		    //printf ("SP  qemu_in_coroutine  exceed_bps_limit time=%ld\n", delay);
-		    req.tv_sec = 0;
-		    req.tv_nsec = delay - FUDGE;
-		    nanosleep(&req, &rem);
-		}
-		//printf ("SP throttled = false qemu_send_packet\n");
-		e1000_next_slice_ns (s, size);
-                qemu_send_packet(nc, buf, size);
-            } else {
-		//printf ("SP !exceed_bps_limit   throttled = false  qemu_send_packet\n");
-		e1000_next_slice_ns (s, size);
-                qemu_send_packet(nc, buf, size);
+            struct timespec req, rem;
+            uint64_t delay;
+            if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
+                DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
+                req.tv_sec = 0;
+                req.tv_nsec = delay - FUDGE;
+                nanosleep(&req, &rem);
             }
-
-        } else {
-	   qemu_send_packet(nc, buf, size);
-        }
+            e1000_next_slice_ns (s, size);
+	}
+	qemu_send_packet(nc, buf, size);
     }
 }
 
@@ -768,9 +749,8 @@ start_xmit_co(E1000State *s)
 {
     dma_addr_t base;
     struct e1000_tx_desc desc;
-    uint32_t tdh_start = s->mac_reg[TDH], cause = E1000_ICS_TXQE;
-
-    //printf ("coroutine entered\n");
+    // uint32_t tdh_start = s->mac_reg[TDH],
+    uint32_t cause = E1000_ICS_TXQE;
 
     while ((s->mac_reg[TDH] != s->mac_reg[TDT]) && !s->co_shutdown) {
         base = tx_desc_base(s) +
@@ -786,16 +766,18 @@ start_xmit_co(E1000State *s)
 
         if (++s->mac_reg[TDH] * sizeof(desc) >= s->mac_reg[TDLEN])
             s->mac_reg[TDH] = 0;
-        /*
+ #if 0
+       /*
          * the following could happen only if guest sw assigns
          * bogus values to TDT/TDLEN.
          * there's nothing too intelligent we could do about this.
          */
-        if (s->mac_reg[TDH] == tdh_start) {
+        if (s->mac_reg[TDH] == tdh_start  && !s->co_shutdown) {
             DBGOUT(TXERR, "TDH wraparound @%x, TDT %x, TDLEN %x\n",
                    tdh_start, s->mac_reg[TDT], s->mac_reg[TDLEN]);
-            break;
+	    // break;
         }
+#endif
     }
 
     set_ics(s, 0, cause);
@@ -804,13 +786,19 @@ start_xmit_co(E1000State *s)
 static gpointer e1000_xmit_co_entry (gpointer opaque)
 {
     E1000State *s = (E1000State *)opaque;
+    gint64 end_time;
 
-    printf("xmit_co_entry: s=%p\n", opaque);
+    DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
     while(!s->co_shutdown) {
 	g_mutex_lock(&s->co_mutex);
 	start_xmit_co(s);
 	if (!s->co_nudge) {
+#if 1
+	    end_time = g_get_monotonic_time() + 10 * G_TIME_SPAN_MILLISECOND;
+	    g_cond_wait_until(&s->co_cond, &s->co_mutex, end_time);
+#else
 	    g_cond_wait(&s->co_cond, &s->co_mutex);
+#endif
 	}
 	s->co_nudge = false;
 	g_mutex_unlock(&s->co_mutex);
@@ -831,7 +819,7 @@ start_xmit(E1000State *s)
 	s->co_nudge = true;
         if (!s->co_running) {
             s->co_running = true;
-            printf("e1000 starting coroutine: s=%p\n", s);
+            DBGOUT(RATE, "e1000 starting coroutine: s=%p\n", s);
             s->co_thread = g_thread_create_full(e1000_xmit_co_entry,
                                 (gpointer) s, 0, TRUE, TRUE,
                                 G_THREAD_PRIORITY_NORMAL, NULL);
