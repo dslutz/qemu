@@ -1,3 +1,4 @@
+
 # Makefile for QEMU.
 
 # Always point to the root of the build tree (needs GNU make).
