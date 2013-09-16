@@ -151,6 +151,7 @@ typedef struct E1000State_st {
     GThread      *co_thread;
     GCond        co_cond;
     GMutex       co_mutex;
+    GMutex       int_mutex;
     bool         co_nudge;
 } E1000State;
 
@@ -173,10 +174,9 @@ static void e1000_io_limits_enable(E1000State *s)
 {
     g_cond_init(&s->co_cond);
     g_mutex_init(&s->co_mutex);
+    g_mutex_init(&s->int_mutex);
     s->io_limits_enabled = true;
 }
-
-
 
 /* e1000 I/O throttling */
 static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
@@ -304,6 +304,8 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
         /* Only for 8257x */
         val |= E1000_ICR_INT_ASSERTED;
     }
+    if (s->io_limits_enabled)
+        g_mutex_lock(&s->int_mutex);
     s->mac_reg[ICR] = val;
 
     /*
@@ -317,6 +319,8 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
     s->mac_reg[ICS] = val;
 
     qemu_set_irq(s->dev.irq[0], (s->mac_reg[IMS] & s->mac_reg[ICR]) != 0);
+    if (s->io_limits_enabled)
+        g_mutex_unlock(&s->int_mutex);
 }
 
 static void
@@ -545,13 +549,14 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
-#define FUDGE 8000 /* nanosleep + overhead */
+#define FUDGE 50000 /* nanosleep + overhead */
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
+	printf("e1000: in loopback\n");
         nc->info->receive(nc, buf, size);
     } else {
         if (s->io_limits_enabled) {
@@ -791,7 +796,9 @@ static gpointer e1000_xmit_co_entry (gpointer opaque)
     DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
     while(!s->co_shutdown) {
 	g_mutex_lock(&s->co_mutex);
-	start_xmit_co(s);
+	if (s->mac_reg[TDH] != s->mac_reg[TDT]) {
+	    start_xmit_co(s);
+	}
 	if (!s->co_nudge) {
 #if 1
 	    end_time = g_get_monotonic_time() + 10 * G_TIME_SPAN_MILLISECOND;
