@@ -88,6 +88,7 @@ enum {
 };
 
 #define NANOSECONDS_PER_SECOND  1000000000
+#define USECS_PER_SECOND 1000000
 
 typedef struct E1000State_st {
     PCIDevice dev;
@@ -142,16 +143,17 @@ typedef struct E1000State_st {
 #define E1000_FLAG_AUTONEG (1 << E1000_FLAG_AUTONEG_BIT)
     uint32_t compat_flags;
 
-#define IO_SLICE_TIME     100000000
+
     uint64_t     bps_limit;
     uint64_t     slice_end;
-    bool         io_limits_enabled;
-    bool         co_running;
-    bool         co_shutdown;
     GThread      *co_thread;
     GCond        co_cond;
     GMutex       co_mutex;
     GMutex       int_mutex;
+    bool         io_limits_enabled;
+    bool         co_running;
+    bool         co_shutdown;
+    bool         co_mutex_inited;
     bool         co_nudge;
 } E1000State;
 
@@ -170,15 +172,63 @@ enum {
     defreg(VET),
 };
 
-static void e1000_io_limits_enable(E1000State *s)
+static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32_t int_usec)
 {
-    g_cond_init(&s->co_cond);
-    g_mutex_init(&s->co_mutex);
-    g_mutex_init(&s->int_mutex);
-    s->io_limits_enabled = true;
+    s->io_limits_enabled = false;
+
+    if (bytes_per_int == 0 || int_usec == 0) {
+	s->co_shutdown = true;
+	printf("disabling bps limit\n");
+	/*
+	 * XXX  Note: Resources should probably be freed here.
+	 *
+	 * From the threads web page https://developer.gnome.org/glib/2.36/glib-Threads.html:
+	 * If a GCond is allocated in static storage then it can be used without
+	 * initialisation. Otherwise, you should call g_cond_init() on it and g_cond_clear()
+	 * when done.
+	 * 
+	 * To undo the effect of g_cond_init() when a GCond is no longer needed, use g_cond_clear().
+	 * Calling g_cond_init() on an already-initialised GCond leads to undefined behaviour.
+	 *
+	 * Don't just call g_cond_clear here, setting co_shutdown does not guarentee it's
+	 * not currently in use. Don't pull the rug out from under a potential user.
+	 *
+	 * Same issue for g_mutex:
+	 * To undo the effect of g_mutex_init() when a mutex is no longer needed,
+	 * use g_mutex_clear().
+	 *
+	 * Calling g_mutex_init() on an already initialized GMutex leads to undefined behaviour.
+	 */
+
+	return;
+    }
+
+    // check limits for sanity
+
+    if ((8 * bytes_per_int * USECS_PER_SECOND) / int_usec > 0) {
+
+	s->bps_limit = 8 * bytes_per_int * USECS_PER_SECOND / int_usec;
+	printf ("setting bps_limit to %lu (%lu, %u)\n", 
+		s->bps_limit, bytes_per_int, int_usec);
+	if (!s->co_mutex_inited) {
+	    /* Only initialize these once. Don't reset as they may
+	     * still be in use.
+	     */
+	    s->co_mutex_inited = true;
+	    g_cond_init(&s->co_cond);
+	    g_mutex_init(&s->co_mutex);
+	    g_mutex_init(&s->int_mutex);
+	}
+	s->slice_end = 0;
+	s->io_limits_enabled = true;
+	s->co_shutdown = false;
+    } else {
+	printf("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
+               bytes_per_int, int_usec);
+    }
 }
 
-/* e1000 I/O throttling */
+
 static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
 {
     uint64_t now;
@@ -197,19 +247,8 @@ static void e1000_next_slice_ns (E1000State *s, int pkt_size)
     uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
     //printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
-    /*
-     * io_limits_enabled should be checked prior to calling this function.
-     */
-
-    /*
-     * The real e1000 is a GigE card so I'm going to assume at this
-     * point that it's running at 1ns / byte. There is packet overhead to
-     * be accounted for and a NECESSARY refinement will be to actually time
-     * the out going packets and base this off actual data.
-     */
-
     now = qemu_get_clock_ns(vm_clock);
-    s->slice_end   = now + pkt_time;        /* Add an overhead factor here? */
+    s->slice_end   = now + pkt_time;
 }
 
 
@@ -220,12 +259,14 @@ e1000_link_down(E1000State *s)
     s->phy_reg[PHY_STATUS] &= ~MII_SR_LINK_STATUS;
 }
 
+
 static void
 e1000_link_up(E1000State *s)
 {
     s->mac_reg[STATUS] |= E1000_STATUS_LU;
     s->phy_reg[PHY_STATUS] |= MII_SR_LINK_STATUS;
 }
+
 
 static void
 set_phy_ctrl(E1000State *s, int index, uint16_t val)
@@ -386,12 +427,14 @@ static void e1000_reset(void *opaque)
     }
 }
 
+
 static void
 set_ctrl(E1000State *s, int index, uint32_t val)
 {
     /* RST is self clearing */
     s->mac_reg[CTRL] = val & ~E1000_CTRL_RST;
 }
+
 
 static void
 set_rx_control(E1000State *s, int index, uint32_t val)
@@ -403,6 +446,7 @@ set_rx_control(E1000State *s, int index, uint32_t val)
            s->mac_reg[RCTL]);
     qemu_flush_queued_packets(qemu_get_queue(s->nic));
 }
+
 
 static void
 set_mdic(E1000State *s, int index, uint32_t val)
@@ -438,6 +482,7 @@ set_mdic(E1000State *s, int index, uint32_t val)
     }
 }
 
+
 static uint32_t
 get_eecd(E1000State *s, int index)
 {
@@ -451,6 +496,7 @@ get_eecd(E1000State *s, int index)
         ret |= E1000_EECD_DO;
     return ret;
 }
+
 
 static void
 set_eecd(E1000State *s, int index, uint32_t val)
@@ -486,6 +532,7 @@ set_eecd(E1000State *s, int index, uint32_t val)
            s->eecd_state.reading);
 }
 
+
 static uint32_t
 flash_eerd_read(E1000State *s, int x)
 {
@@ -515,17 +562,20 @@ putsum(uint8_t *data, uint32_t n, uint32_t sloc, uint32_t css, uint32_t cse)
     }
 }
 
+
 static inline int
 vlan_enabled(E1000State *s)
 {
     return ((s->mac_reg[CTRL] & E1000_CTRL_VME) != 0);
 }
 
+
 static inline int
 vlan_rx_filter_enabled(E1000State *s)
 {
     return ((s->mac_reg[RCTL] & E1000_RCTL_VFE) != 0);
 }
+
 
 static inline int
 is_vlan_packet(E1000State *s, const uint8_t *buf)
@@ -534,11 +584,13 @@ is_vlan_packet(E1000State *s, const uint8_t *buf)
                 le16_to_cpup((uint16_t *)(s->mac_reg + VET)));
 }
 
+
 static inline int
 is_vlan_txd(uint32_t txd_lower)
 {
     return ((txd_lower & E1000_TXD_CMD_VLE) != 0);
 }
+
 
 /* FCS aka Ethernet CRC-32. We don't get it from backends and can't
  * fill it in, just pad descriptor length by 4 bytes unless guest
@@ -549,7 +601,8 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
-#define FUDGE 50000 /* nanosleep + overhead */
+#define FUDGE 125000 /* nanosleep + overhead */
+
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
@@ -558,21 +611,27 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
 	printf("e1000: in loopback\n");
         nc->info->receive(nc, buf, size);
-    } else {
-        if (s->io_limits_enabled) {
-            struct timespec req, rem;
-            uint64_t delay;
-            if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
-                DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
-                req.tv_sec = 0;
-                req.tv_nsec = delay - FUDGE;
-                nanosleep(&req, &rem);
-            }
-            e1000_next_slice_ns (s, size);
-	}
-	qemu_send_packet(nc, buf, size);
+	return;
     }
+
+    if (!s->io_limits_enabled) {
+	qemu_send_packet(nc, buf, size);
+	return;
+    }
+
+    struct timespec req, rem;
+    uint64_t delay;
+    if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
+	DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
+	req.tv_sec = 0;
+	req.tv_nsec = delay - FUDGE;
+	nanosleep(&req, &rem);
+    }
+
+    e1000_next_slice_ns (s, size);
+    qemu_send_packet(nc, buf, size);
 }
+
 
 static void
 xmit_seg(E1000State *s)
@@ -632,6 +691,7 @@ xmit_seg(E1000State *s)
     if ((s->mac_reg[TOTL] += s->tx.size) < n)
         s->mac_reg[TOTH]++;
 }
+
 
 static void
 process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
@@ -725,6 +785,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
     tp->cptse = 0;
 }
 
+
 static uint32_t
 txdesc_writeback(E1000State *s, dma_addr_t base, struct e1000_tx_desc *dp)
 {
@@ -739,6 +800,7 @@ txdesc_writeback(E1000State *s, dma_addr_t base, struct e1000_tx_desc *dp)
                   &dp->upper, sizeof(dp->upper));
     return E1000_ICR_TXDW;
 }
+
 
 static uint64_t tx_desc_base(E1000State *s)
 {
@@ -788,6 +850,7 @@ start_xmit_co(E1000State *s)
     set_ics(s, 0, cause);
 }
 
+
 static gpointer e1000_xmit_co_entry (gpointer opaque)
 {
     E1000State *s = (E1000State *)opaque;
@@ -801,7 +864,7 @@ static gpointer e1000_xmit_co_entry (gpointer opaque)
 	}
 	if (!s->co_nudge) {
 #if 1
-	    end_time = g_get_monotonic_time() + 10 * G_TIME_SPAN_MILLISECOND;
+	    end_time = g_get_monotonic_time() + 100 * G_TIME_SPAN_MILLISECOND;
 	    g_cond_wait_until(&s->co_cond, &s->co_mutex, end_time);
 #else
 	    g_cond_wait(&s->co_cond, &s->co_mutex);
@@ -814,12 +877,20 @@ static gpointer e1000_xmit_co_entry (gpointer opaque)
     return NULL;
 }
 
+
 static void
 start_xmit(E1000State *s)
 {
     if (!(s->mac_reg[TCTL] & E1000_TCTL_EN)) {
         DBGOUT(TX, "tx disabled\n");
         return;
+    }
+
+    if (s->dev.qdev.bytes_per_int || s->dev.qdev.int_usec) {
+	e1000_io_limits_enable(s, s->dev.qdev.bytes_per_int, 
+			       s->dev.qdev.int_usec);
+	s->dev.qdev.bytes_per_int = 0;
+	s->dev.qdev.int_usec = 0;
     }
 
     if (s->io_limits_enabled) {
@@ -838,6 +909,7 @@ start_xmit(E1000State *s)
         start_xmit_co(s);
 
 }
+
 
 static int
 receive_filter(E1000State *s, const uint8_t *buf, int size)
@@ -876,6 +948,7 @@ receive_filter(E1000State *s, const uint8_t *buf, int size)
             return 1;
         }
     }
+
     DBGOUT(RXFILTER, "unicast mismatch: %02x:%02x:%02x:%02x:%02x:%02x\n",
            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
 
@@ -892,6 +965,7 @@ receive_filter(E1000State *s, const uint8_t *buf, int size)
     return 0;
 }
 
+
 static void
 e1000_set_link_status(NetClientState *nc)
 {
@@ -907,6 +981,7 @@ e1000_set_link_status(NetClientState *nc)
     if (s->mac_reg[STATUS] != old_status)
         set_ics(s, 0, E1000_ICR_LSC);
 }
+
 
 static bool e1000_has_rxbufs(E1000State *s, size_t total_size)
 {
@@ -926,6 +1001,7 @@ static bool e1000_has_rxbufs(E1000State *s, size_t total_size)
     return total_size <= bufs * s->rxbuf_size;
 }
 
+
 static int
 e1000_can_receive(NetClientState *nc)
 {
@@ -935,6 +1011,7 @@ e1000_can_receive(NetClientState *nc)
         (s->mac_reg[RCTL] & E1000_RCTL_EN) && e1000_has_rxbufs(s, 1);
 }
 
+
 static uint64_t rx_desc_base(E1000State *s)
 {
     uint64_t bah = s->mac_reg[RDBAH];
@@ -942,6 +1019,7 @@ static uint64_t rx_desc_base(E1000State *s)
 
     return (bah << 32) + bal;
 }
+
 
 static ssize_t
 e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
@@ -1066,11 +1144,13 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     return size;
 }
 
+
 static uint32_t
 mac_readreg(E1000State *s, int index)
 {
     return s->mac_reg[index];
 }
+
 
 static uint32_t
 mac_icr_read(E1000State *s, int index)
@@ -1082,6 +1162,7 @@ mac_icr_read(E1000State *s, int index)
     return ret;
 }
 
+
 static uint32_t
 mac_read_clr4(E1000State *s, int index)
 {
@@ -1090,6 +1171,7 @@ mac_read_clr4(E1000State *s, int index)
     s->mac_reg[index] = 0;
     return ret;
 }
+
 
 static uint32_t
 mac_read_clr8(E1000State *s, int index)
@@ -1101,11 +1183,13 @@ mac_read_clr8(E1000State *s, int index)
     return ret;
 }
 
+
 static void
 mac_writereg(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[index] = val;
 }
+
 
 static void
 set_rdt(E1000State *s, int index, uint32_t val)
@@ -1116,17 +1200,20 @@ set_rdt(E1000State *s, int index, uint32_t val)
     }
 }
 
+
 static void
 set_16bit(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[index] = val & 0xffff;
 }
 
+
 static void
 set_dlen(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[index] = val & 0xfff80;
 }
+
 
 static void
 set_tctl(E1000State *s, int index, uint32_t val)
@@ -1136,12 +1223,14 @@ set_tctl(E1000State *s, int index, uint32_t val)
     start_xmit(s);
 }
 
+
 static void
 set_icr(E1000State *s, int index, uint32_t val)
 {
     DBGOUT(INTERRUPT, "set_icr %x\n", val);
     set_interrupt_cause(s, 0, s->mac_reg[ICR] & ~val);
 }
+
 
 static void
 set_imc(E1000State *s, int index, uint32_t val)
@@ -1150,12 +1239,14 @@ set_imc(E1000State *s, int index, uint32_t val)
     set_ics(s, 0, 0);
 }
 
+
 static void
 set_ims(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[IMS] |= val;
     set_ics(s, 0, 0);
 }
+
 
 #define getreg(x)	[x] = mac_readreg
 static uint32_t (*macreg_readops[])(E1000State *, int) = {
@@ -1177,6 +1268,7 @@ static uint32_t (*macreg_readops[])(E1000State *, int) = {
 };
 enum { NREADOPS = ARRAY_SIZE(macreg_readops) };
 
+
 #define putreg(x)	[x] = mac_writereg
 static void (*macreg_writeops[])(E1000State *, int, uint32_t) = {
     putreg(PBA),	putreg(EERD),	putreg(SWSM),	putreg(WUFC),
@@ -1191,6 +1283,7 @@ static void (*macreg_writeops[])(E1000State *, int, uint32_t) = {
     [MTA ... MTA+127] = &mac_writereg,
     [VFTA ... VFTA+127] = &mac_writereg,
 };
+
 
 enum { NWRITEOPS = ARRAY_SIZE(macreg_writeops) };
 
@@ -1211,6 +1304,7 @@ e1000_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     }
 }
 
+
 static uint64_t
 e1000_mmio_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -1225,6 +1319,7 @@ e1000_mmio_read(void *opaque, hwaddr addr, unsigned size)
     return 0;
 }
 
+
 static const MemoryRegionOps e1000_mmio_ops = {
     .read = e1000_mmio_read,
     .write = e1000_mmio_write,
@@ -1235,6 +1330,7 @@ static const MemoryRegionOps e1000_mmio_ops = {
     },
 };
 
+
 static uint64_t e1000_io_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
@@ -1244,6 +1340,7 @@ static uint64_t e1000_io_read(void *opaque, hwaddr addr,
     return 0;
 }
 
+
 static void e1000_io_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size)
 {
@@ -1252,16 +1349,19 @@ static void e1000_io_write(void *opaque, hwaddr addr,
     (void)s;
 }
 
+
 static const MemoryRegionOps e1000_io_ops = {
     .read = e1000_io_read,
     .write = e1000_io_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+
 static bool is_version_1(void *opaque, int version_id)
 {
     return version_id == 1;
 }
+
 
 static void e1000_pre_save(void *opaque)
 {
@@ -1283,6 +1383,7 @@ static void e1000_pre_save(void *opaque)
          s->phy_reg[PHY_STATUS] |= MII_SR_AUTONEG_COMPLETE;
     }
 }
+
 
 static int e1000_post_load(void *opaque, int version_id)
 {
@@ -1307,6 +1408,7 @@ static int e1000_post_load(void *opaque, int version_id)
 
     return 0;
 }
+
 
 static const VMStateDescription vmstate_e1000 = {
     .name = "e1000",
@@ -1388,6 +1490,7 @@ static const VMStateDescription vmstate_e1000 = {
     }
 };
 
+
 static const uint16_t e1000_eeprom_template[64] = {
     0x0000, 0x0000, 0x0000, 0x0000,      0xffff, 0x0000,      0x0000, 0x0000,
     0x3000, 0x1000, 0x6403, E1000_DEVID, 0x8086, E1000_DEVID, 0x8086, 0x3040,
@@ -1410,6 +1513,8 @@ static const uint16_t e1000_vmw_eeprom_template[64] = {
     0xffff, 0xffff, 0xffff, 0xffff,      0xffff, 0xffff,      0xffff, 0x0000,
 };
 
+
+
 /* PCI interface */
 
 static void
@@ -1430,6 +1535,7 @@ e1000_mmio_setup(E1000State *d)
     memory_region_init_io(&d->io, &e1000_io_ops, d, "e1000-io", IOPORT_SIZE);
 }
 
+
 static void
 e1000_cleanup(NetClientState *nc)
 {
@@ -1437,6 +1543,7 @@ e1000_cleanup(NetClientState *nc)
 
     s->nic = NULL;
 }
+
 
 static void
 pci_e1000_uninit(PCIDevice *dev)
@@ -1455,6 +1562,7 @@ pci_e1000_uninit(PCIDevice *dev)
     /* XXX  Tear down the rate limit stuff */
 }
 
+
 static NetClientInfo net_e1000_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
@@ -1463,6 +1571,7 @@ static NetClientInfo net_e1000_info = {
     .cleanup = e1000_cleanup,
     .link_status_changed = e1000_set_link_status,
 };
+
 
 static int pci_e1000_init(PCIDevice *pci_dev)
 {
@@ -1559,23 +1668,26 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     d->autoneg_timer = qemu_new_timer_ms(vm_clock, e1000_autoneg_timer, d);
 
-    /* XXX If rate limits supplied (Dave W has put them on the QEMU command line)
-       init the rate limit code. */
+
     d->io_limits_enabled = false;
     d->co_running = false;
     d->co_shutdown = false;
+    d->co_mutex_inited = false;
     d->co_thread = NULL;
+    d->slice_end = 0;
 
     if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
-        ((8 * conf->bytes_per_int * 1000000) / conf->int_usec > 0)) {
-       d->bps_limit = 8 * conf->bytes_per_int * 1000000 / conf->int_usec;
+        ((8 * conf->bytes_per_int * USECS_PER_SECOND) / conf->int_usec > 0)) {
+
+       d->bps_limit = 8 * conf->bytes_per_int * USECS_PER_SECOND / conf->int_usec;
        printf ("setting bps_limit to %lu\n", d->bps_limit);
+
        /* Load the structure with the initial limits here.
         * Check the limits on each send packet in case they change dynamically
         */
-       d->slice_end = 0;
-       e1000_io_limits_enable(d);
-
+       e1000_io_limits_enable(d, conf->bytes_per_int, conf->int_usec);
+       conf->bytes_per_int = 0;
+       conf->int_usec = 0;
     } else
        printf ("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
                conf->bytes_per_int, conf->int_usec);
@@ -1583,11 +1695,13 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     return 0;
 }
 
+
 static void qdev_e1000_reset(DeviceState *dev)
 {
     E1000State *d = DO_UPCAST(E1000State, dev.qdev, dev);
     e1000_reset(d);
 }
+
 
 static Property e1000_properties[] = {
     DEFINE_NIC_PROPERTIES(E1000State, conf),
@@ -1595,6 +1709,7 @@ static Property e1000_properties[] = {
                     compat_flags, E1000_FLAG_AUTONEG_BIT, true),
     DEFINE_PROP_END_OF_LIST(),
 };
+
 
 static void e1000_class_init(ObjectClass *klass, void *data)
 {
@@ -1614,6 +1729,7 @@ static void e1000_class_init(ObjectClass *klass, void *data)
     dc->props = e1000_properties;
 }
 
+
 static const TypeInfo e1000_info = {
     .name          = "e1000",
     .parent        = TYPE_PCI_DEVICE,
@@ -1621,10 +1737,12 @@ static const TypeInfo e1000_info = {
     .class_init    = e1000_class_init,
 };
 
+
 static void e1000_register_types(void)
 {
     type_register_static(&e1000_info);
 }
+
 
 type_init(e1000_register_types)
 
@@ -1668,6 +1786,7 @@ static TypeInfo e1000_vmw_info = {
     .instance_size = sizeof(E1000State),
     .class_init    = e1000_vmw_class_init,
 };
+
 
 static void e1000_vmw_register_types(void)
 {
