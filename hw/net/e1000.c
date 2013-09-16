@@ -180,7 +180,8 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	s->co_shutdown = true;
 	printf("disabling bps limit\n");
 	/*
-	 * XXX  Note: Resources should probably be freed here.
+	 * XXX  Note: Free everything in pci_e1000_uninit.
+	 *
 	 *
 	 * From the threads web page https://developer.gnome.org/glib/2.36/glib-Threads.html:
 	 * If a GCond is allocated in static storage then it can be used without
@@ -211,7 +212,8 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	printf ("setting bps_limit to %lu (%lu, %u)\n", 
 		s->bps_limit, bytes_per_int, int_usec);
 	if (!s->co_mutex_inited) {
-	    /* Only initialize these once. Don't reset as they may
+	    /* 
+	     * Only initialize these once. Don't reset as they may
 	     * still be in use.
 	     */
 	    s->co_mutex_inited = true;
@@ -401,7 +403,7 @@ static void e1000_reset(void *opaque)
     uint8_t *macaddr = d->conf.macaddr.a;
     int i;
 
-    //printf("e1000_reset\n");
+    printf("e1000_reset\n");
     if (d->co_running) {
 	d->co_shutdown = true;
 	g_cond_signal(&d->co_cond);
@@ -1554,12 +1556,14 @@ pci_e1000_uninit(PCIDevice *dev)
         g_thread_join(d->co_thread);
         d->co_thread = NULL;
     }
+
+    /* XXX  Tear down the rate limit stuff */
+
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
     memory_region_destroy(&d->mmio);
     memory_region_destroy(&d->io);
     qemu_del_nic(d->nic);
-    /* XXX  Tear down the rate limit stuff */
 }
 
 
