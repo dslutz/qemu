@@ -243,6 +243,8 @@ static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
 }
 
 
+#define FUDGE2 4000	/* account for overhead */
+
 static void e1000_next_slice_ns (E1000State *s, int pkt_size)
 {
     uint64_t now;
@@ -250,7 +252,8 @@ static void e1000_next_slice_ns (E1000State *s, int pkt_size)
     //printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
     now = qemu_get_clock_ns(vm_clock);
-    s->slice_end   = now + pkt_time;
+    if (s->slice_end > now) now = s->slice_end;
+    s->slice_end = now + pkt_time - FUDGE2;
 }
 
 
