@@ -2289,6 +2289,8 @@ void vga_common_init(VGACommonState *s)
            s->vram_size < (256 << 20)) {
         s->vram_size <<= 1;
     }
+    fprintf(stderr, "%s: vram_size=%d vram_size_mb=%d <== %d\n",
+            __func__, s->vram_size, s->vram_size_mb, s->vram_size >> 20);
     s->vram_size_mb = s->vram_size >> 20;
 
     s->is_vbe_vmstate = 1;

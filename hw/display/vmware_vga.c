@@ -1198,6 +1198,8 @@ static void vmsvga_init(DeviceState *dev, struct vmsvga_state_s *s,
     vmstate_register_ram_global(&s->fifo_ram);
     s->fifo_ptr = memory_region_get_ram_ptr(&s->fifo_ram);
 
+    fprintf(stderr, "%s: vram_size_mb=%d\n",
+            __func__, s->vga.vram_size_mb);
     vga_common_init(&s->vga);
     vga_init(&s->vga, address_space, io, true);
     vmstate_register(NULL, 0, &vmstate_vga_common, &s->vga);

@@ -2912,6 +2912,8 @@ static int vga_initfn(ISADevice *dev)
     ISACirrusVGAState *d = ISA_CIRRUS_VGA(dev);
     VGACommonState *s = &d->cirrus_vga.vga;
 
+    fprintf(stderr, "%s: vram_size_mb=%d\n",
+            __func__, s->vram_size_mb);
     vga_common_init(s);
     cirrus_init_common(&d->cirrus_vga, CIRRUS_ID_CLGD5430, 0,
                        isa_address_space(dev), isa_address_space_io(dev));
@@ -2959,6 +2961,8 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
      int16_t device_id = pc->device_id;
 
      /* setup VGA */
+     fprintf(stderr, "%s: vram_size_mb=%d\n",
+             __func__, s->vga.vram_size_mb);
      vga_common_init(&s->vga);
      cirrus_init_common(s, device_id, 1, pci_address_space(dev),
                         pci_address_space_io(dev));
