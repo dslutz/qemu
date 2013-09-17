@@ -146,12 +146,14 @@ typedef struct E1000State_st {
 
     uint64_t     bps_limit;
     uint64_t     slice_end;
-    bool         io_limits_enabled;
-    bool         co_running;
-    bool         co_shutdown;
     GThread      *co_thread;
     GCond        co_cond;
     GMutex       co_mutex;
+    GMutex       int_mutex;
+    bool         io_limits_enabled;
+    bool         co_running;
+    bool         co_shutdown;
+    bool         co_mutex_inited;
     bool         co_nudge;
 } E1000State;
 
@@ -170,7 +172,6 @@ enum {
     defreg(VET),
 };
 
-
 static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32_t int_usec)
 {
     s->io_limits_enabled = false;
@@ -179,7 +180,8 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	s->co_shutdown = true;
 	printf("disabling bps limit\n");
 	/*
-	 * XXX  Note: Resources should probably be freed here.
+	 * XXX  Note: Free everything in pci_e1000_uninit.
+	 *
 	 *
 	 * From the threads web page https://developer.gnome.org/glib/2.36/glib-Threads.html:
 	 * If a GCond is allocated in static storage then it can be used without
@@ -209,9 +211,16 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	s->bps_limit = 8 * bytes_per_int * USECS_PER_SECOND / int_usec;
 	printf ("setting bps_limit to %lu (%lu, %u)\n", 
 		s->bps_limit, bytes_per_int, int_usec);
-
-	g_cond_init(&s->co_cond);
-	g_mutex_init(&s->co_mutex);
+	if (!s->co_mutex_inited) {
+	    /* 
+	     * Only initialize these once. Don't reset as they may
+	     * still be in use.
+	     */
+	    s->co_mutex_inited = true;
+	    g_cond_init(&s->co_cond);
+	    g_mutex_init(&s->co_mutex);
+	    g_mutex_init(&s->int_mutex);
+	}
 	s->slice_end = 0;
 	s->io_limits_enabled = true;
 	s->co_shutdown = false;
@@ -234,6 +243,8 @@ static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
 }
 
 
+#define FUDGE2 4000	/* account for overhead */
+
 static void e1000_next_slice_ns (E1000State *s, int pkt_size)
 {
     uint64_t now;
@@ -241,7 +252,8 @@ static void e1000_next_slice_ns (E1000State *s, int pkt_size)
     //printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
     now = qemu_get_clock_ns(vm_clock);
-    s->slice_end   = now + pkt_time;
+    if (s->slice_end > now) now = s->slice_end;
+    s->slice_end = now + pkt_time - FUDGE2;
 }
 
 
@@ -338,6 +350,8 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
         /* Only for 8257x */
         val |= E1000_ICR_INT_ASSERTED;
     }
+    if (s->io_limits_enabled)
+        g_mutex_lock(&s->int_mutex);
     s->mac_reg[ICR] = val;
 
     /*
@@ -351,6 +365,8 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
     s->mac_reg[ICS] = val;
 
     qemu_set_irq(s->dev.irq[0], (s->mac_reg[IMS] & s->mac_reg[ICR]) != 0);
+    if (s->io_limits_enabled)
+        g_mutex_unlock(&s->int_mutex);
 }
 
 static void
@@ -390,7 +406,7 @@ static void e1000_reset(void *opaque)
     uint8_t *macaddr = d->conf.macaddr.a;
     int i;
 
-    //printf("e1000_reset\n");
+    printf("e1000_reset\n");
     if (d->co_running) {
 	d->co_shutdown = true;
 	g_cond_signal(&d->co_cond);
@@ -590,14 +606,15 @@ fcs_len(E1000State *s)
     return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
-
 #define FUDGE 125000 /* nanosleep + overhead */
+
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
+	printf("e1000: in loopback\n");
         nc->info->receive(nc, buf, size);
 	return;
     }
@@ -847,7 +864,9 @@ static gpointer e1000_xmit_co_entry (gpointer opaque)
     DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
     while(!s->co_shutdown) {
 	g_mutex_lock(&s->co_mutex);
-	start_xmit_co(s);
+	if (s->mac_reg[TDH] != s->mac_reg[TDT]) {
+	    start_xmit_co(s);
+	}
 	if (!s->co_nudge) {
 #if 1
 	    end_time = g_get_monotonic_time() + 100 * G_TIME_SPAN_MILLISECOND;
@@ -1540,12 +1559,14 @@ pci_e1000_uninit(PCIDevice *dev)
         g_thread_join(d->co_thread);
         d->co_thread = NULL;
     }
+
+    /* XXX  Tear down the rate limit stuff */
+
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
     memory_region_destroy(&d->mmio);
     memory_region_destroy(&d->io);
     qemu_del_nic(d->nic);
-    /* XXX  Tear down the rate limit stuff */
 }
 
 
@@ -1658,6 +1679,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->io_limits_enabled = false;
     d->co_running = false;
     d->co_shutdown = false;
+    d->co_mutex_inited = false;
     d->co_thread = NULL;
     d->slice_end = 0;
 
