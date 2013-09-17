@@ -311,6 +311,8 @@ static int xen_add_to_physmap(XenIOState *state,
     return -1;
 
 go_physmap:
+    fprintf(stderr, "mapping vram to %"HWADDR_PRIx" - %"HWADDR_PRIx"\n",
+            start_addr, start_addr + size);
     DPRINTF("mapping vram to %"HWADDR_PRIx" - %"HWADDR_PRIx"\n",
             start_addr, start_addr + size);
 
