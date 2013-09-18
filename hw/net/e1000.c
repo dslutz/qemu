@@ -1560,7 +1560,13 @@ pci_e1000_uninit(PCIDevice *dev)
         d->co_thread = NULL;
     }
 
-    /* XXX  Tear down the rate limit stuff */
+    g_cond_clear(&d->co_cond);
+    d->co_cond = NULL;
+    g_mutex_clear(&d->co_mutex);
+    d->co_mutex = NULL;
+    g_mutex_clear(&d->int_mutex);
+    d->int_mutex = NULL;
+    d->co_mutex_inited = false;
 
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
