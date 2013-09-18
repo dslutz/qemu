@@ -154,7 +154,6 @@ typedef struct E1000State_st {
     bool         co_running;
     bool         co_shutdown;
     bool         co_mutex_inited;
-    bool         co_nudge;
 } E1000State;
 
 #define	defreg(x)	x = (E1000_##x>>2)
@@ -174,10 +173,12 @@ enum {
 
 static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32_t int_usec)
 {
-    s->io_limits_enabled = false;
-
     if (bytes_per_int == 0 || int_usec == 0) {
-	s->co_shutdown = true;
+	/* disable the limit by setting it to a gigantic value */
+	s->bps_limit = (~0ULL) >> 4;
+	if (s->co_mutex_inited)
+	    g_cond_signal(&s->co_cond);
+
 	printf("disabling bps limit\n");
 
 	return;
@@ -215,7 +216,7 @@ static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
     uint64_t now;
     now = qemu_get_clock_ns(vm_clock);
 
-    if (now > s->slice_end)
+    if (now >= s->slice_end)
 	return 0;
     else
 	return (s->slice_end - now);
@@ -228,11 +229,11 @@ static void e1000_next_slice_ns (E1000State *s, int pkt_size)
 {
     uint64_t now;
     uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
-    //printf ("pkt_time %ld pkt_size %d bps %ld\n", pkt_time, pkt_size, s->bps_limit);
 
     now = qemu_get_clock_ns(vm_clock);
     if (s->slice_end > now) now = s->slice_end;
-    s->slice_end = now + pkt_time - FUDGE2;
+    if (pkt_time <= FUDGE2) pkt_time -= FUDGE2;
+    s->slice_end = now + pkt_time;
 }
 
 
@@ -386,11 +387,17 @@ static void e1000_reset(void *opaque)
     int i;
 
     printf("e1000_reset\n");
+
     if (d->co_running) {
 	d->co_shutdown = true;
 	g_cond_signal(&d->co_cond);
     }
+
     qemu_del_timer(d->autoneg_timer);
+
+    if (d->co_mutex_inited)
+	g_mutex_lock(&d->co_mutex);
+	
     memset(d->phy_reg, 0, sizeof d->phy_reg);
     memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
     memset(d->mac_reg, 0, sizeof d->mac_reg);
@@ -409,6 +416,9 @@ static void e1000_reset(void *opaque)
         d->mac_reg[RA] |= macaddr[i] << (8 * i);
         d->mac_reg[RA + 1] |= (i < 2) ? macaddr[i + 4] << (8 * i) : 0;
     }
+
+    if (d->co_mutex_inited)
+	g_mutex_unlock(&d->co_mutex);
 }
 
 
@@ -592,14 +602,21 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
+    if (s->co_mutex_inited)
+	g_mutex_unlock(&s->co_mutex);
+
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
 	printf("e1000: in loopback\n");
         nc->info->receive(nc, buf, size);
+	if (s->co_mutex_inited)
+	    g_mutex_lock(&s->co_mutex);
 	return;
     }
 
     if (!s->io_limits_enabled) {
 	qemu_send_packet(nc, buf, size);
+	if (s->co_mutex_inited)
+	    g_mutex_lock(&s->co_mutex);
 	return;
     }
 
@@ -612,8 +629,10 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 	nanosleep(&req, &rem);
     }
 
-    e1000_next_slice_ns (s, size);
+    e1000_next_slice_ns(s, size);
     qemu_send_packet(nc, buf, size);
+    if (s->co_mutex_inited)
+	g_mutex_lock(&s->co_mutex);
 }
 
 
@@ -818,12 +837,14 @@ start_xmit_co(E1000State *s)
         if (++s->mac_reg[TDH] * sizeof(desc) >= s->mac_reg[TDLEN])
             s->mac_reg[TDH] = 0;
  #if 0
-       /*
-         * the following could happen only if guest sw assigns
+        /* the following could happen if guest sw assigns
          * bogus values to TDT/TDLEN.
          * there's nothing too intelligent we could do about this.
+	 * But it also happens with our separate thread, where rate
+	 * limits mean this loop may never terminate.  So we get rid
+	 * of this message.
          */
-        if (s->mac_reg[TDH] == tdh_start  && !s->co_shutdown) {
+        if (s->mac_reg[TDH] == tdh_start && !s->co_shutdown) {
             DBGOUT(TXERR, "TDH wraparound @%x, TDT %x, TDLEN %x\n",
                    tdh_start, s->mac_reg[TDT], s->mac_reg[TDLEN]);
 	    // break;
@@ -835,29 +856,24 @@ start_xmit_co(E1000State *s)
 }
 
 
-static gpointer e1000_xmit_co_entry (gpointer opaque)
+static gpointer e1000_xmit_co_entry(gpointer opaque)
 {
     E1000State *s = (E1000State *)opaque;
-    gint64 end_time;
 
     DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
-    while(!s->co_shutdown) {
+    while (!s->co_shutdown) {
 	g_mutex_lock(&s->co_mutex);
-	if (s->mac_reg[TDH] != s->mac_reg[TDT]) {
-	    start_xmit_co(s);
-	}
-	if (!s->co_nudge) {
-#if 1
-	    end_time = g_get_monotonic_time() + 100 * G_TIME_SPAN_MILLISECOND;
-	    g_cond_wait_until(&s->co_cond, &s->co_mutex, end_time);
-#else
-	    g_cond_wait(&s->co_cond, &s->co_mutex);
-#endif
-	}
-	s->co_nudge = false;
+
+	start_xmit_co(s);
+
+	g_cond_wait(&s->co_cond, &s->co_mutex);
+
 	g_mutex_unlock(&s->co_mutex);
     }
+
     s->co_running = false;
+    s->co_shutdown = false;
+
     return NULL;
 }
 
@@ -878,7 +894,6 @@ start_xmit(E1000State *s)
     }
 
     if (s->io_limits_enabled) {
-	s->co_nudge = true;
         if (!s->co_running) {
             s->co_running = true;
             DBGOUT(RATE, "e1000 starting coroutine: s=%p\n", s);
@@ -1188,7 +1203,13 @@ set_rdt(E1000State *s, int index, uint32_t val)
 static void
 set_16bit(E1000State *s, int index, uint32_t val)
 {
+    if (s->co_mutex_inited)
+	g_mutex_lock(&s->co_mutex);
+
     s->mac_reg[index] = val & 0xffff;
+
+    if (s->co_mutex_inited)
+	g_mutex_unlock(&s->co_mutex);
 }
 
 
@@ -1202,8 +1223,15 @@ set_dlen(E1000State *s, int index, uint32_t val)
 static void
 set_tctl(E1000State *s, int index, uint32_t val)
 {
+    if (s->co_mutex_inited)
+	g_mutex_lock(&s->co_mutex);
+
     s->mac_reg[index] = val;
     s->mac_reg[TDT] &= 0xffff;
+
+    if (s->co_mutex_inited)
+	g_mutex_unlock(&s->co_mutex);
+
     start_xmit(s);
 }
 
@@ -1534,17 +1562,18 @@ pci_e1000_uninit(PCIDevice *dev)
 {
     E1000State *d = DO_UPCAST(E1000State, dev, dev);
 
+    printf("uninit e1000\n");
+
     if (d->co_thread != NULL) {
+	d->co_shutdown = true;
+	g_cond_signal(&d->co_cond);
         g_thread_join(d->co_thread);
         d->co_thread = NULL;
     }
 
     g_cond_clear(&d->co_cond);
-    d->co_cond = NULL;
     g_mutex_clear(&d->co_mutex);
-    d->co_mutex = NULL;
     g_mutex_clear(&d->int_mutex);
-    d->int_mutex = NULL;
     d->co_mutex_inited = false;
 
     qemu_del_timer(d->autoneg_timer);
@@ -1668,12 +1697,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->co_thread = NULL;
     d->slice_end = 0;
 
-    if (conf->bytes_per_int && conf->int_usec && // ensure we don't accidentally set bps_limit to 0
-        ((8 * conf->bytes_per_int * USECS_PER_SECOND) / conf->int_usec > 0)) {
-
-       d->bps_limit = 8 * conf->bytes_per_int * USECS_PER_SECOND / conf->int_usec;
-       printf ("setting bps_limit to %lu\n", d->bps_limit);
-
+    if (conf->bytes_per_int || conf->int_usec) {
        /* Load the structure with the initial limits here.
         * Check the limits on each send packet in case they change dynamically
         */
@@ -1681,7 +1705,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
        conf->bytes_per_int = 0;
        conf->int_usec = 0;
     } else
-       printf ("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
+       printf ("no initial QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
                conf->bytes_per_int, conf->int_usec);
 
     return 0;
