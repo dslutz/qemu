@@ -179,27 +179,6 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
     if (bytes_per_int == 0 || int_usec == 0) {
 	s->co_shutdown = true;
 	printf("disabling bps limit\n");
-	/*
-	 * XXX  Note: Free everything in pci_e1000_uninit.
-	 *
-	 *
-	 * From the threads web page https://developer.gnome.org/glib/2.36/glib-Threads.html:
-	 * If a GCond is allocated in static storage then it can be used without
-	 * initialisation. Otherwise, you should call g_cond_init() on it and g_cond_clear()
-	 * when done.
-	 * 
-	 * To undo the effect of g_cond_init() when a GCond is no longer needed, use g_cond_clear().
-	 * Calling g_cond_init() on an already-initialised GCond leads to undefined behaviour.
-	 *
-	 * Don't just call g_cond_clear here, setting co_shutdown does not guarentee it's
-	 * not currently in use. Don't pull the rug out from under a potential user.
-	 *
-	 * Same issue for g_mutex:
-	 * To undo the effect of g_mutex_init() when a mutex is no longer needed,
-	 * use g_mutex_clear().
-	 *
-	 * Calling g_mutex_init() on an already initialized GMutex leads to undefined behaviour.
-	 */
 
 	return;
     }
