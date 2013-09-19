@@ -132,6 +132,8 @@ int isa_vga_mm_init(hwaddr vram_base,
     s = g_malloc0(sizeof(*s));
 
     s->vga.vram_size_mb = VGA_RAM_SIZE >> 20;
+    fprintf(stderr, "%s: vram_size_mb=%d\n",
+            __func__, s->vga.vram_size_mb);
     vga_common_init(&s->vga);
     vga_mm_init(s, vram_base, ctrl_base, it_shift, address_space);
 

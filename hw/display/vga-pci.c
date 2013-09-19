@@ -147,6 +147,8 @@ static int pci_std_vga_initfn(PCIDevice *dev)
     VGACommonState *s = &d->vga;
 
     /* vga + console init */
+    fprintf(stderr, "%s: vram_size_mb=%d\n",
+            __func__, s->vram_size_mb);
     vga_common_init(s);
     vga_init(s, pci_address_space(dev), pci_address_space_io(dev), true);
 

@@ -55,6 +55,8 @@ static int vga_initfn(ISADevice *dev)
     MemoryRegion *vga_io_memory;
     const MemoryRegionPortio *vga_ports, *vbe_ports;
 
+    fprintf(stderr, "%s: vram_size_mb=%d\n",
+            __func__, s->vram_size_mb);
     vga_common_init(s);
     s->legacy_address_space = isa_address_space(dev);
     vga_io_memory = vga_init_io(s, &vga_ports, &vbe_ports);
