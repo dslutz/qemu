@@ -229,9 +229,9 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
     }
 
     fprintf(stderr, "%s: alloc "RAM_ADDR_FMT
-            " bytes of ram at "RAM_ADDR_FMT
+            " bytes (%ld Kib) of ram at "RAM_ADDR_FMT
             " mr.name=%s\n",
-            __func__, size, ram_addr, mr->name); 
+            __func__, size, (long)(size>>10), ram_addr, mr->name); 
 
     trace_xen_ram_alloc(ram_addr, size);
 
