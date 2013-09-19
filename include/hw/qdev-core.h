@@ -125,6 +125,9 @@ struct DeviceState {
     int num_child_bus;
     int instance_id_alias;
     int alias_required_for_version;
+    /* CloudSwitch -- add rate-limit info */
+    uint64_t bytes_per_int;
+    uint32_t int_usec;
 };
 
 #define TYPE_BUS "bus"
