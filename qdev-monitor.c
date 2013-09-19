@@ -615,6 +615,20 @@ int do_device_add(Monitor *mon, const QDict *qdict, QObject **ret_data)
     return 0;
 }
 
+void qmp_device_mod_rate(const char *id, int64_t bytes_per_int, int64_t int_usec, Error **errp)
+{
+    DeviceState *dev;
+
+    dev = qdev_find_recursive(sysbus_get_default(), id);
+    if (NULL == dev) {
+        error_set(errp, QERR_DEVICE_NOT_FOUND, id);
+        return;
+    }
+
+    dev->bytes_per_int = bytes_per_int;
+    dev->int_usec = (uint32_t)int_usec;
+}
+
 void qmp_device_del(const char *id, Error **errp)
 {
     DeviceState *dev;
