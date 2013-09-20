@@ -1169,6 +1169,18 @@ void hmp_migrate(Monitor *mon, const QDict *qdict)
     }
 }
 
+void hmp_device_mod_rate(Monitor *mon, const QDict *qdict)
+{
+    const char *id = qdict_get_str(qdict, "id");
+    Error *err = NULL;
+    uint64_t v1 = qdict_get_int(qdict, "bytes_per_int");
+    uint32_t v2 = qdict_get_int(qdict, "int_usec");
+
+    qmp_device_mod_rate(id, v1, v2, &err);
+
+    hmp_handle_error(mon, &err);
+}
+
 void hmp_device_del(Monitor *mon, const QDict *qdict)
 {
     const char *id = qdict_get_str(qdict, "id");

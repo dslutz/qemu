@@ -31,13 +31,17 @@ typedef struct NICConf {
     NICPeers peers;
     int32_t bootindex;
     int32_t queues;
+    uint64_t bytes_per_int;
+    uint32_t int_usec;
 } NICConf;
 
 #define DEFINE_NIC_PROPERTIES(_state, _conf)                            \
     DEFINE_PROP_MACADDR("mac",   _state, _conf.macaddr),                \
-    DEFINE_PROP_VLAN("vlan",     _state, _conf.peers),                   \
-    DEFINE_PROP_NETDEV("netdev", _state, _conf.peers),                   \
-    DEFINE_PROP_INT32("bootindex", _state, _conf.bootindex, -1)
+    DEFINE_PROP_VLAN("vlan",     _state, _conf.peers),                  \
+    DEFINE_PROP_NETDEV("netdev", _state, _conf.peers),                  \
+    DEFINE_PROP_INT32("bootindex", _state, _conf.bootindex, -1),        \
+    DEFINE_PROP_UINT64("bytes_per_int", _state, _conf.bytes_per_int, 0),\
+    DEFINE_PROP_UINT32("int_usec", _state, _conf.int_usec, 0)
 
 
 /* Net clients */
