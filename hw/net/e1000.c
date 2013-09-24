@@ -1571,10 +1571,12 @@ pci_e1000_uninit(PCIDevice *dev)
         d->co_thread = NULL;
     }
 
-    g_cond_clear(&d->co_cond);
-    g_mutex_clear(&d->co_mutex);
-    g_mutex_clear(&d->int_mutex);
-    d->co_mutex_inited = false;
+    if (d->co_mutex_inited) {
+	g_cond_clear(&d->co_cond);
+	g_mutex_clear(&d->co_mutex);
+	g_mutex_clear(&d->int_mutex);
+	d->co_mutex_inited = false;
+    }
 
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
@@ -1696,6 +1698,14 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->co_mutex_inited = false;
     d->co_thread = NULL;
     d->slice_end = 0;
+
+    /* we say we haven't initialized these, but let's do it anyway
+     * just to avoid potential problems.  We'll do it again if we
+     * detect that we are running with limits enabled.
+     */
+    g_cond_init(&d->co_cond);
+    g_mutex_init(&d->co_mutex);
+    g_mutex_init(&d->int_mutex);
 
     if (conf->bytes_per_int || conf->int_usec) {
        /* Load the structure with the initial limits here.
