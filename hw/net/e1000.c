@@ -1699,14 +1699,6 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->co_thread = NULL;
     d->slice_end = 0;
 
-    /* we say we haven't initialized these, but let's do it anyway
-     * just to avoid potential problems.  We'll do it again if we
-     * detect that we are running with limits enabled.
-     */
-    g_cond_init(&d->co_cond);
-    g_mutex_init(&d->co_mutex);
-    g_mutex_init(&d->int_mutex);
-
     if (conf->bytes_per_int || conf->int_usec) {
        /* Load the structure with the initial limits here.
         * Check the limits on each send packet in case they change dynamically
