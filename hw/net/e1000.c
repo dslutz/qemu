@@ -1571,10 +1571,12 @@ pci_e1000_uninit(PCIDevice *dev)
         d->co_thread = NULL;
     }
 
-    g_cond_clear(&d->co_cond);
-    g_mutex_clear(&d->co_mutex);
-    g_mutex_clear(&d->int_mutex);
-    d->co_mutex_inited = false;
+    if (d->co_mutex_inited) {
+	g_cond_clear(&d->co_cond);
+	g_mutex_clear(&d->co_mutex);
+	g_mutex_clear(&d->int_mutex);
+	d->co_mutex_inited = false;
+    }
 
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
