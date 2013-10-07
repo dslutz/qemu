@@ -53,6 +53,7 @@ typedef ssize_t (NetReceiveIOV)(NetClientState *, const struct iovec *, int);
 typedef void (NetCleanup) (NetClientState *);
 typedef void (LinkStatusChanged)(NetClientState *);
 typedef void (NetClientDestructor)(NetClientState *);
+typedef RxFilterInfo *(QueryRxFilter)(NetClientState *);
 
 typedef struct NetClientInfo {
     NetClientOptionsKind type;
@@ -63,6 +64,7 @@ typedef struct NetClientInfo {
     NetCanReceive *can_receive;
     NetCleanup *cleanup;
     LinkStatusChanged *link_status_changed;
+    QueryRxFilter *query_rx_filter;
     NetPoll *poll;
 } NetClientInfo;
 
@@ -78,6 +80,7 @@ struct NetClientState {
     unsigned receive_disabled : 1;
     NetClientDestructor *destructor;
     unsigned int queue_index;
+    unsigned rxfilter_notify_enabled:1;
 };
 
 typedef struct NICState {
