@@ -415,7 +415,7 @@ pvscsi_process_completion_queue(void *opaque)
         QTAILQ_REMOVE(&s->completion_queue, pvscsi_req, next);
         pvscsi_cmp_ring_put(s, &pvscsi_req->cmp);
         g_free(pvscsi_req);
-        has_completed++;
+        has_completed = true;
     }
 
     if (has_completed) {
@@ -643,7 +643,7 @@ pvscsi_build_sglist(PVSCSIState *s, PVSCSIRequest *r)
 {
     PCIDevice *d = PCI_DEVICE(s);
 
-    qemu_sglist_init(&r->sgl, 1, pci_dma_context(d));
+    pci_dma_sglist_init(&r->sgl, d, 1);
     if (r->req.flags & PVSCSI_FLAG_CMD_WITH_SG_LIST) {
         pvscsi_convert_sglist(r);
     } else {
@@ -1221,12 +1221,12 @@ pvscsi_init(PCIDevice *pci_dev)
 
     name = g_strdup_printf("pvscsi_io-%s",
                            pci_dev->qdev.id && *pci_dev->qdev.id ? pci_dev->qdev.id : pci_dev->name);
-    memory_region_init_io(&s->io_port, &pv_scsi_port_ops, s,
+    memory_region_init_io(&s->io_port, OBJECT(s), &pv_scsi_port_ops, s,
                           name, PVSCSI_PORT_SPACE_SIZE);
     g_free(name);
     name = g_strdup_printf("pvscsi_mmio-%s",
                            pci_dev->qdev.id && *pci_dev->qdev.id ? pci_dev->qdev.id : pci_dev->name);
-    memory_region_init_io(&s->io_space, &pvscsi_ops, s,
+    memory_region_init_io(&s->io_space, OBJECT(s), &pvscsi_ops, s,
                           name, PVSCSI_MEM_SPACE_SIZE);
     g_free(name);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_port);
@@ -1238,6 +1238,7 @@ pvscsi_init(PCIDevice *pci_dev)
     register_savevm(&pci_dev->qdev, "pvscsi-msix", -1, 1,
                     pvscsi_msix_save, pvscsi_msix_load, s);
 #endif
+
     pvscsi_init_msi(s);
     pvscsi_init_pcie(s);
 	
@@ -1302,7 +1303,7 @@ pvscsi_post_load(void *opaque, int version_id)
 }
 
 static const VMStateDescription vmstate_pvscsi = {
-    .name = TYPE_PVSCSI,
+    .name = "pvscsi",
     .version_id = 0,
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
@@ -1412,11 +1413,12 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
     }
     dc->reset = pvscsi_reset;
     dc->props = pvscsi_properties;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
     k->config_write = pvscsi_write_config;
 }
 
 static const TypeInfo pvscsi_info = {
-    .name          = "pvscsi",
+    .name          = TYPE_PVSCSI,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PVSCSIState),
     .class_init    = pvscsi_class_init,

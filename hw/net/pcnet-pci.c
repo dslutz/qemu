@@ -36,10 +36,26 @@
 
 #include "pcnet.h"
 
+//#define PCNET_DEBUG
+//#define PCNET_DEBUG_IO
+//#define PCNET_DEBUG_BCR
+//#define PCNET_DEBUG_CSR
+//#define PCNET_DEBUG_RMD
+//#define PCNET_DEBUG_TMD
+//#define PCNET_DEBUG_MATCH
+
+#define TYPE_PCI_PCNET "pcnet"
+
+#define PCI_PCNET(obj) \
+     OBJECT_CHECK(PCIPCNetState, (obj), TYPE_PCI_PCNET)
+
 typedef struct {
-    PCIDevice pci_dev;
-    MemoryRegion io_bar;
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
     PCNetState state;
+    MemoryRegion io_bar;
 } PCIPCNetState;
 
 typedef struct {
@@ -732,7 +748,7 @@ static const VMStateDescription vmstate_pci_pcnet = {
     .minimum_version_id = 2,
     .minimum_version_id_old = 2,
     .fields      = (VMStateField []) {
-        VMSTATE_PCI_DEVICE(pci_dev, PCIPCNetState),
+        VMSTATE_PCI_DEVICE(parent_obj, PCIPCNetState),
         VMSTATE_STRUCT(state, PCIPCNetState, 0, vmstate_pcnet, PCNetState),
         VMSTATE_END_OF_LIST()
     }
@@ -782,7 +798,7 @@ static void pci_pcnet_cleanup(NetClientState *nc)
 
 static void pci_pcnet_uninit(PCIDevice *dev)
 {
-    PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev, dev);
+    PCIPCNetState *d = PCI_PCNET(dev);
 
     memory_region_destroy(&d->state.mmio);
     memory_region_destroy(&d->io_bar);
@@ -821,7 +837,7 @@ static NetClientInfo net_pci_vlance_info = {
 
 static int pci_pcnet_init(PCIDevice *pci_dev)
 {
-    PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev, pci_dev);
+    PCIPCNetState *d = PCI_PCNET(pci_dev);
     PCNetState *s = &d->state;
     uint8_t *pci_conf;
 
@@ -843,10 +859,10 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
     pci_conf[PCI_MAX_LAT] = 0xff;
 
     /* Handler for memory-mapped I/O */
-    memory_region_init_io(&d->state.mmio, &pcnet_mmio_ops, s, "pcnet-mmio",
-                          PCNET_PNPMMIO_SIZE);
+    memory_region_init_io(&d->state.mmio, OBJECT(d), &pcnet_mmio_ops, s,
+                          "pcnet-mmio", PCNET_PNPMMIO_SIZE);
 
-    memory_region_init_io(&d->io_bar, &pcnet_io_ops, s, "pcnet-io",
+    memory_region_init_io(&d->io_bar, OBJECT(d), &pcnet_io_ops, s, "pcnet-io",
                           PCNET_IOPORT_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
@@ -857,7 +873,7 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
 
-    return pcnet_common_init(&pci_dev->qdev, s, &net_pci_pcnet_info);
+    return pcnet_common_init(DEVICE(pci_dev), s, &net_pci_pcnet_info);
 }
 
 static void vlance_common_init(PCNetStateVmx *s2)
@@ -884,7 +900,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
 
     memset(&s->mmio, 0, sizeof (s->mmio));
 
-    memory_region_init_io(&d->io_bar, &vlance_io_ops, s, "vmxnet-io",
+    memory_region_init_io(&d->io_bar, OBJECT(d), &vlance_io_ops, s, "vmxnet-io",
                           VMXNET_CHIP_IO_RESV_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
@@ -916,7 +932,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
 
     memset(&s->mmio, 0, sizeof (s->mmio));
 
-    memory_region_init_io(&d->io_bar, &vlance_io_ops, s, "vlance-io",
+    memory_region_init_io(&d->io_bar, OBJECT(d), &vlance_io_ops, s, "vlance-io",
                           PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE + 28);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
@@ -931,7 +947,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
 
 static void pcnet_pci_reset(DeviceState *dev)
 {
-    PCIPCNetState *d = DO_UPCAST(PCIPCNetState, pci_dev.qdev, dev);
+    PCIPCNetState *d = PCI_PCNET(dev);
 
     pcnet_h_reset(&d->state);
 }
@@ -971,6 +987,7 @@ static void pcnet_class_init(ObjectClass *klass, void *data)
     dc->reset = pcnet_pci_reset;
     dc->vmsd = &vmstate_pci_pcnet;
     dc->props = pcnet_properties;
+    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }
 
 static void vmxnet_class_init(ObjectClass *klass, void *data)
@@ -1012,7 +1029,7 @@ static void vlance_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo pcnet_info = {
-    .name          = "pcnet",
+    .name          = TYPE_PCI_PCNET,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIPCNetState),
     .class_init    = pcnet_class_init,

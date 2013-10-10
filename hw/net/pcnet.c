@@ -903,6 +903,8 @@ static void pcnet_init(PCNetState *s)
 
     s->csr[0] |= 0x0101;
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
+
+    qemu_flush_queued_packets(qemu_get_queue(s->nic));
 }
 
 static void pcnet_start(PCNetState *s)
@@ -920,6 +922,8 @@ static void pcnet_start(PCNetState *s)
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
     s->csr[0] |= 0x0002;
     pcnet_poll_timer(s);
+
+    qemu_flush_queued_packets(qemu_get_queue(s->nic));
 }
 
 static void pcnet_stop(PCNetState *s)
