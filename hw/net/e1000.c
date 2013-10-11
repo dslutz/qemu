@@ -149,12 +149,20 @@ typedef struct E1000State_st {
     GThread      *co_thread;
     GCond        co_cond;
     GMutex       co_mutex;
-    GMutex       int_mutex;
     bool         io_limits_enabled;
     bool         co_running;
     bool         co_shutdown;
     bool         co_mutex_inited;
 } E1000State;
+
+#define MUTEX_LOCK(s)                  \
+    if (s->co_mutex_inited)            \
+	g_mutex_lock(&s->co_mutex);
+
+#define MUTEX_UNLOCK(s)                \
+    if (s->co_mutex_inited)            \
+	g_mutex_unlock(&s->co_mutex);
+
 
 #define	defreg(x)	x = (E1000_##x>>2)
 enum {
@@ -179,7 +187,7 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	if (s->co_mutex_inited)
 	    g_cond_signal(&s->co_cond);
 
-	printf("disabling bps limit\n");
+	printf("setting bps_limit to infinite\n");
 
 	return;
     }
@@ -199,7 +207,6 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	    s->co_mutex_inited = true;
 	    g_cond_init(&s->co_cond);
 	    g_mutex_init(&s->co_mutex);
-	    g_mutex_init(&s->int_mutex);
 	}
 	s->slice_end = 0;
 	s->io_limits_enabled = true;
@@ -330,8 +337,7 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
         /* Only for 8257x */
         val |= E1000_ICR_INT_ASSERTED;
     }
-    if (s->io_limits_enabled)
-        g_mutex_lock(&s->int_mutex);
+
     s->mac_reg[ICR] = val;
 
     /*
@@ -345,8 +351,6 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
     s->mac_reg[ICS] = val;
 
     qemu_set_irq(s->dev.irq[0], (s->mac_reg[IMS] & s->mac_reg[ICR]) != 0);
-    if (s->io_limits_enabled)
-        g_mutex_unlock(&s->int_mutex);
 }
 
 static void
@@ -355,6 +359,14 @@ set_ics(E1000State *s, int index, uint32_t val)
     DBGOUT(INTERRUPT, "set_ics %x, ICR %x, IMR %x\n", val, s->mac_reg[ICR],
         s->mac_reg[IMS]);
     set_interrupt_cause(s, 0, val | s->mac_reg[ICR]);
+}
+
+static void
+set_ics_lock(E1000State *s, int index, uint32_t val)
+{
+    MUTEX_LOCK(s);
+    set_ics(s, index, val);
+    MUTEX_UNLOCK(s);
 }
 
 static int
@@ -395,8 +407,7 @@ static void e1000_reset(void *opaque)
 
     qemu_del_timer(d->autoneg_timer);
 
-    if (d->co_mutex_inited)
-	g_mutex_lock(&d->co_mutex);
+    MUTEX_LOCK(d);
 	
     memset(d->phy_reg, 0, sizeof d->phy_reg);
     memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
@@ -417,8 +428,7 @@ static void e1000_reset(void *opaque)
         d->mac_reg[RA + 1] |= (i < 2) ? macaddr[i + 4] << (8 * i) : 0;
     }
 
-    if (d->co_mutex_inited)
-	g_mutex_unlock(&d->co_mutex);
+    MUTEX_UNLOCK(d);
 }
 
 
@@ -602,37 +612,33 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
-    if (s->co_mutex_inited)
-	g_mutex_unlock(&s->co_mutex);
-
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
-	printf("e1000: in loopback\n");
+	MUTEX_UNLOCK(s);
         nc->info->receive(nc, buf, size);
-	if (s->co_mutex_inited)
-	    g_mutex_lock(&s->co_mutex);
+	MUTEX_LOCK(s);
 	return;
     }
 
-    if (!s->io_limits_enabled) {
-	qemu_send_packet(nc, buf, size);
-	if (s->co_mutex_inited)
-	    g_mutex_lock(&s->co_mutex);
-	return;
+    MUTEX_UNLOCK(s);
+
+    if (s->io_limits_enabled) {
+	struct timespec req, rem;
+	uint64_t delay;
+	if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
+	    DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
+	    req.tv_sec = 0;
+	    req.tv_nsec = delay - FUDGE;
+	    nanosleep(&req, &rem);
+	}
+    
+	e1000_next_slice_ns(s, size);
     }
 
-    struct timespec req, rem;
-    uint64_t delay;
-    if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
-	DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
-	req.tv_sec = 0;
-	req.tv_nsec = delay - FUDGE;
-	nanosleep(&req, &rem);
-    }
-
-    e1000_next_slice_ns(s, size);
     qemu_send_packet(nc, buf, size);
-    if (s->co_mutex_inited)
-	g_mutex_lock(&s->co_mutex);
+
+    MUTEX_LOCK(s);
+
+    return;
 }
 
 
@@ -906,7 +912,6 @@ start_xmit(E1000State *s)
     }
     else
         start_xmit_co(s);
-
 }
 
 
@@ -978,7 +983,7 @@ e1000_set_link_status(NetClientState *nc)
     }
 
     if (s->mac_reg[STATUS] != old_status)
-        set_ics(s, 0, E1000_ICR_LSC);
+        set_ics_lock(s, 0, E1000_ICR_LSC);
 }
 
 
@@ -1074,7 +1079,7 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     desc_offset = 0;
     total_size = size + fcs_len(s);
     if (!e1000_has_rxbufs(s, total_size)) {
-            set_ics(s, 0, E1000_ICS_RXO);
+            set_ics_lock(s, 0, E1000_ICS_RXO);
             return -1;
     }
     do {
@@ -1115,7 +1120,7 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         if (s->mac_reg[RDH] == rdh_start) {
             DBGOUT(RXERR, "RDH wraparound @%x, RDT %x, RDLEN %x\n",
                    rdh_start, s->mac_reg[RDT], s->mac_reg[RDLEN]);
-            set_ics(s, 0, E1000_ICS_RXO);
+            set_ics_lock(s, 0, E1000_ICS_RXO);
             return -1;
         }
     } while (desc_offset < total_size);
@@ -1138,7 +1143,7 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         s->rxbuf_min_shift)
         n |= E1000_ICS_RXDMT0;
 
-    set_ics(s, 0, n);
+    set_ics_lock(s, 0, n);
 
     return size;
 }
@@ -1203,13 +1208,7 @@ set_rdt(E1000State *s, int index, uint32_t val)
 static void
 set_16bit(E1000State *s, int index, uint32_t val)
 {
-    if (s->co_mutex_inited)
-	g_mutex_lock(&s->co_mutex);
-
     s->mac_reg[index] = val & 0xffff;
-
-    if (s->co_mutex_inited)
-	g_mutex_unlock(&s->co_mutex);
 }
 
 
@@ -1223,14 +1222,8 @@ set_dlen(E1000State *s, int index, uint32_t val)
 static void
 set_tctl(E1000State *s, int index, uint32_t val)
 {
-    if (s->co_mutex_inited)
-	g_mutex_lock(&s->co_mutex);
-
     s->mac_reg[index] = val;
     s->mac_reg[TDT] &= 0xffff;
-
-    if (s->co_mutex_inited)
-	g_mutex_unlock(&s->co_mutex);
 
     start_xmit(s);
 }
@@ -1307,7 +1300,9 @@ e1000_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     unsigned int index = (addr & 0x1ffff) >> 2;
 
     if (index < NWRITEOPS && macreg_writeops[index]) {
+	MUTEX_LOCK(s);
         macreg_writeops[index](s, index, val);
+	MUTEX_UNLOCK(s);
     } else if (index < NREADOPS && macreg_readops[index]) {
         DBGOUT(MMIO, "e1000_mmio_writel RO %x: 0x%04"PRIx64"\n", index<<2, val);
     } else {
@@ -1325,7 +1320,11 @@ e1000_mmio_read(void *opaque, hwaddr addr, unsigned size)
 
     if (index < NREADOPS && macreg_readops[index])
     {
-        return macreg_readops[index](s, index);
+	uint64_t ret;
+	MUTEX_LOCK(s);
+        ret = macreg_readops[index](s, index);
+	MUTEX_UNLOCK(s);
+	return ret;
     }
     DBGOUT(UNKNOWN, "MMIO unknown read addr=0x%08x\n", index<<2);
     return 0;
@@ -1574,7 +1573,6 @@ pci_e1000_uninit(PCIDevice *dev)
     if (d->co_mutex_inited) {
 	g_cond_clear(&d->co_cond);
 	g_mutex_clear(&d->co_mutex);
-	g_mutex_clear(&d->int_mutex);
 	d->co_mutex_inited = false;
     }
 
