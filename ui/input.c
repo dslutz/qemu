@@ -414,7 +414,10 @@ void kbd_put_keycode(int keycode)
         return;
     }
     if (entry) {
-        entry->put_kbd(entry->opaque, keycode);
+	if (entry->put_kbd)
+	    entry->put_kbd(entry->opaque, keycode);
+	else
+	    printf("%s: no keyboard handler\n", __FUNCTION__);
     }
 }
 
