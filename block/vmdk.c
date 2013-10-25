@@ -577,7 +577,7 @@ static int vmdk_open_vmdk4(BlockDriverState *bs,
         header = footer.header;
     }
 
-    if (le32_to_cpu(header.version) >= 3) {
+    if (le32_to_cpu(header.version) > 3) {
         char buf[64];
         snprintf(buf, sizeof(buf), "VMDK version %d",
                  le32_to_cpu(header.version));
