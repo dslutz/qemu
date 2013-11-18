@@ -1261,8 +1261,8 @@ static int pci_vmsvga_initfn(PCIDevice *dev)
 {
     struct pci_vmsvga_state_s *s = VMWARE_SVGA(dev);
 
-    dev->config[PCI_CACHE_LINE_SIZE] = 0x08;         /* Cache line size */
-    dev->config[PCI_LATENCY_TIMER] = 0x40;           /* Latency timer */
+    dev->config[PCI_CACHE_LINE_SIZE] = 0x08;
+    dev->config[PCI_LATENCY_TIMER] = 0x40;
     dev->config[PCI_INTERRUPT_LINE] = 0xff;          /* End */
     if (vmware_hw) {
         pci_set_word(dev->config + PCI_STATUS,

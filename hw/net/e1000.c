@@ -1169,7 +1169,6 @@ mac_read_clr8(E1000State *s, int index)
     return ret;
 }
 
-
 static void
 mac_writereg(E1000State *s, int index, uint32_t val)
 {
@@ -1202,7 +1201,6 @@ set_tctl(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[index] = val;
     s->mac_reg[TDT] &= 0xffff;
-
     start_xmit(s);
 }
 
@@ -1272,9 +1270,9 @@ e1000_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     unsigned int index = (addr & 0x1ffff) >> 2;
 
     if (index < NWRITEOPS && macreg_writeops[index]) {
-	MUTEX_LOCK(s);
+        MUTEX_LOCK(s);
         macreg_writeops[index](s, index, val);
-	MUTEX_UNLOCK(s);
+        MUTEX_UNLOCK(s);
     } else if (index < NREADOPS && macreg_readops[index]) {
         DBGOUT(MMIO, "e1000_mmio_writel RO %x: 0x%04"PRIx64"\n", index<<2, val);
     } else {
@@ -1291,11 +1289,11 @@ e1000_mmio_read(void *opaque, hwaddr addr, unsigned size)
 
     if (index < NREADOPS && macreg_readops[index])
     {
-	uint64_t ret;
-	MUTEX_LOCK(s);
+        uint64_t ret;
+        MUTEX_LOCK(s);
         ret = macreg_readops[index](s, index);
-	MUTEX_UNLOCK(s);
-	return ret;
+        MUTEX_UNLOCK(s);
+        return ret;
     }
     DBGOUT(UNKNOWN, "MMIO unknown read addr=0x%08x\n", index<<2);
     return 0;
@@ -1464,7 +1462,6 @@ static const VMStateDescription vmstate_e1000 = {
     }
 };
 
-
 static const uint16_t e1000_eeprom_template[64] = {
     0x0000, 0x0000, 0x0000, 0x0000,      0xffff, 0x0000,      0x0000, 0x0000,
     0x3000, 0x1000, 0x6403, E1000_DEVID, 0x8086, E1000_DEVID, 0x8086, 0x3040,
@@ -1528,9 +1525,9 @@ pci_e1000_uninit(PCIDevice *dev)
     }
 
     if (d->co_mutex_inited) {
-	g_cond_clear(&d->co_cond);
-	g_mutex_clear(&d->co_mutex);
-	d->co_mutex_inited = false;
+        g_cond_clear(&d->co_cond);
+        g_mutex_clear(&d->co_mutex);
+        d->co_mutex_inited = false;
     }
 
     qemu_del_timer(d->autoneg_timer);

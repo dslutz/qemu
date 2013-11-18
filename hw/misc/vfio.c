@@ -1953,7 +1953,6 @@ static void vfio_listener_region_add(MemoryListener *listener,
     DPRINTF("region_add %"HWADDR_PRIx" - %"HWADDR_PRIx" [%p]\n",
             iova, end - 1, vaddr);
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(section->mr);
     ret = vfio_dma_map(container, iova, end - iova, vaddr, section->readonly);
     if (ret) {
