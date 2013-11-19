@@ -100,7 +100,6 @@ static void hostmem_append_new_region(HostMem *hostmem,
     };
     hostmem->num_new_regions++;
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(section->mr);
 }
 

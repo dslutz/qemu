@@ -496,7 +496,6 @@ static void vhost_region_add(MemoryListener *listener,
     dev->mem_sections = g_renew(MemoryRegionSection, dev->mem_sections,
                                 dev->n_mem_sections);
     dev->mem_sections[dev->n_mem_sections - 1] = *section;
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(section->mr);
     vhost_set_memory(listener, section, true);
 }

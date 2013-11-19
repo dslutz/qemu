@@ -606,7 +606,6 @@ static void xen_pt_region_add(MemoryListener *l, MemoryRegionSection *sec)
     XenPCIPassthroughState *s = container_of(l, XenPCIPassthroughState,
                                              memory_listener);
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(sec->mr);
     xen_pt_region_update(s, sec, true);
 }
@@ -625,7 +624,6 @@ static void xen_pt_io_region_add(MemoryListener *l, MemoryRegionSection *sec)
     XenPCIPassthroughState *s = container_of(l, XenPCIPassthroughState,
                                              io_listener);
 
-    printf("%s\n", __FUNCTION__); //XXXDMK
     memory_region_ref(sec->mr);
     xen_pt_region_update(s, sec, true);
 }
