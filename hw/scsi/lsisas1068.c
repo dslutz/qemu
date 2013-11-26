@@ -3579,8 +3579,9 @@ static int mpt_map_sgl(MptState *s, MptCmd *cmd,
 
         if (do_mapping) {
             cmd->sge_cnt = iov_count;
-            //            qemu_sglist_init(&cmd->qsg, iov_count, pci_dma_context(&s->dev));
-            qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memory);
+	    //qemu_sglist_init(&cmd->qsg, DEVICE(s), iov_count, pci_dma_context(&s->dev));
+            //qemu_sglist_init(&cmd->qsg, iov_count, &dma_context_memoryxs);
+	    qemu_sglist_init(&cmd->qsg, DEVICE(s), iov_count, &address_space_memory);
         }
         while (end_of_list == false) {
             bool end_of_seg = false;
@@ -4802,7 +4803,6 @@ static void mpt_process_message(MptState *s, MptMessageHdr *msg,
             iov_pa,
             (uint8_t *)ptr + p_fw_upload_req->tc_sge.image_offset,
             p_fw_upload_req->sge.length);
-        qemu_put_ram_ptr(ptr);
         reply->fw_upload.actual_image_size = memory_region_size(&s->dev.rom);
         break;
     }
@@ -6249,6 +6249,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     MptState *s = DO_UPCAST(MptState, dev, dev);
     uint8_t *pci_conf;
     char *name;
+    Error *err = NULL;
 
     s->ctrl_type = ctrl_type;
 
@@ -6276,17 +6277,17 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
 
     name = g_strdup_printf("lsimpt_io-%s",
                            dev->qdev.id && *dev->qdev.id ? dev->qdev.id : dev->name);
-    memory_region_init_io(&s->port_io, &mpt_port_ops, s,
+    memory_region_init_io(&s->port_io, OBJECT(s), &mpt_port_ops, s,
                           name, 128);
     g_free(name);
     name = g_strdup_printf("lsimpt_mmio-%s",
                            dev->qdev.id && *dev->qdev.id ? dev->qdev.id : dev->name);
-    memory_region_init_io(&s->mmio_io, &mpt_mmio_ops, s,
+    memory_region_init_io(&s->mmio_io, OBJECT(s), &mpt_mmio_ops, s,
                           name, 0x1000);
     g_free(name);
     if (!vmware_hw) {
         name = g_strdup_printf("lsimpt_diag-%s", dev->name);
-        memory_region_init_io(&s->diag_io, &mpt_diag_ops, s,
+        memory_region_init_io(&s->diag_io, OBJECT(s), &mpt_diag_ops, s,
                               name, 0x10000);
         g_free(name);
     }
@@ -6347,7 +6348,11 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
     }
 
     scsi_bus_new(&s->bus, &dev->qdev, &mpt_scsi_info, NULL);
-    scsi_bus_legacy_handle_cmdline(&s->bus);
+    scsi_bus_legacy_handle_cmdline(&s->bus, &err);
+    if (err != NULL) {
+        error_free(err);
+        return -1;
+    }
     return 0;
 }
 

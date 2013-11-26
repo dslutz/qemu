@@ -27,8 +27,28 @@
 #include "exec/memory.h"
 #include "hw/pci/pci_bus.h"
 
+#define TYPE_PCI_BRIDGE_DEV "pci-bridge"
+#define TYPE_PCIE_BRIDGE_DEV "pcie-bridge"
+#define TYPE_AGP_BRIDGE_DEV "agp-bridge"
+#define TYPE_VMWARE_PCI_BRIDGE_DEV "vmware-pci-bridge"
+#define TYPE_VMWARE_PCIE_BRIDGE_DEV "vmware-pcie-bridge"
+
+#define PCI_BRIDGE_DEV(obj) \
+    OBJECT_CHECK(PCIBridgeDev, (obj), TYPE_PCI_BRIDGE_DEV)
+#define PCIE_BRIDGE_DEV(obj) \
+    OBJECT_CHECK(PCIBridgeDev, (obj), TYPE_PCIE_BRIDGE_DEV)
+#define AGP_BRIDGE_DEV(obj) \
+    OBJECT_CHECK(PCIBridgeDev, (obj), TYPE_AGP_BRIDGE_DEV)
+#define PCI_VMWARE_PCI_BRIDGE_DEV(obj) \
+    OBJECT_CHECK(PCIBridgeDev, (obj), TYPE_VMWARE_PCI_BRIDGE_DEV)
+#define PCI_VMWARE_PCIE_BRIDGE_DEV(obj) \
+    OBJECT_CHECK(PCIBridgeDev, (obj), TYPE_VMWARE_PCIE_BRIDGE_DEV)
+
 struct PCIBridgeDev {
-    PCIBridge bridge;
+    /*< private >*/
+    PCIBridge parent_obj;
+    /*< public >*/
+
     MemoryRegion bar;
     uint8_t chassis_nr;
 #define PCI_BRIDGE_DEV_F_MSI_REQ 0
@@ -39,15 +59,15 @@ typedef struct PCIBridgeDev PCIBridgeDev;
 
 static int pci_bridge_dev_initfn(PCIDevice *dev)
 {
-    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
-    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    PCIBridge *br = PCI_BRIDGE(dev);
+    PCIBridgeDev *bridge_dev = PCI_BRIDGE_DEV(dev);
     int err;
 
     err = pci_bridge_initfn(dev, TYPE_PCI_BUS);
     if (err) {
         goto bridge_error;
     }
-    memory_region_init(&bridge_dev->bar, "shpc-bar", shpc_bar_size(dev));
+    memory_region_init(&bridge_dev->bar, OBJECT(dev), "shpc-bar", shpc_bar_size(dev));
     err = shpc_init(dev, &br->sec_bus, &bridge_dev->bar, 0);
     if (err) {
         goto shpc_error;
@@ -82,8 +102,7 @@ bridge_error:
 
 static int agp_bridge_dev_initfn(PCIDevice *dev)
 {
-    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
-    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    PCIBridgeDev *bridge_dev = AGP_BRIDGE_DEV(dev);
     uint8_t *conf = dev->config;
     int err;
 
@@ -132,8 +151,7 @@ bridge_error:
 
 static int vmware_bridge_dev_initfn(PCIDevice *dev)
 {
-    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
-    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    PCIBridgeDev *bridge_dev = PCI_VMWARE_PCI_BRIDGE_DEV(dev);
     uint8_t *conf = dev->config;
     int err;
 
@@ -170,8 +188,7 @@ bridge_error:
 
 static int vmware_pcie_bridge_dev_initfn(PCIDevice *dev)
 {
-    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
-    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    PCIBridgeDev *bridge_dev = PCI_VMWARE_PCIE_BRIDGE_DEV(dev);
     uint8_t *conf = dev->config;
     int err;
 
@@ -214,8 +231,7 @@ bridge_error:
 
 static void pci_bridge_dev_exitfn(PCIDevice *dev)
 {
-    PCIBridge *br = DO_UPCAST(PCIBridge, dev, dev);
-    PCIBridgeDev *bridge_dev = DO_UPCAST(PCIBridgeDev, bridge, br);
+    PCIBridgeDev *bridge_dev = PCI_BRIDGE_DEV(dev);
     if (msi_present(dev)) {
         msi_uninit(dev);
     }
@@ -255,7 +271,7 @@ static void vmware_bridge_dev_write_config(PCIDevice *d,
 
 static void qdev_pci_bridge_dev_reset(DeviceState *qdev)
 {
-    PCIDevice *dev = DO_UPCAST(PCIDevice, qdev, qdev);
+    PCIDevice *dev = PCI_DEVICE(qdev);
 
     pci_bridge_reset(qdev);
     shpc_reset(dev);
@@ -277,8 +293,8 @@ static Property vmware_bridge_dev_properties[] = {
 static const VMStateDescription pci_bridge_dev_vmstate = {
     .name = "pci_bridge",
     .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
-        SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
+        VMSTATE_PCI_DEVICE(parent_obj.parent_obj, PCIBridgeDev),
+        SHPC_VMSTATE(shpc, PCIDevice),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -286,24 +302,24 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
 static const VMStateDescription pcie_bridge_dev_vmstate = {
     .name = "pcie_bridge",
     .fields = (VMStateField[]) {
-        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
-        SHPC_VMSTATE(bridge.dev.shpc, PCIBridgeDev),
+        VMSTATE_PCIE_DEVICE(parent_obj.parent_obj, PCIBridgeDev),
+        SHPC_VMSTATE(shpc, PCIDevice),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static const VMStateDescription vmware_bridge_dev_vmstate = {
-    .name = "vmware_pci_bridge",
+    .name = "vmware-pci-bridge",
     .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(bridge.dev, PCIBridgeDev),
+        VMSTATE_PCI_DEVICE(parent_obj.parent_obj, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static const VMStateDescription vmware_pcie_bridge_dev_vmstate = {
-    .name = "vmware_pcie_bridge",
+    .name = "vmware-pcie-bridge",
     .fields = (VMStateField[]) {
-        VMSTATE_PCIE_DEVICE(bridge.dev, PCIBridgeDev),
+        VMSTATE_PCIE_DEVICE(parent_obj.parent_obj, PCIBridgeDev),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -323,6 +339,7 @@ static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
     dc->reset = qdev_pci_bridge_dev_reset;
     dc->props = pci_bridge_dev_properties;
     dc->vmsd = &pci_bridge_dev_vmstate;
+    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
 }
 
 static void agp_bridge_dev_class_init(ObjectClass *klass, void *data)
@@ -381,29 +398,29 @@ static void vmware_pcie_bridge_dev_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo pci_bridge_dev_info = {
-    .name = "pci-bridge",
-    .parent        = TYPE_PCI_DEVICE,
+    .name          = TYPE_PCI_BRIDGE_DEV,
+    .parent        = TYPE_PCI_BRIDGE,
     .instance_size = sizeof(PCIBridgeDev),
     .class_init = pci_bridge_dev_class_init,
 };
 
 static TypeInfo agp_bridge_dev_info = {
-    .name = "agp-bridge",
-    .parent        = TYPE_PCI_DEVICE,
+    .name = TYPE_AGP_BRIDGE_DEV,
+    .parent        = TYPE_PCI_BRIDGE, //XXXDMK was TYPE_PCI_DEVICE
     .instance_size = sizeof(PCIBridgeDev),
     .class_init = agp_bridge_dev_class_init,
 };
 
 static TypeInfo vmware_bridge_dev_info = {
-    .name = "vmware-pci-bridge",
-    .parent        = TYPE_PCI_DEVICE,
+    .name = TYPE_VMWARE_PCI_BRIDGE_DEV,
+    .parent        = TYPE_PCI_BRIDGE,
     .instance_size = sizeof(PCIBridgeDev),
     .class_init = vmware_bridge_dev_class_init,
 };
 
 static TypeInfo vmware_pcie_bridge_dev_info = {
-    .name = "vmware-pcie-bridge",
-    .parent        = TYPE_PCI_DEVICE,
+    .name = TYPE_VMWARE_PCIE_BRIDGE_DEV,
+    .parent        = TYPE_PCI_BRIDGE,
     .instance_size = sizeof(PCIBridgeDev),
     .class_init = vmware_pcie_bridge_dev_class_init,
 };

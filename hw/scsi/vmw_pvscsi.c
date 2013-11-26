@@ -133,7 +133,7 @@ pvscsi_log2(uint32_t input)
     int log = 0;
     assert(input > 0);
     while ((input = (input >> 1))) {
-	++log;
+        ++log;
     }
     return log;
 }
@@ -150,7 +150,7 @@ pvscsi_ring_init_data(PVSCSIRingInfo *m, PVSCSICmdDescSetupRings *ri)
     cmp_ring_size = ri->cmpRingNumPages * PVSCSI_MAX_NUM_CMP_ENTRIES_PER_PAGE;
 
     if (!req_ring_size || !cmp_ring_size)
-	return PVSCSI_COMMAND_PROCESSING_FAILED;
+        return PVSCSI_COMMAND_PROCESSING_FAILED;
 
     txr_len_log2 = pvscsi_log2(req_ring_size - 1);
     rxr_len_log2 = pvscsi_log2(cmp_ring_size - 1);
@@ -415,7 +415,7 @@ pvscsi_process_completion_queue(void *opaque)
         QTAILQ_REMOVE(&s->completion_queue, pvscsi_req, next);
         pvscsi_cmp_ring_put(s, &pvscsi_req->cmp);
         g_free(pvscsi_req);
-        has_completed++;
+        has_completed = true;
     }
 
     if (has_completed) {
@@ -643,7 +643,7 @@ pvscsi_build_sglist(PVSCSIState *s, PVSCSIRequest *r)
 {
     PCIDevice *d = PCI_DEVICE(s);
 
-    qemu_sglist_init(&r->sgl, 1, pci_dma_context(d));
+    pci_dma_sglist_init(&r->sgl, d, 1);
     if (r->req.flags & PVSCSI_FLAG_CMD_WITH_SG_LIST) {
         pvscsi_convert_sglist(r);
     } else {
@@ -766,7 +766,7 @@ pvscsi_on_cmd_setup_rings(PVSCSIState *s)
     pvscsi_dbg_dump_tx_rings_config(rc);
     res = pvscsi_ring_init_data(&s->rings, rc);
     if (res == PVSCSI_COMMAND_PROCESSING_SUCCEEDED) {
-	s->rings_info_valid = TRUE;
+        s->rings_info_valid = TRUE;
     }
     return res;
 }
@@ -1039,13 +1039,13 @@ static uint64_t
 pvscsi_port_read(void *opaque, hwaddr addr, unsigned size)
 {
     printf("pvscsi_port_read called: opaque: %p addr: 0x%lx, size: %d\n",
-	   opaque, addr, size);
+           opaque, addr, size);
     return pvscsi_io_read(opaque, addr && 0xffff, size);
 }
 
 static void
 pvscsi_port_write(void *opaque, hwaddr addr,
-                uint64_t val, unsigned size)
+		  uint64_t val, unsigned size)
 {
     pvscsi_io_write(opaque, addr & 0xffff, size, val);
 }
@@ -1109,13 +1109,13 @@ pvscsi_init_msix(PVSCSIState *s) {
                         &s->io_space, PVSCSI_MSIX_BAR_IDX, PVSCSI_MSIX_PBA_OFFSET,
                         0x9c);
     if (res < 0) {
-         s->msix_used = false;
+        s->msix_used = false;
     } else {
         if (!pvscsi_use_msix_vectors(s, PVSCSI_MAX_INTRS)) {
-	    msix_uninit(&s->parent_obj, &s->io_space, &s->io_space);
+            msix_uninit(&s->parent_obj, &s->io_space, &s->io_space);
             s->msix_used = false;
         } else {
-	    s->msix_used = true;
+            s->msix_used = true;
         }
     }
     return s->msix_used;
@@ -1221,12 +1221,12 @@ pvscsi_init(PCIDevice *pci_dev)
 
     name = g_strdup_printf("pvscsi_io-%s",
                            pci_dev->qdev.id && *pci_dev->qdev.id ? pci_dev->qdev.id : pci_dev->name);
-    memory_region_init_io(&s->io_port, &pv_scsi_port_ops, s,
+    memory_region_init_io(&s->io_port, OBJECT(s), &pv_scsi_port_ops, s,
                           name, PVSCSI_PORT_SPACE_SIZE);
     g_free(name);
     name = g_strdup_printf("pvscsi_mmio-%s",
                            pci_dev->qdev.id && *pci_dev->qdev.id ? pci_dev->qdev.id : pci_dev->name);
-    memory_region_init_io(&s->io_space, &pvscsi_ops, s,
+    memory_region_init_io(&s->io_space, OBJECT(s), &pvscsi_ops, s,
                           name, PVSCSI_MEM_SPACE_SIZE);
     g_free(name);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_port);
@@ -1238,9 +1238,9 @@ pvscsi_init(PCIDevice *pci_dev)
     register_savevm(&pci_dev->qdev, "pvscsi-msix", -1, 1,
                     pvscsi_msix_save, pvscsi_msix_load, s);
 #endif
+
     pvscsi_init_msi(s);
     pvscsi_init_pcie(s);
-	
 
     s->completion_worker = qemu_bh_new(pvscsi_process_completion_queue, s);
     if (!s->completion_worker) {
@@ -1302,7 +1302,7 @@ pvscsi_post_load(void *opaque, int version_id)
 }
 
 static const VMStateDescription vmstate_pvscsi = {
-    .name = TYPE_PVSCSI,
+    .name = "pvscsi",
     .version_id = 0,
     .minimum_version_id = 0,
     .minimum_version_id_old = 0,
@@ -1412,11 +1412,12 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
     }
     dc->reset = pvscsi_reset;
     dc->props = pvscsi_properties;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
     k->config_write = pvscsi_write_config;
 }
 
 static const TypeInfo pvscsi_info = {
-    .name          = "pvscsi",
+    .name          = TYPE_PVSCSI,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PVSCSIState),
     .class_init    = pvscsi_class_init,
