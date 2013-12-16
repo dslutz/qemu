@@ -33,6 +33,7 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include <time.h>
+#include "qemu/thread.h"
 
 #include "e1000_regs.h"
 
@@ -149,15 +150,14 @@ typedef struct E1000State_st {
 
     uint64_t     bps_limit;
     uint64_t     slice_end;
-    GThread      *co_thread;
-    GCond        co_cond;
-    GMutex       co_mutex;
+    QemuThread   *co_thread;
+    QemuCond     *co_cond;
+    QemuMutex    co_mutex;
     bool         io_limits_enabled;
     bool         co_running;
     bool         co_shutdown;
     bool         co_mutex_inited;
 } E1000State;
-//XXXDMK needed? typedef struct E1000State_st E1000VmwState;
 
 #define TYPE_E1000 "e1000"
 #define TYPE_E1000VMW "e1000_vmw"
@@ -169,11 +169,11 @@ typedef struct E1000State_st {
 
 #define MUTEX_LOCK(s)                  \
     if (s->co_mutex_inited)            \
-	g_mutex_lock(&s->co_mutex);
+        qemu_mutex_lock(&s->co_mutex);
 
 #define MUTEX_UNLOCK(s)                \
     if (s->co_mutex_inited)            \
-	g_mutex_unlock(&s->co_mutex);
+        qemu_mutex_unlock(&s->co_mutex);
 
 
 #define	defreg(x)	x = (E1000_##x>>2)
@@ -197,8 +197,7 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	/* disable the limit by setting it to a gigantic value */
 	s->bps_limit = (~0ULL) >> 4;
 	if (s->co_mutex_inited)
-	    g_cond_signal(&s->co_cond);
-
+            qemu_cond_signal(s->co_cond);
 	printf("setting bps_limit to infinite\n");
 
 	return;
@@ -217,8 +216,9 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	     * still be in use.
 	     */
 	    s->co_mutex_inited = true;
-	    g_cond_init(&s->co_cond);
-	    g_mutex_init(&s->co_mutex);
+	    s->co_cond = g_malloc0(sizeof(QemuCond));
+	    qemu_cond_init(s->co_cond);
+	    qemu_mutex_init(&s->co_mutex);
 	}
 	s->slice_end = 0;
 	s->io_limits_enabled = true;
@@ -412,8 +412,8 @@ static void e1000_reset(void *opaque)
     printf("e1000_reset\n");
 
     if (d->co_running) {
-	d->co_shutdown = true;
-	g_cond_signal(&d->co_cond);
+        d->co_shutdown = true;
+        qemu_cond_signal(d->co_cond);
     }
 
     qemu_del_timer(d->autoneg_timer);
@@ -864,10 +864,10 @@ static gpointer e1000_xmit_co_entry(gpointer opaque)
 
     DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
     while (!s->co_shutdown) {
-	g_mutex_lock(&s->co_mutex);
-	start_xmit_co(s);
-	g_cond_wait(&s->co_cond, &s->co_mutex);
-	g_mutex_unlock(&s->co_mutex);
+        qemu_mutex_lock(&s->co_mutex);
+        start_xmit_co(s);
+        qemu_cond_wait(s->co_cond, &s->co_mutex);
+        qemu_mutex_unlock(&s->co_mutex);
     }
     s->co_running = false;
     s->co_shutdown = false;
@@ -894,12 +894,11 @@ start_xmit(E1000State *s)
         if (!s->co_running) {
             s->co_running = true;
             DBGOUT(RATE, "e1000 starting coroutine: s=%p\n", s);
-            s->co_thread = g_thread_create_full(e1000_xmit_co_entry,
-                                (gpointer) s, 0, TRUE, TRUE,
-                                G_THREAD_PRIORITY_NORMAL, NULL);
+	    s->co_thread = g_malloc0(sizeof(QemuThread));
+	    qemu_thread_create(s->co_thread, e1000_xmit_co_entry, s, QEMU_THREAD_JOINABLE);
         }
 	else
-	    g_cond_signal(&s->co_cond);
+	    qemu_cond_signal(s->co_cond);
     }
     else
         start_xmit_co(s);
@@ -1519,14 +1518,14 @@ pci_e1000_uninit(PCIDevice *dev)
 
     if (d->co_thread != NULL) {
         d->co_shutdown = true;
-        g_cond_signal(&d->co_cond);
-        g_thread_join(d->co_thread);
+        qemu_cond_signal(d->co_cond);
+        qemu_thread_join(d->co_thread);
         d->co_thread = NULL;
     }
 
     if (d->co_mutex_inited) {
-        g_cond_clear(&d->co_cond);
-        g_mutex_clear(&d->co_mutex);
+        qemu_cond_destroy(d->co_cond);
+        qemu_mutex_destroy(&d->co_mutex);
         d->co_mutex_inited = false;
     }
 
