@@ -1975,6 +1975,9 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                     error |= io_mem_write(mr, addr1, val, 1);
                     break;
                 default:
+                    fprintf(stderr,
+                            "%s: write l=%ld len=%d\n", __func__,
+                            (long)l, len);
                     abort();
                 }
             } else {
@@ -2010,6 +2013,9 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                     stb_p(buf, val);
                     break;
                 default:
+                    fprintf(stderr,
+                            "%s: read l=%ld len=%d\n", __func__,
+                            (long)l, len);
                     abort();
                 }
             } else {
