@@ -765,6 +765,11 @@ static void cpu_ioreq_move(ioreq_t *req)
 
     if (!req->data_is_ptr) {
         if (req->dir == IOREQ_READ) {
+            if (req->size == 4) {
+                __asm__ ("int3");
+                fprintf(stderr, "addr=0x%lx\n", (long)req->addr);
+                __asm__ ("int3");
+            }
             for (i = 0; i < req->count; i++) {
                 read_phys_req_item(req->addr, req, i, &req->data);
             }
