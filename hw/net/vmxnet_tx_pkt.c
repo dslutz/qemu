@@ -16,6 +16,7 @@
  */
 
 #include "hw/hw.h"
+#include "vmxnet3.h"
 #include "vmxnet_tx_pkt.h"
 #include "net/eth.h"
 #include "qemu-common.h"
@@ -23,6 +24,7 @@
 #include "net/checksum.h"
 #include "net/tap.h"
 #include "net/net.h"
+#include "sysemu/sysemu.h"
 
 enum {
     VMXNET_TX_PKT_VHDR_FRAG = 0,
@@ -260,6 +262,7 @@ void vmxnet_tx_pkt_build_vheader(struct VmxnetTxPkt *pkt, bool tso_enable,
     bool csum_enable, uint32_t gso_size)
 {
     struct tcp_hdr l4hdr;
+
     assert(pkt);
 
     /* csum has to be enabled if tso is. */
@@ -287,7 +290,7 @@ void vmxnet_tx_pkt_build_vheader(struct VmxnetTxPkt *pkt, bool tso_enable,
         break;
 
     default:
-        g_assert_not_reached();
+        assert(false);
     }
 
     if (csum_enable) {
@@ -488,8 +491,49 @@ static size_t vmxnet_tx_pkt_fetch_fragment(struct VmxnetTxPkt *pkt,
     return fetched;
 }
 
+#define NANOSECONDS_PER_SECOND  1000000000
+
+static inline void vmxnet_next_slice_ns(VmxnetRateLimit *l, uint32_t pkt_size)
+{
+    uint64_t now;
+    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / l->bps_limit;
+
+    now = qemu_get_clock_ns(vm_clock);
+    if (l->slice_end > now) now = l->slice_end;
+    l->slice_end = now + pkt_time;
+}
+
+/* FUDGE is used to allow for the overhead of the nanosleep calls
+ * and the limited granularity of the timers.  We found experimentally
+ * that it needs to be at least 125,000 so that things will run at
+ * the configured speed.  The higher value is in case of slower CPUs.
+ */
+
+#define FUDGE 200000 /* nanosleep + overhead */
+
+static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
+{
+    uint64_t delay;
+    uint64_t pkt_time = ((uint64_t)len * 8 * NANOSECONDS_PER_SECOND) / lim->bps_limit;
+    uint64_t now = qemu_get_clock_ns(vm_clock);
+
+    delay = now >= lim->slice_end ? 0 : lim->slice_end - now;
+
+    if (delay > FUDGE) {
+	struct timespec req;
+
+	req.tv_sec = 0;
+	req.tv_nsec = delay - FUDGE;
+	nanosleep(&req, NULL);
+	now = qemu_get_clock_ns(vm_clock);
+    }
+
+    if (lim->slice_end > now) now = lim->slice_end;
+    lim->slice_end = now + pkt_time;
+}
+
 static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
-    NetClientState *nc)
+      NetClientState *nc, VmxnetRateLimit *l)
 {
     struct iovec fragment[VMXNET_MAX_FRAG_SG_LIST];
     size_t fragment_len = 0;
@@ -526,6 +570,9 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
 
         eth_fix_ip4_checksum(l3_iov_base, l3_iov_len);
 
+	if (l && l->io_limits_enabled)
+	    vmxnet_tx_delay(l, (uint32_t)fragment_len);
+
         qemu_sendv_packet(nc, fragment, dst_idx);
 
         fragment_offset += fragment_len;
@@ -535,7 +582,8 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
     return true;
 }
 
-bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc)
+bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc,
+			VmxnetRateLimit *l)
 {
     assert(pkt);
 
@@ -557,11 +605,22 @@ bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc)
     }
 
     if (pkt->has_virt_hdr ||
-        pkt->virt_hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE) {
-        qemu_sendv_packet(nc, pkt->vec,
-            pkt->payload_frags + VMXNET_TX_PKT_PL_START_FRAG);
-        return true;
+	pkt->virt_hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE) {
+
+	if (l && l->io_limits_enabled) {
+            vmxnet_tx_delay(l, pkt->payload_len + pkt->hdr_len);
+	}
+
+	qemu_sendv_packet(nc, pkt->vec,
+			  pkt->payload_frags + VMXNET_TX_PKT_PL_START_FRAG);
+	return true;
     }
 
-    return vmxnet_tx_pkt_do_sw_fragmentation(pkt, nc);
+    return vmxnet_tx_pkt_do_sw_fragmentation(pkt, nc, l);
 }
+
+/*
+ * Local variables:
+ * c-basic-offset: 4
+ * End:
+ */
