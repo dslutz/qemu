@@ -25,6 +25,7 @@
 #include "qemu/bswap.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/msi.h"
+#include "qemu/thread.h"
 
 #include "vmxnet3.h"
 #include "vmxnet_debug.h"
@@ -113,12 +114,14 @@
 
 /* Cyclic ring abstraction */
 typedef struct {
-    hwaddr pa;
-    size_t size;
-    size_t cell_size;
-    size_t next;
-    uint8_t gen;
+    hwaddr   pa;
+    uint32_t size;
+    uint32_t next;
+    uint32_t cell_size;
+    uint8_t  gen;
 } Vmxnet3Ring;
+
+static gpointer vmxnet3_co(gpointer opaque);
 
 static inline void vmxnet3_ring_init(Vmxnet3Ring *ring,
                                      hwaddr pa,
@@ -240,80 +243,93 @@ typedef struct {
     bool is_asserted;
 } Vmxnet3IntState;
 
+#define USECS_PER_SECOND 1000000
+
 typedef struct {
-        PCIDevice parent_obj;
-        NICState *nic;
-        NICConf conf;
-        MemoryRegion bar0;
-        MemoryRegion bar1;
-        MemoryRegion msix_bar;
+    PCIDevice parent_obj;
+    NICState *nic;
+    NICConf conf;
+    MemoryRegion bar0;
+    MemoryRegion bar1;
+    MemoryRegion msix_bar;
+    
+    Vmxnet3RxqDescr rxq_descr[VMXNET3_DEVICE_MAX_RX_QUEUES];
+    Vmxnet3TxqDescr txq_descr[VMXNET3_DEVICE_MAX_TX_QUEUES];
 
-        Vmxnet3RxqDescr rxq_descr[VMXNET3_DEVICE_MAX_RX_QUEUES];
-        Vmxnet3TxqDescr txq_descr[VMXNET3_DEVICE_MAX_TX_QUEUES];
+    /* Whether MSI-X support was installed successfully */
+    bool msix_used;
+    /* Whether MSI support was installed successfully */
+    bool msi_used;
+    hwaddr drv_shmem;
+    hwaddr temp_shared_guest_driver_memory;
 
-        /* Whether MSI-X support was installed successfully */
-        bool msix_used;
-        /* Whether MSI support was installed successfully */
-        bool msi_used;
-        hwaddr drv_shmem;
-        hwaddr temp_shared_guest_driver_memory;
+    uint8_t txq_num;
 
-        uint8_t txq_num;
+    /* This boolean tells whether RX packet being indicated has to */
+    /* be split into head and body chunks from different RX rings  */
+    bool rx_packets_compound;
+    
+    bool rx_vlan_stripping;
+    bool lro_supported;
 
-        /* This boolean tells whether RX packet being indicated has to */
-        /* be split into head and body chunks from different RX rings  */
-        bool rx_packets_compound;
+    uint8_t rxq_num;
 
-        bool rx_vlan_stripping;
-        bool lro_supported;
+    /* Network MTU */
+    uint32_t mtu;
 
-        uint8_t rxq_num;
+    /* Maximum number of fragments for indicated TX packets */
+    uint32_t max_tx_frags;
+    
+    /* Maximum number of fragments for indicated RX packets */
+    uint16_t max_rx_frags;
+    
+    /* Index for events interrupt */
+    uint8_t event_int_idx;
 
-        /* Network MTU */
-        uint32_t mtu;
+    /* Whether automatic interrupts masking enabled */
+    bool auto_int_masking;
 
-        /* Maximum number of fragments for indicated TX packets */
-        uint32_t max_tx_frags;
+    bool peer_has_vhdr;
 
-        /* Maximum number of fragments for indicated RX packets */
-        uint16_t max_rx_frags;
+    /* TX packets to QEMU interface */
+    struct VmxnetTxPkt *tx_pkt;
+    uint32_t offload_mode;
+    uint32_t cso_or_gso_size;
+    uint16_t tci;
+    bool needs_vlan;
 
-        /* Index for events interrupt */
-        uint8_t event_int_idx;
+    struct VmxnetRxPkt *rx_pkt;
+    
+    bool tx_sop;
+    bool skip_current_tx_pkt;
+    bool tx_int_coalesce;
 
-        /* Whether automatic interrupts masking enabled */
-        bool auto_int_masking;
+    uint32_t device_active;
+    uint32_t last_command;
 
-        bool peer_has_vhdr;
+    uint32_t link_status_and_speed;
 
-        /* TX packets to QEMU interface */
-        struct VmxnetTxPkt *tx_pkt;
-        uint32_t offload_mode;
-        uint32_t cso_or_gso_size;
-        uint16_t tci;
-        bool needs_vlan;
+    Vmxnet3IntState interrupt_states[VMXNET3_MAX_INTRS];
+    
+    uint32_t temp_mac;   /* To store the low part first */
+    
+    MACAddr perm_mac;
+    uint32_t vlan_table[VMXNET3_VFT_SIZE];
+    uint32_t rx_mode;
+    MACAddr *mcast_list;
+    uint32_t mcast_list_len;
+    uint32_t mcast_list_buff_size; /* needed for live migration. */
 
-        struct VmxnetRxPkt *rx_pkt;
-
-        bool tx_sop;
-        bool skip_current_tx_pkt;
-
-        uint32_t device_active;
-        uint32_t last_command;
-
-        uint32_t link_status_and_speed;
-
-        Vmxnet3IntState interrupt_states[VMXNET3_MAX_INTRS];
-
-        uint32_t temp_mac;   /* To store the low part first */
-
-        MACAddr perm_mac;
-        uint32_t vlan_table[VMXNET3_VFT_SIZE];
-        uint32_t rx_mode;
-        MACAddr *mcast_list;
-        uint32_t mcast_list_len;
-        uint32_t mcast_list_buff_size; /* needed for live migration. */
+    VmxnetRateLimit limit;
 } VMXNET3State;
+
+#define MUTEX_LOCK(s)                       \
+    if (s->limit.co_thread)           	    \
+	qemu_mutex_lock(&s->limit.co_mutex);
+
+#define MUTEX_UNLOCK(s)                     \
+    if (s->limit.co_thread)           	    \
+	qemu_mutex_unlock(&s->limit.co_mutex);
 
 /* Interrupt management */
 
@@ -387,22 +403,20 @@ static void vmxnet3_update_interrupt_line_state(VMXNET3State *s, int lidx)
 static void vmxnet3_trigger_interrupt(VMXNET3State *s, int lidx)
 {
     PCIDevice *d = PCI_DEVICE(s);
+
+    MUTEX_LOCK(s);
+
     s->interrupt_states[lidx].is_pending = true;
     vmxnet3_update_interrupt_line_state(s, lidx);
 
-    if (s->msix_used && msix_enabled(d) && s->auto_int_masking) {
-        goto do_automask;
+    if ((s->msix_used && msix_enabled(d) && s->auto_int_masking) ||
+        (s->msi_used && msi_enabled(d) && s->auto_int_masking)) {
+
+	s->interrupt_states[lidx].is_masked = true;
+	vmxnet3_update_interrupt_line_state(s, lidx);
     }
 
-    if (s->msi_used && msi_enabled(d) && s->auto_int_masking) {
-        goto do_automask;
-    }
-
-    return;
-
-do_automask:
-    s->interrupt_states[lidx].is_masked = true;
-    vmxnet3_update_interrupt_line_state(s, lidx);
+    MUTEX_UNLOCK(s);
 }
 
 static bool vmxnet3_interrupt_asserted(VMXNET3State *s, int lidx)
@@ -412,18 +426,26 @@ static bool vmxnet3_interrupt_asserted(VMXNET3State *s, int lidx)
 
 static void vmxnet3_clear_interrupt(VMXNET3State *s, int int_idx)
 {
+    MUTEX_LOCK(s);
+
     s->interrupt_states[int_idx].is_pending = false;
     if (s->auto_int_masking) {
         s->interrupt_states[int_idx].is_masked = true;
     }
     vmxnet3_update_interrupt_line_state(s, int_idx);
+
+    MUTEX_UNLOCK(s);
 }
 
 static void
 vmxnet3_on_interrupt_mask_changed(VMXNET3State *s, int lidx, bool is_masked)
 {
+    MUTEX_LOCK(s);
+
     s->interrupt_states[lidx].is_masked = is_masked;
     vmxnet3_update_interrupt_line_state(s, lidx);
+
+    MUTEX_UNLOCK(s);
 }
 
 static bool vmxnet3_verify_driver_magic(hwaddr dshmem)
@@ -464,36 +486,36 @@ static uint64_t vmxnet3_get_mac_high(MACAddr *addr)
 }
 
 static void
-vmxnet3_inc_tx_consumption_counter(VMXNET3State *s, int qidx)
+vmxnet3_inc_tx_consumption_counter(VMXNET3State *s, uint32_t qidx)
 {
     vmxnet3_ring_inc(&s->txq_descr[qidx].tx_ring);
 }
 
 static inline void
-vmxnet3_inc_rx_consumption_counter(VMXNET3State *s, int qidx, int ridx)
+vmxnet3_inc_rx_consumption_counter(VMXNET3State *s, uint32_t qidx, int ridx)
 {
     vmxnet3_ring_inc(&s->rxq_descr[qidx].rx_ring[ridx]);
 }
 
 static inline void
-vmxnet3_inc_tx_completion_counter(VMXNET3State *s, int qidx)
+vmxnet3_inc_tx_completion_counter(VMXNET3State *s, uint32_t qidx)
 {
     vmxnet3_ring_inc(&s->txq_descr[qidx].comp_ring);
 }
 
 static void
-vmxnet3_inc_rx_completion_counter(VMXNET3State *s, int qidx)
+vmxnet3_inc_rx_completion_counter(VMXNET3State *s, uint32_t qidx)
 {
     vmxnet3_ring_inc(&s->rxq_descr[qidx].comp_ring);
 }
 
 static void
-vmxnet3_dec_rx_completion_counter(VMXNET3State *s, int qidx)
+vmxnet3_dec_rx_completion_counter(VMXNET3State *s, uint32_t qidx)
 {
     vmxnet3_ring_dec(&s->rxq_descr[qidx].comp_ring);
 }
 
-static void vmxnet3_complete_packet(VMXNET3State *s, int qidx, uint32 tx_ridx)
+static void vmxnet3_complete_packet(VMXNET3State *s, uint32_t qidx, uint32_t tx_ridx)
 {
     struct Vmxnet3_TxCompDesc txcq_descr;
 
@@ -508,7 +530,6 @@ static void vmxnet3_complete_packet(VMXNET3State *s, int qidx, uint32 tx_ridx)
     smp_wmb();
 
     vmxnet3_inc_tx_completion_counter(s, qidx);
-    vmxnet3_trigger_interrupt(s, s->txq_descr[qidx].intr_idx);
 }
 
 static bool
@@ -532,7 +553,7 @@ vmxnet3_setup_tx_offloads(VMXNET3State *s)
         break;
 
     default:
-        g_assert_not_reached();
+        assert(false);
         return false;
     }
 
@@ -557,7 +578,7 @@ typedef enum {
 } Vmxnet3PktStatus;
 
 static void
-vmxnet3_on_tx_done_update_stats(VMXNET3State *s, int qidx,
+vmxnet3_on_tx_done_update_stats(VMXNET3State *s, uint32_t qidx,
     Vmxnet3PktStatus status)
 {
     size_t tot_len = vmxnet_tx_pkt_get_total_len(s->tx_pkt);
@@ -579,7 +600,7 @@ vmxnet3_on_tx_done_update_stats(VMXNET3State *s, int qidx,
             stats->ucastBytesTxOK += tot_len;
             break;
         default:
-            g_assert_not_reached();
+            assert(false);
         }
 
         if (s->offload_mode == VMXNET3_OM_TSO) {
@@ -603,13 +624,13 @@ vmxnet3_on_tx_done_update_stats(VMXNET3State *s, int qidx,
         break;
 
     default:
-        g_assert_not_reached();
+        assert(false);
     }
 }
 
 static void
 vmxnet3_on_rx_done_update_stats(VMXNET3State *s,
-                                int qidx,
+                                uint32_t qidx,
                                 Vmxnet3PktStatus status)
 {
     struct UPT1_RxStats *stats = &s->rxq_descr[qidx].rxq_stats;
@@ -638,7 +659,7 @@ vmxnet3_on_rx_done_update_stats(VMXNET3State *s,
             stats->ucastBytesRxOK += tot_len;
             break;
         default:
-            g_assert_not_reached();
+            assert(false);
         }
 
         if (tot_len > s->mtu) {
@@ -647,13 +668,13 @@ vmxnet3_on_rx_done_update_stats(VMXNET3State *s,
         }
         break;
     default:
-        g_assert_not_reached();
+        assert(false);
     }
 }
 
 static inline bool
 vmxnet3_pop_next_tx_descr(VMXNET3State *s,
-                          int qidx,
+                          uint32_t qidx,
                           struct Vmxnet3_TxDesc *txd,
                           uint32_t *descr_idx)
 {
@@ -688,7 +709,7 @@ vmxnet3_send_packet(VMXNET3State *s, uint32_t qidx)
     vmxnet3_dump_virt_hdr(vmxnet_tx_pkt_get_vhdr(s->tx_pkt));
     vmxnet_tx_pkt_dump(s->tx_pkt);
 
-    if (!vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic))) {
+    if (!vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic), &s->limit)) {
         status = VMXNET3_PKT_STATUS_DISCARD;
         goto func_exit;
     }
@@ -698,10 +719,10 @@ func_exit:
     return (status == VMXNET3_PKT_STATUS_OK);
 }
 
-static void vmxnet3_process_tx_queue(VMXNET3State *s, int qidx)
+static void vmxnet3_process_tx_queue(VMXNET3State *s, uint32_t qidx)
 {
     struct Vmxnet3_TxDesc txd;
-    uint32_t txd_idx;
+    uint32_t txd_idx, last_idx = 0xffffffff;
     uint32_t data_len;
     hwaddr data_pa;
 
@@ -743,15 +764,25 @@ static void vmxnet3_process_tx_queue(VMXNET3State *s, int qidx)
             }
 
             vmxnet3_complete_packet(s, qidx, txd_idx);
+	    if (s->tx_int_coalesce)
+		last_idx = txd_idx;
+	    else
+		vmxnet3_trigger_interrupt(s, s->txq_descr[qidx].intr_idx);
             s->tx_sop = true;
             s->skip_current_tx_pkt = false;
             vmxnet_tx_pkt_reset(s->tx_pkt);
         }
     }
+
+    if (last_idx != 0xffffffff) {
+	vmxnet3_trigger_interrupt(s, s->txq_descr[qidx].intr_idx);
+    }
+
+    return;
 }
 
 static inline void
-vmxnet3_read_next_rx_descr(VMXNET3State *s, int qidx, int ridx,
+vmxnet3_read_next_rx_descr(VMXNET3State *s, uint32_t qidx, int ridx,
                            struct Vmxnet3_RxDesc *dbuf, uint32_t *didx)
 {
     Vmxnet3Ring *ring = &s->rxq_descr[qidx].rx_ring[ridx];
@@ -760,13 +791,13 @@ vmxnet3_read_next_rx_descr(VMXNET3State *s, int qidx, int ridx,
 }
 
 static inline uint8_t
-vmxnet3_get_rx_ring_gen(VMXNET3State *s, int qidx, int ridx)
+vmxnet3_get_rx_ring_gen(VMXNET3State *s, uint32_t qidx, int ridx)
 {
     return s->rxq_descr[qidx].rx_ring[ridx].gen;
 }
 
 static inline hwaddr
-vmxnet3_pop_rxc_descr(VMXNET3State *s, int qidx, uint32_t *descr_gen)
+vmxnet3_pop_rxc_descr(VMXNET3State *s, uint32_t qidx, uint32_t *descr_gen)
 {
     uint8_t ring_gen;
     struct Vmxnet3_RxCompDesc rxcd;
@@ -787,7 +818,7 @@ vmxnet3_pop_rxc_descr(VMXNET3State *s, int qidx, uint32_t *descr_gen)
 }
 
 static inline void
-vmxnet3_revert_rxc_descr(VMXNET3State *s, int qidx)
+vmxnet3_revert_rxc_descr(VMXNET3State *s, uint32_t qidx)
 {
     vmxnet3_dec_rx_completion_counter(s, qidx);
 }
@@ -1067,11 +1098,54 @@ vmxnet3_indicate_packet(VMXNET3State *s)
     }
 }
 
+static void vmxnet3_io_limits_enable(VMXNET3State *s, 
+				     uint64_t bytes_per_int, uint32_t int_usec)
+{
+    if (bytes_per_int == 0 || int_usec == 0) {
+	/* disable the limit by setting it to a gigantic value */
+	s->limit.bps_limit = (~0ULL) >> 4;
+	if (s->limit.co_thread)
+	    qemu_cond_signal(s->limit.co_cond);
+
+	printf("disabling bps limit\n");
+
+	return;
+    }
+
+    // check limits for sanity
+
+    if ((8 * bytes_per_int * USECS_PER_SECOND) / int_usec > 0) {
+
+	s->limit.bps_limit = 8 * bytes_per_int * USECS_PER_SECOND / int_usec;
+	printf ("setting bps_limit to %lu (%lu, %u)\n", 
+		s->limit.bps_limit, bytes_per_int, int_usec);
+	if (!s->limit.co_thread) {
+	    /* 
+	     * Only initialize these once. Don't reset as they may
+	     * still be in use.
+	     */
+	    if (!s->limit.co_cond) {
+		s->limit.co_cond = g_malloc0(sizeof(QemuCond));
+		qemu_cond_init(s->limit.co_cond);
+		qemu_mutex_init(&s->limit.co_mutex);
+	    }
+	}
+	s->limit.slice_end = 0;
+	s->limit.io_limits_enabled = true;
+	s->limit.co_shutdown = false;
+    } else {
+	printf("no QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
+               bytes_per_int, int_usec);
+    }
+}
+
 static void
 vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
     VMXNET3State *s = opaque;
+
+    MUTEX_LOCK(s);
 
     if (VMW_IS_MULTIREG_ADDR(addr, VMXNET3_REG_TXPROD,
                         VMXNET3_DEVICE_MAX_TX_QUEUES, VMXNET3_REG_ALIGN)) {
@@ -1079,9 +1153,37 @@ vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
             VMW_MULTIREG_IDX_BY_ADDR(addr, VMXNET3_REG_TXPROD,
                                      VMXNET3_REG_ALIGN);
         assert(tx_queue_idx <= s->txq_num);
-        vmxnet3_process_tx_queue(s, tx_queue_idx);
+
+	if (s->parent_obj.qdev.bytes_per_int || s->parent_obj.qdev.int_usec) {
+	    vmxnet3_io_limits_enable(s, s->parent_obj.qdev.bytes_per_int, 
+				     s->parent_obj.qdev.int_usec);
+	    s->parent_obj.qdev.bytes_per_int = 0;
+	    s->parent_obj.qdev.int_usec = 0;
+	}
+
+	if (s->limit.io_limits_enabled) {
+	    s->limit.qidx |= (1 << tx_queue_idx);
+
+	    if (!s->limit.co_running) {
+		MUTEX_UNLOCK(s);
+		s->limit.co_running = true;
+		s->tx_int_coalesce = true;
+		s->limit.co_thread = g_malloc0(sizeof(QemuThread));
+		qemu_thread_create(s->limit.co_thread, vmxnet3_co, s,
+				   QEMU_THREAD_JOINABLE);
+	    } else {
+		MUTEX_UNLOCK(s);
+		qemu_cond_signal(s->limit.co_cond);
+	    }
+	} else {
+	    MUTEX_UNLOCK(s);
+	    vmxnet3_process_tx_queue(s, tx_queue_idx);
+	}
+
         return;
     }
+
+    MUTEX_UNLOCK(s);
 
     if (VMW_IS_MULTIREG_ADDR(addr, VMXNET3_REG_IMR,
                         VMXNET3_MAX_INTRS, VMXNET3_REG_ALIGN)) {
@@ -1110,7 +1212,7 @@ vmxnet3_io_bar0_read(void *opaque, hwaddr addr, unsigned size)
 {
     if (VMW_IS_MULTIREG_ADDR(addr, VMXNET3_REG_IMR,
                         VMXNET3_MAX_INTRS, VMXNET3_REG_ALIGN)) {
-        g_assert_not_reached();
+        assert(false);
     }
 
     VMW_CBPRN("BAR0 unknown read [%" PRIx64 "], size %d", addr, size);
@@ -1139,16 +1241,95 @@ static void vmxnet3_deactivate_device(VMXNET3State *s)
     s->device_active = false;
 }
 
+static gpointer vmxnet3_co(gpointer opaque)
+{
+    VMXNET3State *s = (VMXNET3State *)opaque;
+
+    MUTEX_LOCK(s);
+
+    while (!s->limit.co_shutdown) {
+	uint32_t qidx, i;
+
+	if (!s->limit.qidx)
+	    qemu_cond_wait(s->limit.co_cond, &s->limit.co_mutex);
+
+	do {
+	    qidx = s->limit.qidx;
+
+	    s->limit.qidx = 0;
+
+	    MUTEX_UNLOCK(s);
+
+	    for (i = 0; qidx; i++) {
+		if ((qidx & 1)) 
+		    vmxnet3_process_tx_queue(s, i);
+		qidx >>= 1;
+	    }
+
+	    MUTEX_LOCK(s);
+
+	} while (s->limit.qidx);
+    }
+
+    s->limit.co_running = false;
+    s->limit.co_shutdown = false;
+
+    MUTEX_UNLOCK(s);
+
+    return NULL;
+}
+
+/* clean up co_thread, if it exists.  this function is called with
+ * the mutex unlocked, and returns with it locked
+ */
+static void vmxnet3_thread_cleanup(VMXNET3State *s)
+{
+    MUTEX_LOCK(s);
+
+    while (s->limit.co_running) {
+	struct timespec req;
+
+	s->limit.co_shutdown = true;
+	qemu_cond_signal(s->limit.co_cond);
+	
+	MUTEX_UNLOCK(s);
+
+	req.tv_sec = 0;
+	req.tv_nsec = 1000000;
+
+	nanosleep(&req, NULL);
+
+	MUTEX_LOCK(s);
+    }
+
+    if (s->limit.co_thread) {
+	qemu_thread_join(s->limit.co_thread);
+	s->limit.co_thread = NULL;
+    }
+
+    return;
+}
+
 static void vmxnet3_reset(VMXNET3State *s)
 {
     VMW_CBPRN("Resetting vmxnet3...");
 
+    vmxnet3_thread_cleanup(s);
+
+    /* mutex is now locked */
+
+    s->limit.qidx = 0;
+
+    MUTEX_UNLOCK(s);
+
     vmxnet3_deactivate_device(s);
     vmxnet3_reset_interrupt_states(s);
     vmxnet_tx_pkt_reset(s->tx_pkt);
+
     s->drv_shmem = 0;
     s->tx_sop = true;
     s->skip_current_tx_pkt = false;
+    s->tx_int_coalesce = false;
 }
 
 static void vmxnet3_update_rx_mode(VMXNET3State *s)
@@ -1655,7 +1836,7 @@ vmxnet3_io_bar1_write(void *opaque,
     case VMXNET3_REG_ICR:
         VMW_CBPRN("Write BAR1 [VMXNET3_REG_ICR] = %" PRIx64 ", size %d",
                   val, size);
-        g_assert_not_reached();
+        assert(false);
         break;
 
     /* Event Cause Register */
@@ -1724,7 +1905,7 @@ vmxnet3_io_bar1_read(void *opaque, hwaddr addr, unsigned size)
             break;
 
         default:
-            VMW_CBPRN("Unknow read BAR1[%" PRIx64 "], %d bytes", addr, size);
+            VMW_CBPRN("Unknown read BAR1[%" PRIx64 "], %d bytes", addr, size);
             break;
         }
 
@@ -1805,7 +1986,7 @@ vmxnet3_rx_filter_may_indicate(VMXNET3State *s, const void *data,
         break;
 
     default:
-        g_assert_not_reached();
+        assert(false);
     }
 
     return true;
@@ -1892,6 +2073,14 @@ static bool vmxnet3_peer_has_vnet_hdr(VMXNET3State *s)
 
 static void vmxnet3_net_uninit(VMXNET3State *s)
 {
+    if (s->limit.co_thread) {
+	vmxnet3_thread_cleanup(s);
+	MUTEX_UNLOCK(s);
+	qemu_cond_destroy(s->limit.co_cond);
+	s->limit.co_cond = NULL;
+	qemu_mutex_destroy(&s->limit.co_mutex);
+    }
+
     g_free(s->mcast_list);
     vmxnet_tx_pkt_reset(s->tx_pkt);
     vmxnet_tx_pkt_uninit(s->tx_pkt);
@@ -1902,6 +2091,7 @@ static void vmxnet3_net_uninit(VMXNET3State *s)
 static void vmxnet3_net_init(VMXNET3State *s)
 {
     DeviceState *d = DEVICE(s);
+    NICConf *conf = &s->conf;
 
     VMW_CBPRN("vmxnet3_net_init called...");
 
@@ -1924,6 +2114,7 @@ static void vmxnet3_net_init(VMXNET3State *s)
     s->peer_has_vhdr = vmxnet3_peer_has_vnet_hdr(s);
     s->tx_sop = true;
     s->skip_current_tx_pkt = false;
+    s->tx_int_coalesce = false;
     s->tx_pkt = NULL;
     s->rx_pkt = NULL;
     s->rx_vlan_stripping = false;
@@ -1937,6 +2128,24 @@ static void vmxnet3_net_init(VMXNET3State *s)
     }
 
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
+
+    s->limit.io_limits_enabled = false;
+    s->limit.co_running = false;
+    s->limit.co_shutdown = false;
+    s->limit.co_thread = NULL;
+    s->limit.slice_end = 0;
+
+    if (conf->bytes_per_int || conf->int_usec) {
+       /* Load the structure with the initial limits here.
+        * Check the limits on each send packet in case they change dynamically
+        */
+       vmxnet3_io_limits_enable(s, conf->bytes_per_int, conf->int_usec);
+       conf->bytes_per_int = 0;
+       conf->int_usec = 0;
+    } else
+       printf ("no initial QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
+               conf->bytes_per_int, conf->int_usec);
+
 }
 
 static void
@@ -2020,6 +2229,7 @@ vmxnet3_init_msix(VMXNET3State *s)
     return s->msix_used;
 }
 
+#ifdef USE_MSIX
 static void
 vmxnet3_cleanup_msix(VMXNET3State *s)
 {
@@ -2030,6 +2240,7 @@ vmxnet3_cleanup_msix(VMXNET3State *s)
         msix_uninit(d, &s->msix_bar, &s->msix_bar);
     }
 }
+#endif
 
 #define VMXNET3_MSI_NUM_VECTORS   (1)
 #define VMXNET3_MSI_OFFSET        (0x80)
@@ -2509,7 +2720,6 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
     dc->reset = vmxnet3_qdev_reset;
     dc->vmsd = &vmstate_vmxnet3;
     dc->props = vmxnet3_properties;
-    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }
 
 static const TypeInfo vmxnet3_info = {
@@ -2526,3 +2736,9 @@ static void vmxnet3_register_types(void)
 }
 
 type_init(vmxnet3_register_types)
+
+/*
+ * Local variables:
+ * c-basic-offset: 4
+ * End:
+ */
