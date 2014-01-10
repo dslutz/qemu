@@ -122,6 +122,12 @@ static void bt_sighandler(int sig, siginfo_t *info, void *secret)
         msg = "SIGBUS";
         fprintf(stderr, "QEMU: Got %s(%d), faulty address is %p, from %p\n",
                 msg, sig, info->si_addr, ip);
+#if defined(HOST_X86_64) || defined(HOST_I386)
+    } else if (sig == SIGABRT) {
+        msg = "SIGABRT";
+        fprintf(stderr, "QEMU: Got %s(%d), faulty address is %p, from %p\n",
+                msg, sig, info->si_addr, ip);
+#endif
     } else {
         msg = "SIG?";
         fprintf(stderr, "QEMU: Got signal %d\n", sig);
@@ -142,7 +148,7 @@ static void bt_sighandler(int sig, siginfo_t *info, void *secret)
 
     qemu_system_killed(info->si_signo, info->si_pid);
 
-#if defined HOST_I386
+#if defined(HOST_X86_64) || defined(HOST_I386)
 # if defined __GNUC__
     __asm__ ("int3");
 # elif defined _MSC_VER
@@ -177,6 +183,9 @@ void os_setup_signal_handling(void)
     sa.sa_flags = SA_RESTART | SA_SIGINFO;
     sigaction (SIGSEGV, &sa, NULL);
     sigaction (SIGBUS, &sa, NULL);
+#if defined(HOST_X86_64) || defined(HOST_I386)
+    sigaction (SIGABRT, &sa, NULL);
+#endif
 #endif
 }
 
