@@ -1,0 +1,48 @@
+#
+# Default is k&r
+#
+style=kr
+#
+# Converts tabs into single spaces.
+#
+convert-tabs
+#
+# indent using spaces by 4
+#
+indent=spaces=4
+#
+# Do preprocessor statements also.
+#
+indent-preproc-define
+#
+# Insert space padding around operators only.
+#
+pad-oper
+#
+# Insert space padding after paren headers only.
+#
+pad-header
+#
+# Remove extra space padding around parenthesis on the inside and outside.
+#
+unpad-paren
+#
+# Add one line brackets to unbracketed one line conditional statements.
+#
+add-one-line-brackets
+#
+# Attach a pointer or reference operator to variable name
+#
+align-pointer=name
+#
+# Do not change the reference alignment.
+#
+align-reference=none
+#
+# The option max-code-length will break a line
+#
+max-code-length=80
+#
+# Set the minimal indent that is added when a header is built of multiple lines.
+#
+min-conditional-indent=0
