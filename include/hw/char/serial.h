@@ -58,6 +58,10 @@ struct SerialState {
     int tsr_retry;
     uint32_t wakeup;
 
+    /* Call serial_xmit the requested number of times */
+    int watch;
+    uint64_t watch_count;
+
     /* Time when the last byte was successfully sent out of the tsr */
     uint64_t last_xmit_ts;
     Fifo8 recv_fifo;
