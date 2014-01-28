@@ -498,7 +498,7 @@ static inline void vmxnet_next_slice_ns(VmxnetRateLimit *l, uint32_t pkt_size)
     uint64_t now;
     uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / l->bps_limit;
 
-    now = qemu_get_clock_ns(vm_clock);
+    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     if (l->slice_end > now) now = l->slice_end;
     l->slice_end = now + pkt_time;
 }
@@ -515,7 +515,7 @@ static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
 {
     uint64_t delay;
     uint64_t pkt_time = ((uint64_t)len * 8 * NANOSECONDS_PER_SECOND) / lim->bps_limit;
-    uint64_t now = qemu_get_clock_ns(vm_clock);
+    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
     delay = now >= lim->slice_end ? 0 : lim->slice_end - now;
 
@@ -525,7 +525,7 @@ static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
 	req.tv_sec = 0;
 	req.tv_nsec = delay - FUDGE;
 	nanosleep(&req, NULL);
-	now = qemu_get_clock_ns(vm_clock);
+	now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     }
 
     if (lim->slice_end > now) now = lim->slice_end;
