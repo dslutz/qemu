@@ -905,7 +905,6 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
                           VMXNET_CHIP_IO_RESV_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
-    //XXXDMK    s->irq = pci_dev->irq[0];
     s->irq = pci_allocate_irq(pci_dev);
     s->phys_mem_read = pci_physical_memory_read;
     s->phys_mem_write = pci_physical_memory_write;

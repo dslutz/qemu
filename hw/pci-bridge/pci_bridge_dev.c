@@ -406,7 +406,7 @@ static const TypeInfo pci_bridge_dev_info = {
 
 static TypeInfo agp_bridge_dev_info = {
     .name = TYPE_AGP_BRIDGE_DEV,
-    .parent        = TYPE_PCI_BRIDGE, //XXXDMK was TYPE_PCI_DEVICE
+    .parent        = TYPE_PCI_BRIDGE,
     .instance_size = sizeof(PCIBridgeDev),
     .class_init = agp_bridge_dev_class_init,
 };

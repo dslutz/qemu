@@ -740,11 +740,6 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
                 return -EINVAL;
             }
         } else if (!strcmp(type, "VMFS")) {
-#if 0 //XXXDMK
-            if (ret != 4) {
-                return -EINVAL;
-            }
-#endif
             flat_offset = 0;
         } else if (ret != 4) {
             error_setg(errp, "Invalid extent lines: \n%s", p);

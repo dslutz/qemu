@@ -350,7 +350,6 @@ PCIBus *i440fx_init(PCII440FXState **pi440fx_state,
     f->system_memory = address_space_mem;
     f->pci_address_space = pci_address_space;
     f->ram_memory = ram_memory;
-    printf("%s: ram_mem: %p\n", __FUNCTION__, f->ram_memory); //XXXDMK
 
     i440fx = I440FX_PCI_HOST_BRIDGE(dev);
     /* Set PCI window size the way seabios has always done it. */
