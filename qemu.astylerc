@@ -27,9 +27,9 @@ pad-header
 #
 unpad-paren
 #
-# Add one line brackets to unbracketed one line conditional statements.
+# Add brackets to unbracketed one line conditional statements.
 #
-add-one-line-brackets
+add-brackets
 #
 # Attach a pointer or reference operator to variable name
 #
