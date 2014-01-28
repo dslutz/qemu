@@ -219,6 +219,31 @@ static void serial_update_msl(SerialState *s)
         timer_mod(s->modem_status_poll, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + get_ticks_per_sec() / 100);
 }
 
+static gboolean serial_xmit(GIOChannel *chan, GIOCondition cond, void *opaque);
+static gboolean watch_serial_xmit(GIOChannel *chan, GIOCondition cond, void *opaque)
+{
+    SerialState *s = opaque;
+    gboolean ret = false;
+    uint64_t old_watch_count = s->watch_count;
+
+    s->watch = 0;
+    s->watch_count = 0;
+    while (old_watch_count > 0) {
+        old_watch_count--;
+        ret = serial_xmit(chan, cond, opaque);
+    }
+    return ret;
+}
+
+static int add_watch_serial(SerialState *s)
+{
+    s->watch_count++;
+    if (!s->watch) {
+        s->watch = qemu_chr_fe_add_watch(s->chr, G_IO_OUT, watch_serial_xmit, s);
+    }
+    return s->watch;
+}
+
 static gboolean serial_xmit(GIOChannel *chan, GIOCondition cond, void *opaque)
 {
     SerialState *s = opaque;
@@ -244,7 +269,7 @@ static gboolean serial_xmit(GIOChannel *chan, GIOCondition cond, void *opaque)
         serial_receive1(s, &s->tsr, 1);
     } else if (qemu_chr_fe_write(s->chr, &s->tsr, 1) != 1) {
         if (s->tsr_retry >= 0 && s->tsr_retry < MAX_XMIT_RETRY &&
-            qemu_chr_fe_add_watch(s->chr, G_IO_OUT, serial_xmit, s) > 0) {
+            add_watch_serial(s) > 0) {
             s->tsr_retry++;
             return FALSE;
         }
@@ -630,6 +655,8 @@ static void serial_reset(void *opaque)
     s->mcr = UART_MCR_OUT2;
     s->scr = 0;
     s->tsr_retry = 0;
+    s->watch = 0;
+    s->watch_count = 0;
     s->char_transmit_time = (get_ticks_per_sec() / 9600) * 10;
     s->poll_msl = 0;
 
