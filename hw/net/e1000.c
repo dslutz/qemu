@@ -25,15 +25,23 @@
  */
 
 
+#define CONFIG_RATE_LIMIT
+
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "net/tap.h"
 #include "net/net.h"
+#include "net/eth.h"
+#include "qemu-common.h"
+#include "qemu/iov.h"
 #include "net/checksum.h"
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include <time.h>
+#ifdef CONFIG_RATE_LIMIT
 #include "qemu/thread.h"
+#endif
 
 #include "e1000_regs.h"
 
@@ -44,7 +52,10 @@ enum {
     DEBUG_GENERAL,	DEBUG_IO,	DEBUG_MMIO,	DEBUG_INTERRUPT,
     DEBUG_RX,		DEBUG_TX,	DEBUG_MDIC,	DEBUG_EEPROM,
     DEBUG_UNKNOWN,	DEBUG_TXSUM,	DEBUG_TXERR,	DEBUG_RXERR,
-    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,	DEBUG_RATE,
+    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,	
+#ifdef CONFIG_RATE_LIMIT
+    DEBUG_RATE,
+#endif
 };
 #define DBGBIT(x)	(1<<DEBUG_##x)
 static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
@@ -129,7 +140,7 @@ typedef struct E1000State_st {
         char tse;
         int8_t ip;
         int8_t tcp;
-        char cptse;     // current packet tse bit
+        char cptse;      // current packet tse bit
     } tx;
 
     struct {
@@ -147,7 +158,9 @@ typedef struct E1000State_st {
 #define E1000_FLAG_AUTONEG (1 << E1000_FLAG_AUTONEG_BIT)
     uint32_t compat_flags;
 
+    bool	 peer_has_vhdr;
 
+#ifdef CONFIG_RATE_LIMIT
     uint64_t     bps_limit;
     uint64_t     slice_end;
     QemuThread   *co_thread;
@@ -156,7 +169,8 @@ typedef struct E1000State_st {
     bool         io_limits_enabled;
     bool         co_running;
     bool         co_shutdown;
-    bool         co_mutex_inited;
+    bool         co_cond_inited;
+#endif
 } E1000State;
 
 #define TYPE_E1000 "e1000"
@@ -167,14 +181,16 @@ typedef struct E1000State_st {
 #define E1000VMW(obj) \
     OBJECT_CHECK(E1000State, (obj), TYPE_E1000VMW)
 
+#ifdef CONFIG_RATE_LIMIT
 #define MUTEX_LOCK(s)                  \
-    if (s->co_mutex_inited)            \
         qemu_mutex_lock(&s->co_mutex);
 
 #define MUTEX_UNLOCK(s)                \
-    if (s->co_mutex_inited)            \
         qemu_mutex_unlock(&s->co_mutex);
-
+#else
+#define MUTEX_LOCK(s)
+#define MUTEX_UNLOCK(s)
+#endif
 
 #define	defreg(x)	x = (E1000_##x>>2)
 enum {
@@ -188,15 +204,17 @@ enum {
     defreg(TORH),	defreg(TORL),	defreg(TOTH),	defreg(TOTL),
     defreg(TPR),	defreg(TPT),	defreg(TXDCTL),	defreg(WUFC),
     defreg(RA),		defreg(MTA),	defreg(CRCERRS),defreg(VFTA),
-    defreg(VET),
+    defreg(VET),	defreg(RXCSUM), 
 };
 
+
+#ifdef CONFIG_RATE_LIMIT
 static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32_t int_usec)
 {
     if (bytes_per_int == 0 || int_usec == 0) {
 	/* disable the limit by setting it to a gigantic value */
 	s->bps_limit = (~0ULL) >> 4;
-	if (s->co_mutex_inited)
+	if (s->co_cond_inited)
             qemu_cond_signal(s->co_cond);
 	printf("setting bps_limit to infinite\n");
 
@@ -210,15 +228,14 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
 	s->bps_limit = 8 * bytes_per_int * USECS_PER_SECOND / int_usec;
 	printf ("setting bps_limit to %lu (%lu, %u)\n", 
 		s->bps_limit, bytes_per_int, int_usec);
-	if (!s->co_mutex_inited) {
+	if (!s->co_cond_inited) {
 	    /* 
 	     * Only initialize these once. Don't reset as they may
 	     * still be in use.
 	     */
-	    s->co_mutex_inited = true;
+	    s->co_cond_inited = true;
 	    s->co_cond = g_malloc0(sizeof(QemuCond));
 	    qemu_cond_init(s->co_cond);
-	    qemu_mutex_init(&s->co_mutex);
 	}
 	s->slice_end = 0;
 	s->io_limits_enabled = true;
@@ -228,32 +245,7 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
                bytes_per_int, int_usec);
     }
 }
-
-
-static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
-{
-    uint64_t now;
-    now = qemu_get_clock_ns(vm_clock);
-
-    if (now >= s->slice_end)
-	return 0;
-    else
-	return (s->slice_end - now);
-}
-
-
-#define FUDGE2 4000	/* account for overhead */
-
-static void e1000_next_slice_ns (E1000State *s, int pkt_size)
-{
-    uint64_t now;
-    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
-
-    now = qemu_get_clock_ns(vm_clock);
-    if (s->slice_end > now) now = s->slice_end;
-    if (pkt_time <= FUDGE2) pkt_time -= FUDGE2;
-    s->slice_end = now + pkt_time;
-}
+#endif
 
 static void
 e1000_link_down(E1000State *s)
@@ -409,12 +401,15 @@ static void e1000_reset(void *opaque)
     uint8_t *macaddr = d->conf.macaddr.a;
     int i;
 
+#ifdef CONFIG_RATE_LIMIT
     printf("e1000_reset\n");
 
-    if (d->co_running) {
+    while (d->co_running) {
         d->co_shutdown = true;
         qemu_cond_signal(d->co_cond);
+        sched_yield();
     }
+#endif
 
     qemu_del_timer(d->autoneg_timer);
 
@@ -447,6 +442,13 @@ set_ctrl(E1000State *s, int index, uint32_t val)
 {
     /* RST is self clearing */
     s->mac_reg[CTRL] = val & ~E1000_CTRL_RST;
+}
+
+static void
+set_rxcsum(E1000State *s, int index, uint32_t val)
+{
+    printf("setting RXCSUM to 0x%x (was 0x%x)\n", val, s->mac_reg[RXCSUM]);
+    s->mac_reg[RXCSUM] = val;
 }
 
 static void
@@ -612,30 +614,90 @@ static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
     NetClientState *nc = qemu_get_queue(s->nic);
+    struct e1000_tx *tp = &s->tx;
 
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
-	MUTEX_UNLOCK(s);
+        MUTEX_UNLOCK(s);
         nc->info->receive(nc, buf, size);
-	MUTEX_LOCK(s);
-	return;
+        MUTEX_LOCK(s);
+        return;
     }
 
     MUTEX_UNLOCK(s);
 
+#ifdef CONFIG_RATE_LIMIT
     if (s->io_limits_enabled) {
-	struct timespec req, rem;
-	uint64_t delay;
-	if ((delay = e1000_pkt_wait_time_ns(s)) > FUDGE) {
-	    DBGOUT(RATE, "exceed_bps_limit: wait time=%ld\n", delay);
-	    req.tv_sec = 0;
-	    req.tv_nsec = delay - FUDGE;
-	    nanosleep(&req, &rem);
-	}
+        uint64_t delay;
+        uint64_t pkt_time = ((uint64_t)size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
+        uint64_t now = qemu_get_clock_ns(vm_clock);
+
+        delay = now >= s->slice_end ? 0 : s->slice_end - now;
+
+        if (delay > FUDGE) {
+            struct timespec req;
+
+            req.tv_sec = 0;
+            req.tv_nsec = delay - FUDGE;
+            nanosleep(&req, NULL);
+            now = qemu_get_clock_ns(vm_clock);
+        }
+
+        if (s->slice_end > now) now = s->slice_end;
+        s->slice_end = now + pkt_time;
+    }
+#endif
+
+    /* see whether we have the option of doing any offloading */
+
+    if (!s->peer_has_vhdr) {
+        qemu_send_packet(nc, buf, size);
+        MUTEX_LOCK(s);
+        return;
+    } 
+
+    /* OK, offloading is allowed and we may need to do some */
+    /* we're not doing UDP offloading, by the way */
+
+    struct iovec iov[2];
+    struct virtio_net_hdr virt_hdr;
+
+    memset(&virt_hdr, 0, sizeof(virt_hdr));
     
-	e1000_next_slice_ns(s, size);
+    iov[0].iov_base = &virt_hdr;
+    iov[0].iov_len = sizeof(virt_hdr);
+
+    iov[1].iov_base = (uint8_t *)buf;
+    iov[1].iov_len = size;
+
+    /* is this a payload that allows for any offloading? */
+
+    if (!(s->mac_reg[RXCSUM] & E1000_RXCSUM_TUOFL) ||
+        !(tp->tcp) ||
+        !(tp->tucso) ||
+        !(tp->sum_needed & E1000_TXD_POPTS_TXSM)) {
+
+        qemu_sendv_packet(nc, iov, 2);
+        MUTEX_LOCK(s);
+        return;
     }
 
-    qemu_send_packet(nc, buf, size);
+    /* Note: segmentation offloading implies checksum offloading */
+
+    virt_hdr.gso_type = VIRTIO_NET_HDR_GSO_NONE;
+    virt_hdr.flags = VIRTIO_NET_HDR_F_NEEDS_CSUM;
+    virt_hdr.csum_start = tp->tucso - offsetof(struct tcp_hdr, th_sum);
+    virt_hdr.csum_offset = offsetof(struct tcp_hdr, th_sum);
+
+    if (tp->tse && tp->cptse) {
+        virt_hdr.hdr_len = tp->hdr_len;
+        virt_hdr.gso_size = IP_FRAG_ALIGN_SIZE(tp->mss);
+        if (tp->ip)
+            virt_hdr.gso_type = VIRTIO_NET_HDR_GSO_TCPV4;
+        else
+            virt_hdr.gso_type = VIRTIO_NET_HDR_GSO_TCPV6;
+    }
+
+    qemu_sendv_packet(nc, iov, 2);
 
     MUTEX_LOCK(s);
 
@@ -653,12 +715,12 @@ xmit_seg(E1000State *s)
         css = tp->ipcss;
         DBGOUT(TXSUM, "frames %d size %d ipcss %d\n",
                frames, tp->size, css);
-        if (tp->ip) {		// IPv4
+        if (tp->ip) {                // IPv4
             cpu_to_be16wu((uint16_t *)(tp->data+css+2),
                           tp->size - css);
             cpu_to_be16wu((uint16_t *)(tp->data+css+4),
                           be16_to_cpup((uint16_t *)(tp->data+css+4))+frames);
-        } else			// IPv6
+        } else                       // IPv6
             cpu_to_be16wu((uint16_t *)(tp->data+css+4),
                           tp->size - css);
         css = tp->tucss;
@@ -666,11 +728,11 @@ xmit_seg(E1000State *s)
         DBGOUT(TXSUM, "tcp %d tucss %d len %d\n", tp->tcp, css, len);
         if (tp->tcp) {
             sofar = frames * tp->mss;
-            cpu_to_be32wu((uint32_t *)(tp->data+css+4),	// seq
+            cpu_to_be32wu((uint32_t *)(tp->data+css+4),        // seq
                 be32_to_cpupu((uint32_t *)(tp->data+css+4))+sofar);
             if (tp->paylen - sofar > tp->mss)
-                tp->data[css + 13] &= ~9;		// PSH, FIN
-        } else	// UDP
+                tp->data[css + 13] &= ~9;                // PSH, FIN
+        } else        // UDP
             cpu_to_be16wu((uint16_t *)(tp->data+css+4), len);
         if (tp->sum_needed & E1000_TXD_POPTS_TXSM) {
             unsigned int phsum;
@@ -683,8 +745,13 @@ xmit_seg(E1000State *s)
         tp->tso_frames++;
     }
 
-    if (tp->sum_needed & E1000_TXD_POPTS_TXSM)
+    if ((tp->sum_needed & E1000_TXD_POPTS_TXSM) &&
+        !((s->peer_has_vhdr) && 
+          (s->mac_reg[RXCSUM] & E1000_RXCSUM_TUOFL) &&
+          tp->tcp)
+        ) {
         putsum(tp->data, tp->size, tp->tucso, tp->tucss, tp->tucse);
+    }
     if (tp->sum_needed & E1000_TXD_POPTS_IXSM)
         putsum(tp->data, tp->size, tp->ipcso, tp->ipcss, tp->ipcse);
     if (tp->vlan_needed) {
@@ -713,7 +780,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
     struct e1000_context_desc *xp = (struct e1000_context_desc *)dp;
     struct e1000_tx *tp = &s->tx;
 
-    if (dtype == E1000_TXD_CMD_DEXT) {	// context descriptor
+    if (dtype == E1000_TXD_CMD_DEXT) {        // context descriptor
         op = le32_to_cpu(xp->cmd_and_length);
         tp->ipcss = xp->lower_setup.ip_fields.ipcss;
         tp->ipcso = xp->lower_setup.ip_fields.ipcso;
@@ -728,7 +795,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
         tp->tcp = (op & E1000_TXD_CMD_TCP) ? 1 : 0;
         tp->tse = (op & E1000_TXD_CMD_TSE) ? 1 : 0;
         tp->tso_frames = 0;
-        if (tp->tucso == 0) {	// this is probably wrong
+        if (tp->tucso == 0) {        // this is probably wrong
             DBGOUT(TXSUM, "TCP/UDP: cso 0!\n");
             tp->tucso = tp->tucss + (tp->tcp ? 16 : 6);
         }
@@ -755,7 +822,10 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
         
     addr = le64_to_cpu(dp->buffer_addr);
     if (tp->tse && tp->cptse) {
-        msh = tp->hdr_len + tp->mss;
+        if (s->peer_has_vhdr) {
+            msh = sizeof(tp->data);
+        } else
+            msh = tp->hdr_len + tp->mss;
         do {
             bytes = split_size;
             if (tp->size + bytes > msh)
@@ -829,7 +899,11 @@ start_xmit_co(E1000State *s)
     // uint32_t tdh_start = s->mac_reg[TDH],
     uint32_t cause = E1000_ICS_TXQE;
 
-    while ((s->mac_reg[TDH] != s->mac_reg[TDT]) && !s->co_shutdown) {
+    while ((s->mac_reg[TDH] != s->mac_reg[TDT])
+#ifdef CONFIG_RATE_LIMIT
+           && !s->co_shutdown
+#endif
+        ) {
         base = tx_desc_base(s) +
                sizeof(struct e1000_tx_desc) * s->mac_reg[TDH];
         pci_dma_read(d, base, &desc, sizeof(desc));
@@ -858,50 +932,60 @@ start_xmit_co(E1000State *s)
     set_ics(s, 0, cause);
 }
 
+#ifdef CONFIG_RATE_LIMIT
 static gpointer e1000_xmit_co_entry(gpointer opaque)
 {
     E1000State *s = (E1000State *)opaque;
 
     DBGOUT(RATE, "xmit_co_entry: s=%p\n", opaque);
     while (!s->co_shutdown) {
-        qemu_mutex_lock(&s->co_mutex);
+        MUTEX_LOCK(s);
         start_xmit_co(s);
         qemu_cond_wait(s->co_cond, &s->co_mutex);
-        qemu_mutex_unlock(&s->co_mutex);
+        MUTEX_UNLOCK(s);
     }
     s->co_running = false;
     s->co_shutdown = false;
     return NULL;
 }
+#endif
 
 static void
 start_xmit(E1000State *s)
 {
+#ifdef CONFIG_RATE_LIMIT
     PCIDevice *pdev = PCI_DEVICE(s);
+#endif
     if (!(s->mac_reg[TCTL] & E1000_TCTL_EN)) {
         DBGOUT(TX, "tx disabled\n");
         return;
     }
 
+#ifdef CONFIG_RATE_LIMIT
     if (pdev->qdev.bytes_per_int || pdev->qdev.int_usec) {
-	e1000_io_limits_enable(s, pdev->qdev.bytes_per_int, 
-			       pdev->qdev.int_usec);
-	pdev->qdev.bytes_per_int = 0;
-	pdev->qdev.int_usec = 0;
+        e1000_io_limits_enable(s, pdev->qdev.bytes_per_int, 
+                               pdev->qdev.int_usec);
+        pdev->qdev.bytes_per_int = 0;
+        pdev->qdev.int_usec = 0;
     }
+#endif
 
+#ifdef CONFIG_RATE_LIMIT
     if (s->io_limits_enabled) {
         if (!s->co_running) {
             s->co_running = true;
             DBGOUT(RATE, "e1000 starting coroutine: s=%p\n", s);
-	    s->co_thread = g_malloc0(sizeof(QemuThread));
-	    qemu_thread_create(s->co_thread, e1000_xmit_co_entry, s, QEMU_THREAD_JOINABLE);
+            s->co_thread = g_malloc0(sizeof(QemuThread));
+            qemu_thread_create(s->co_thread, e1000_xmit_co_entry, s, QEMU_THREAD_JOINABLE);
         }
-	else
-	    qemu_cond_signal(s->co_cond);
+        else
+            qemu_cond_signal(s->co_cond);
     }
     else
         start_xmit_co(s);
+#else
+    start_xmit_co(s);
+#endif
 }
 
 
@@ -920,10 +1004,10 @@ receive_filter(E1000State *s, const uint8_t *buf, int size)
             return 0;
     }
 
-    if (rctl & E1000_RCTL_UPE)			// promiscuous
+    if (rctl & E1000_RCTL_UPE)                        // promiscuous
         return 1;
 
-    if ((buf[0] & 1) && (rctl & E1000_RCTL_MPE))	// promiscuous mcast
+    if ((buf[0] & 1) && (rctl & E1000_RCTL_MPE))        // promiscuous mcast
         return 1;
 
     if ((rctl & E1000_RCTL_BAM) && !memcmp(buf, bcast, sizeof bcast))
@@ -1031,6 +1115,11 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 
     if (!(s->mac_reg[RCTL] & E1000_RCTL_EN)) {
         return -1;
+    }
+
+    if (s->peer_has_vhdr) {
+        buf += sizeof(struct virtio_net_hdr);
+        size -= sizeof(struct virtio_net_hdr);
     }
 
     /* Pad to minimum Ethernet frame length */
@@ -1224,19 +1313,19 @@ set_ims(E1000State *s, int index, uint32_t val)
     set_ics(s, 0, 0);
 }
 
-#define getreg(x)	[x] = mac_readreg
+#define getreg(x)        [x] = mac_readreg
 static uint32_t (*macreg_readops[])(E1000State *, int) = {
-    getreg(PBA),	getreg(RCTL),	getreg(TDH),	getreg(TXDCTL),
-    getreg(WUFC),	getreg(TDT),	getreg(CTRL),	getreg(LEDCTL),
-    getreg(MANC),	getreg(MDIC),	getreg(SWSM),	getreg(STATUS),
-    getreg(TORL),	getreg(TOTL),	getreg(IMS),	getreg(TCTL),
-    getreg(RDH),	getreg(RDT),	getreg(VET),	getreg(ICS),
-    getreg(TDBAL),	getreg(TDBAH),	getreg(RDBAH),	getreg(RDBAL),
-    getreg(TDLEN),	getreg(RDLEN),
+    getreg(PBA),       getreg(RCTL),   getreg(TDH),    getreg(TXDCTL),
+    getreg(WUFC),      getreg(TDT),    getreg(CTRL),   getreg(LEDCTL),
+    getreg(MANC),      getreg(MDIC),   getreg(SWSM),   getreg(STATUS),
+    getreg(TORL),      getreg(TOTL),   getreg(IMS),    getreg(TCTL),
+    getreg(RDH),       getreg(RDT),    getreg(VET),    getreg(ICS),
+    getreg(TDBAL),     getreg(TDBAH),  getreg(RDBAH),  getreg(RDBAL),
+    getreg(TDLEN),     getreg(RDLEN),
 
-    [TOTH] = mac_read_clr8,	[TORH] = mac_read_clr8,	[GPRC] = mac_read_clr4,
-    [GPTC] = mac_read_clr4,	[TPR] = mac_read_clr4,	[TPT] = mac_read_clr4,
-    [ICR] = mac_icr_read,	[EECD] = get_eecd,	[EERD] = flash_eerd_read,
+    [TOTH] = mac_read_clr8,    [TORH] = mac_read_clr8, [GPRC] = mac_read_clr4,
+    [GPTC] = mac_read_clr4,    [TPR] = mac_read_clr4,  [TPT] = mac_read_clr4,
+    [ICR] = mac_icr_read,      [EECD] = get_eecd,      [EERD] = flash_eerd_read,
     [CRCERRS ... MPC] = &mac_readreg,
     [RA ... RA+31] = &mac_readreg,
     [MTA ... MTA+127] = &mac_readreg,
@@ -1244,16 +1333,17 @@ static uint32_t (*macreg_readops[])(E1000State *, int) = {
 };
 enum { NREADOPS = ARRAY_SIZE(macreg_readops) };
 
-#define putreg(x)	[x] = mac_writereg
+#define putreg(x)      [x] = mac_writereg
 static void (*macreg_writeops[])(E1000State *, int, uint32_t) = {
-    putreg(PBA),	putreg(EERD),	putreg(SWSM),	putreg(WUFC),
-    putreg(TDBAL),	putreg(TDBAH),	putreg(TXDCTL),	putreg(RDBAH),
-    putreg(RDBAL),	putreg(LEDCTL), putreg(VET),
-    [TDLEN] = set_dlen,	[RDLEN] = set_dlen,	[TCTL] = set_tctl,
-    [TDT] = set_tctl,	[MDIC] = set_mdic,	[ICS] = set_ics,
-    [TDH] = set_16bit,	[RDH] = set_16bit,	[RDT] = set_rdt,
-    [IMC] = set_imc,	[IMS] = set_ims,	[ICR] = set_icr,
-    [EECD] = set_eecd,	[RCTL] = set_rx_control, [CTRL] = set_ctrl,
+    putreg(PBA),       putreg(EERD),   putreg(SWSM),   putreg(WUFC),
+    putreg(TDBAL),     putreg(TDBAH),  putreg(TXDCTL), putreg(RDBAH),
+    putreg(RDBAL),     putreg(LEDCTL), putreg(VET),
+    [TDLEN] = set_dlen,        [RDLEN] = set_dlen,     [TCTL] = set_tctl,
+    [TDT] = set_tctl,  [MDIC] = set_mdic,      [ICS] = set_ics,
+    [TDH] = set_16bit, [RDH] = set_16bit,      [RDT] = set_rdt,
+    [IMC] = set_imc,   [IMS] = set_ims,        [ICR] = set_icr,
+    [EECD] = set_eecd, [RCTL] = set_rx_control, [CTRL] = set_ctrl,
+    [RXCSUM] = set_rxcsum,
     [RA ... RA+31] = &mac_writereg,
     [MTA ... MTA+127] = &mac_writereg,
     [VFTA ... VFTA+127] = &mac_writereg,
@@ -1516,6 +1606,7 @@ pci_e1000_uninit(PCIDevice *dev)
 {
     E1000State *d = E1000(dev);
 
+#ifdef CONFIG_RATE_LIMIT
     if (d->co_thread != NULL) {
         d->co_shutdown = true;
         qemu_cond_signal(d->co_cond);
@@ -1523,11 +1614,12 @@ pci_e1000_uninit(PCIDevice *dev)
         d->co_thread = NULL;
     }
 
-    if (d->co_mutex_inited) {
+    if (d->co_cond_inited) {
         qemu_cond_destroy(d->co_cond);
         qemu_mutex_destroy(&d->co_mutex);
-        d->co_mutex_inited = false;
+        d->co_cond_inited = false;
     }
+#endif
 
     qemu_del_timer(d->autoneg_timer);
     qemu_free_timer(d->autoneg_timer);
@@ -1545,11 +1637,24 @@ static NetClientInfo net_e1000_info = {
     .link_status_changed = e1000_set_link_status,
 };
 
+static bool e1000_peer_has_vnet_hdr(E1000State *d)
+{
+    NetClientState *peer = qemu_get_queue(d->nic)->peer;
+
+    if (peer &&
+        peer->info->type == NET_CLIENT_OPTIONS_KIND_TAP &&
+        tap_has_vnet_hdr(peer)) {
+        return true;
+    }
+    return false;
+}
+
 static int pci_e1000_common_init(PCIDevice *pci_dev, E1000State *d)
 {
     DeviceState *dev = DEVICE(pci_dev);
+#ifdef CONFIG_RATE_LIMIT
     NICConf *conf = &d->conf;
-
+#endif
     uint8_t *pci_conf;
     uint16_t checksum = 0;
     int i;
@@ -1639,12 +1744,14 @@ static int pci_e1000_common_init(PCIDevice *pci_dev, E1000State *d)
 
     d->autoneg_timer = qemu_new_timer_ms(vm_clock, e1000_autoneg_timer, d);
 
+#ifdef CONFIG_RATE_LIMIT
     d->io_limits_enabled = false;
     d->co_running = false;
     d->co_shutdown = false;
-    d->co_mutex_inited = false;
+    d->co_cond_inited = false;
     d->co_thread = NULL;
     d->slice_end = 0;
+    qemu_mutex_init(&d->co_mutex);
 
     if (conf->bytes_per_int || conf->int_usec) {
        /* Load the structure with the initial limits here.
@@ -1654,6 +1761,17 @@ static int pci_e1000_common_init(PCIDevice *pci_dev, E1000State *d)
        conf->bytes_per_int = 0;
        conf->int_usec = 0;
     }
+#endif
+
+    d->peer_has_vhdr = e1000_peer_has_vnet_hdr(d);
+    if (d->peer_has_vhdr) {
+        printf("e1000 vhdr enabled\n");
+        tap_set_vnet_hdr_len(qemu_get_queue(d->nic)->peer,
+                             sizeof(struct virtio_net_hdr));
+
+        tap_using_vnet_hdr(qemu_get_queue(d->nic)->peer, 1);
+    } else
+        printf("e1000 vhdr disabled\n");
 
     return 0;
 }

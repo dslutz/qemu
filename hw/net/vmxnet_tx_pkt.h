@@ -28,6 +28,9 @@
 
 struct VmxnetTxPkt;
 
+#define CONFIG_RATE_LIMIT
+
+#ifdef CONFIG_RATE_LIMIT
 /* CloudSwitch addition for rate limiting.  Must be in a
  * file included by both vmxnet3.c and vmxnet_tx_pkt.c
  */
@@ -43,6 +46,7 @@ typedef struct VmxnetRateLimit {
     bool         co_running;
     bool         co_shutdown;
 } VmxnetRateLimit;
+#endif
 
 /**
  * Init function for tx packet functionality
@@ -151,8 +155,12 @@ void vmxnet_tx_pkt_reset(struct VmxnetTxPkt *pkt);
  * @ret:            operation result
  *
  */
+#ifdef CONFIG_RATE_LIMIT
 bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc,
 			VmxnetRateLimit *l);
+#else
+bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc);
+#endif
 
 /**
  * parse raw packet data and analyze offload requirements.
