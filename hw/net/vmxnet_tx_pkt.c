@@ -494,16 +494,6 @@ static size_t vmxnet_tx_pkt_fetch_fragment(struct VmxnetTxPkt *pkt,
 #ifdef CONFIG_RATE_LIMIT
 #define NANOSECONDS_PER_SECOND  1000000000
 
-static inline void vmxnet_next_slice_ns(VmxnetRateLimit *l, uint32_t pkt_size)
-{
-    uint64_t now;
-    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / l->bps_limit;
-
-    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (l->slice_end > now) now = l->slice_end;
-    l->slice_end = now + pkt_time;
-}
-
 /* FUDGE is used to allow for the overhead of the nanosleep calls
  * and the limited granularity of the timers.  We found experimentally
  * that it needs to be at least 125,000 so that things will run at

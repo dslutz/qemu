@@ -256,31 +256,6 @@ static void e1000_io_limits_enable(E1000State *s, uint64_t bytes_per_int, uint32
                bytes_per_int, int_usec);
     }
 }
-
-static uint64_t e1000_pkt_wait_time_ns(E1000State *s)
-{
-    uint64_t now;
-    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-
-    if (now >= s->slice_end)
-	return 0;
-    else
-	return (s->slice_end - now);
-}
-
-
-#define FUDGE2 4000	/* account for overhead */
-
-static void e1000_next_slice_ns (E1000State *s, int pkt_size)
-{
-    uint64_t now;
-    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
-
-    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (s->slice_end > now) now = s->slice_end;
-    if (pkt_time <= FUDGE2) pkt_time -= FUDGE2;
-    s->slice_end = now + pkt_time;
-}
 #endif
 
 static void
@@ -729,7 +704,7 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
     if (s->io_limits_enabled) {
         uint64_t delay;
         uint64_t pkt_time = ((uint64_t)size * 8 * NANOSECONDS_PER_SECOND) / s->bps_limit;
-        uint64_t now = qemu_get_clock_ns(vm_clock);
+        uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
         delay = now >= s->slice_end ? 0 : s->slice_end - now;
 
@@ -739,7 +714,7 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
             req.tv_sec = 0;
             req.tv_nsec = delay - FUDGE;
             nanosleep(&req, NULL);
-            now = qemu_get_clock_ns(vm_clock);
+            now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
         }
 
         if (s->slice_end > now) now = s->slice_end;
@@ -1220,21 +1195,26 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     }
 
     if (s->peer_has_vhdr) {
-        buf += sizeof(struct virtio_net_hdr);
-        size -= sizeof(struct virtio_net_hdr);
+	iov_ofs = sizeof(struct virtio_net_hdr);
+	size -= iov_ofs;
+	while (iov->iov_len <= iov_ofs) {
+	    iov_ofs -= iov->iov_len;
+	    iov++;
+	}
     }
 
     /* Pad to minimum Ethernet frame length */
     if (size < sizeof(min_buf)) {
-        iov_to_buf(iov, iovcnt, 0, min_buf, size);
+        iov_to_buf(iov, iovcnt, iov_ofs, min_buf, size);
         memset(&min_buf[size], 0, sizeof(min_buf) - size);
         min_iov.iov_base = filter_buf = min_buf;
         min_iov.iov_len = size = sizeof(min_buf);
         iovcnt = 1;
         iov = &min_iov;
-    } else if (iov->iov_len < MAXIMUM_ETHERNET_HDR_LEN) {
+	iov_ofs = 0;
+    } else if (iov->iov_len - iov_ofs < MAXIMUM_ETHERNET_HDR_LEN) {
         /* This is very unlikely, but may happen. */
-        iov_to_buf(iov, iovcnt, 0, min_buf, MAXIMUM_ETHERNET_HDR_LEN);
+        iov_to_buf(iov, iovcnt, iov_ofs, min_buf, MAXIMUM_ETHERNET_HDR_LEN);
         filter_buf = min_buf;
     }
 
@@ -1253,11 +1233,11 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     if (vlan_enabled(s) && is_vlan_packet(s, filter_buf)) {
         vlan_special = cpu_to_le16(be16_to_cpup((uint16_t *)(filter_buf
                                                                 + 14)));
-        iov_ofs = 4;
+        iov_ofs += 4;
         if (filter_buf == iov->iov_base) {
-            memmove(filter_buf + 4, filter_buf, 12);
+            memmove(filter_buf + iov_ofs, filter_buf, 12);
         } else {
-            iov_from_buf(iov, iovcnt, 4, filter_buf, 12);
+            iov_from_buf(iov, iovcnt, iov_ofs, filter_buf, 12);
             while (iov->iov_len <= iov_ofs) {
                 iov_ofs -= iov->iov_len;
                 iov++;
