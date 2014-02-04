@@ -890,4 +890,7 @@ struct e1000_data_desc {
 /* For checksumming, the sum of all words in the EEPROM should equal 0xBABA. */
 #define EEPROM_SUM 0xBABA
 
+/* RXCSUM bits of interest */
+#define E1000_RXCSUM_TUOFL     0x00000200 /* TCP/UDP checksum offload */
+
 #endif /* _E1000_HW_H_ */

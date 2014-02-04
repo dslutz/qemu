@@ -121,7 +121,9 @@ typedef struct {
     uint8_t  gen;
 } Vmxnet3Ring;
 
+#ifdef CONFIG_RATE_LIMIT
 static gpointer vmxnet3_co(gpointer opaque);
+#endif
 
 static inline void vmxnet3_ring_init(Vmxnet3Ring *ring,
                                      hwaddr pa,
@@ -320,9 +322,12 @@ typedef struct {
     uint32_t mcast_list_len;
     uint32_t mcast_list_buff_size; /* needed for live migration. */
 
+#ifdef CONFIG_RATE_LIMIT
     VmxnetRateLimit limit;
+#endif
 } VMXNET3State;
 
+#ifdef CONFIG_RATE_LIMIT
 #define MUTEX_LOCK(s)                       \
     if (s->limit.co_thread)           	    \
 	qemu_mutex_lock(&s->limit.co_mutex);
@@ -330,6 +335,10 @@ typedef struct {
 #define MUTEX_UNLOCK(s)                     \
     if (s->limit.co_thread)           	    \
 	qemu_mutex_unlock(&s->limit.co_mutex);
+#else
+#define MUTEX_LOCK(s)
+#define MUTEX_UNLOCK(s)
+#endif
 
 /* Interrupt management */
 
@@ -709,7 +718,12 @@ vmxnet3_send_packet(VMXNET3State *s, uint32_t qidx)
     vmxnet3_dump_virt_hdr(vmxnet_tx_pkt_get_vhdr(s->tx_pkt));
     vmxnet_tx_pkt_dump(s->tx_pkt);
 
-    if (!vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic), &s->limit)) {
+    if (!vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic)
+#ifdef CONFIG_RATE_LIMIT
+			    , &s->limit
+#endif
+	))
+    {
         status = VMXNET3_PKT_STATUS_DISCARD;
         goto func_exit;
     }
@@ -1098,6 +1112,7 @@ vmxnet3_indicate_packet(VMXNET3State *s)
     }
 }
 
+#ifdef CONFIG_RATE_LIMIT
 static void vmxnet3_io_limits_enable(VMXNET3State *s, 
 				     uint64_t bytes_per_int, uint32_t int_usec)
 {
@@ -1138,6 +1153,7 @@ static void vmxnet3_io_limits_enable(VMXNET3State *s,
                bytes_per_int, int_usec);
     }
 }
+#endif
 
 static void
 vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
@@ -1154,6 +1170,7 @@ vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
                                      VMXNET3_REG_ALIGN);
         assert(tx_queue_idx <= s->txq_num);
 
+#ifdef CONFIG_RATE_LIMIT
 	if (s->parent_obj.qdev.bytes_per_int || s->parent_obj.qdev.int_usec) {
 	    vmxnet3_io_limits_enable(s, s->parent_obj.qdev.bytes_per_int, 
 				     s->parent_obj.qdev.int_usec);
@@ -1179,7 +1196,9 @@ vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
 	    MUTEX_UNLOCK(s);
 	    vmxnet3_process_tx_queue(s, tx_queue_idx);
 	}
-
+#else
+	vmxnet3_process_tx_queue(s, tx_queue_idx);
+#endif
         return;
     }
 
@@ -1241,6 +1260,7 @@ static void vmxnet3_deactivate_device(VMXNET3State *s)
     s->device_active = false;
 }
 
+#ifdef CONFIG_RATE_LIMIT
 static gpointer vmxnet3_co(gpointer opaque)
 {
     VMXNET3State *s = (VMXNET3State *)opaque;
@@ -1309,11 +1329,13 @@ static void vmxnet3_thread_cleanup(VMXNET3State *s)
 
     return;
 }
+#endif
 
 static void vmxnet3_reset(VMXNET3State *s)
 {
     VMW_CBPRN("Resetting vmxnet3...");
 
+#ifdef CONFIG_RATE_LIMIT
     vmxnet3_thread_cleanup(s);
 
     /* mutex is now locked */
@@ -1321,6 +1343,7 @@ static void vmxnet3_reset(VMXNET3State *s)
     s->limit.qidx = 0;
 
     MUTEX_UNLOCK(s);
+#endif
 
     vmxnet3_deactivate_device(s);
     vmxnet3_reset_interrupt_states(s);
@@ -2082,6 +2105,7 @@ static bool vmxnet3_peer_has_vnet_hdr(VMXNET3State *s)
 
 static void vmxnet3_net_uninit(VMXNET3State *s)
 {
+#ifdef CONFIG_RATE_LIMIT
     if (s->limit.co_thread) {
 	vmxnet3_thread_cleanup(s);
 	MUTEX_UNLOCK(s);
@@ -2089,7 +2113,7 @@ static void vmxnet3_net_uninit(VMXNET3State *s)
 	s->limit.co_cond = NULL;
 	qemu_mutex_destroy(&s->limit.co_mutex);
     }
-
+#endif
     g_free(s->mcast_list);
     vmxnet_tx_pkt_reset(s->tx_pkt);
     vmxnet_tx_pkt_uninit(s->tx_pkt);
@@ -2100,7 +2124,6 @@ static void vmxnet3_net_uninit(VMXNET3State *s)
 static void vmxnet3_net_init(VMXNET3State *s)
 {
     DeviceState *d = DEVICE(s);
-    NICConf *conf = &s->conf;
 
     VMW_CBPRN("vmxnet3_net_init called...");
 
@@ -2138,6 +2161,9 @@ static void vmxnet3_net_init(VMXNET3State *s)
 
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 
+#ifdef CONFIG_RATE_LIMIT
+    NICConf *conf = &s->conf;
+
     s->limit.io_limits_enabled = false;
     s->limit.co_running = false;
     s->limit.co_shutdown = false;
@@ -2154,7 +2180,7 @@ static void vmxnet3_net_init(VMXNET3State *s)
     } else
        printf ("no initial QOS rate limit set (bytes_per_int: %lu int_usec: %u)\n", 
                conf->bytes_per_int, conf->int_usec);
-
+#endif
 }
 
 static void
