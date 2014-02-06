@@ -1196,6 +1196,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
 
     if (s->peer_has_vhdr) {
 	iov_ofs = sizeof(struct virtio_net_hdr);
+	filter_buf += iov_ofs;
 	size -= iov_ofs;
 	while (iov->iov_len <= iov_ofs) {
 	    iov_ofs -= iov->iov_len;
@@ -1234,7 +1235,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
         vlan_special = cpu_to_le16(be16_to_cpup((uint16_t *)(filter_buf
                                                                 + 14)));
         iov_ofs += 4;
-        if (filter_buf == iov->iov_base) {
+        if (filter_buf == iov->iov_base + iov_ofs - 4) {
             memmove(filter_buf + iov_ofs, filter_buf, 12);
         } else {
             iov_from_buf(iov, iovcnt, iov_ofs, filter_buf, 12);
