@@ -141,7 +141,7 @@ static void pcnet_ioport_write(void *opaque, hwaddr addr,
 static const MemoryRegionOps pcnet_io_ops = {
     .read = pcnet_ioport_read,
     .write = pcnet_ioport_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static void vlance_morph_ioport_writeb(PCNetVmxState *vs, uint32_t addr, uint32_t val)
@@ -774,7 +774,7 @@ static const MemoryRegionOps pcnet_mmio_ops = {
         .read = { pcnet_mmio_readb, pcnet_mmio_readw, pcnet_mmio_readl },
         .write = { pcnet_mmio_writeb, pcnet_mmio_writew, pcnet_mmio_writel },
     },
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static void pci_physical_memory_write(void *dma_opaque, hwaddr addr,
@@ -800,10 +800,11 @@ static void pci_pcnet_uninit(PCIDevice *dev)
 {
     PCIPCNetState *d = PCI_PCNET(dev);
 
+    qemu_free_irq(d->state.irq);
     memory_region_destroy(&d->state.mmio);
     memory_region_destroy(&d->io_bar);
-    qemu_del_timer(d->state.poll_timer);
-    qemu_free_timer(d->state.poll_timer);
+    timer_del(d->state.poll_timer);
+    timer_free(d->state.poll_timer);
     qemu_del_nic(d->state.nic);
 }
 
@@ -812,8 +813,8 @@ static void pci_vlance_uninit(PCIDevice *dev)
     PCIPCNetVmxState *d = DO_UPCAST(PCIPCNetVmxState, pci_dev, dev);
     
     memory_region_destroy(&d->io_bar);
-    qemu_del_timer(d->state.s1.poll_timer);
-    qemu_free_timer(d->state.s1.poll_timer);
+    timer_del(d->state.s1.poll_timer);
+    timer_free(d->state.s1.poll_timer);
     qemu_del_nic(d->state.s1.nic);
 }
 
@@ -868,7 +869,7 @@ static int pci_pcnet_init(PCIDevice *pci_dev)
 
     pci_register_bar(pci_dev, 1, 0, &s->mmio);
 
-    s->irq = pci_dev->irq[0];
+    s->irq = pci_allocate_irq(pci_dev);
     s->phys_mem_read = pci_physical_memory_read;
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
@@ -904,7 +905,7 @@ static int pci_vmxnet_init(PCIDevice *pci_dev)
                           VMXNET_CHIP_IO_RESV_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
-    s->irq = pci_dev->irq[0];
+    s->irq = pci_allocate_irq(pci_dev);
     s->phys_mem_read = pci_physical_memory_read;
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
@@ -936,7 +937,7 @@ static int pci_vlance_init(PCIDevice *pci_dev)
                           PCNET_IOPORT_SIZE + MORPH_PORT_SIZE + VMXNET_CHIP_IO_RESV_SIZE + 28);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io_bar);
 
-    s->irq = pci_dev->irq[0];
+    s->irq = pci_allocate_irq(pci_dev);
     s->phys_mem_read = pci_physical_memory_read;
     s->phys_mem_write = pci_physical_memory_write;
     s->dma_opaque = pci_dev;
