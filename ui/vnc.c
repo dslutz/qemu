@@ -911,7 +911,10 @@ static int vnc_update_client(VncState *vs, int has_dirty)
         for (y = 0; y < height; y++) {
             int x;
             int last_x = -1;
-            for (x = 0; x < width / 16; x++) {
+
+            x = find_first_bit(vs->dirty[y], width / 16);
+
+            for ( ; x < width / 16; x++) {
                 if (test_and_clear_bit(x, vs->dirty[y])) {
                     if (last_x == -1) {
                         last_x = x;
@@ -923,8 +926,8 @@ static int vnc_update_client(VncState *vs, int has_dirty)
 
                         n += vnc_job_add_rect(job, last_x * 16, y,
                                               (x - last_x) * 16, h);
+			last_x = -1;
                     }
-                    last_x = -1;
                 }
             }
             if (last_x != -1) {
@@ -2697,8 +2700,10 @@ static int vnc_refresh_server_surface(VncDisplay *vd)
     guest_row = (uint8_t *)pixman_image_get_data(vd->guest.fb);
     server_row = (uint8_t *)pixman_image_get_data(vd->server);
     for (y = 0; y < height; y++) {
-        if (!bitmap_empty(vd->guest.dirty[y], VNC_DIRTY_BITS)) {
-            int x;
+        int x, xx;
+	
+        x = find_first_bit(vd->guest.dirty[y], width / 16);
+        if (x != width / 16) {
             uint8_t *guest_ptr;
             uint8_t *server_ptr;
 
@@ -2710,19 +2715,31 @@ static int vnc_refresh_server_surface(VncDisplay *vd)
             }
             server_ptr = server_row;
 
-            for (x = 0; x + 15 < width;
-                    x += 16, guest_ptr += cmp_bytes, server_ptr += cmp_bytes) {
-                if (!test_and_clear_bit((x / 16), vd->guest.dirty[y]))
-                    continue;
-                if (memcmp(server_ptr, guest_ptr, cmp_bytes) == 0)
-                    continue;
-                memcpy(server_ptr, guest_ptr, cmp_bytes);
-                if (!vd->non_adaptive)
-                    vnc_rect_updated(vd, x, y, &tv);
-                QTAILQ_FOREACH(vs, &vd->clients, next) {
-                    set_bit((x / 16), vs->dirty[y]);
+	    if (x) {
+		guest_ptr += cmp_bytes * x;
+		server_ptr += cmp_bytes * x;
+		x *= 16;
+	    }
+
+            for ( ; x + 15 < width; ) {
+                if (test_and_clear_bit((x / 16), vd->guest.dirty[y])
+                    && memcmp(server_ptr, guest_ptr, cmp_bytes) != 0) {
+
+                    memcpy(server_ptr, guest_ptr, cmp_bytes);
+                    if (!vd->non_adaptive)
+                        vnc_rect_updated(vd, x, y, &tv);
+                    QTAILQ_FOREACH(vs, &vd->clients, next) {
+                        set_bit((x / 16), vs->dirty[y]);
+                    }
+                    has_dirty++;
                 }
-                has_dirty++;
+
+                xx = x / 16;
+                x = find_next_bit(vd->guest.dirty[y], width / 16, xx + 1);
+
+		server_ptr += cmp_bytes * (x - xx);
+		guest_ptr += cmp_bytes * (x - xx);
+		x *= 16;
             }
         }
         guest_row  += pixman_image_get_stride(vd->guest.fb);
@@ -3348,3 +3365,9 @@ void vnc_display_add_client(DisplayState *ds, int csock, bool skipauth)
 
     vnc_connect(vs, csock, skipauth, false);
 }
+
+/*
+ * Local variables:
+ * c-basic-offset: 4
+ * End:
+ */

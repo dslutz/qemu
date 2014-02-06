@@ -491,17 +491,8 @@ static size_t vmxnet_tx_pkt_fetch_fragment(struct VmxnetTxPkt *pkt,
     return fetched;
 }
 
+#ifdef CONFIG_RATE_LIMIT
 #define NANOSECONDS_PER_SECOND  1000000000
-
-static inline void vmxnet_next_slice_ns(VmxnetRateLimit *l, uint32_t pkt_size)
-{
-    uint64_t now;
-    uint64_t pkt_time = ((uint64_t)pkt_size * 8 * NANOSECONDS_PER_SECOND) / l->bps_limit;
-
-    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (l->slice_end > now) now = l->slice_end;
-    l->slice_end = now + pkt_time;
-}
 
 /* FUDGE is used to allow for the overhead of the nanosleep calls
  * and the limited granularity of the timers.  We found experimentally
@@ -531,9 +522,16 @@ static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
     if (lim->slice_end > now) now = lim->slice_end;
     lim->slice_end = now + pkt_time;
 }
+#endif
 
+#ifdef CONFIG_RATE_LIMIT
 static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
-      NetClientState *nc, VmxnetRateLimit *l)
+					      NetClientState *nc, 
+					      VmxnetRateLimit *l)
+#else
+static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
+					      NetClientState *nc)
+#endif
 {
     struct iovec fragment[VMXNET_MAX_FRAG_SG_LIST];
     size_t fragment_len = 0;
@@ -570,8 +568,10 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
 
         eth_fix_ip4_checksum(l3_iov_base, l3_iov_len);
 
+#ifdef CONFIG_RATE_LIMIT
 	if (l && l->io_limits_enabled)
 	    vmxnet_tx_delay(l, (uint32_t)fragment_len);
+#endif
 
         qemu_sendv_packet(nc, fragment, dst_idx);
 
@@ -582,8 +582,11 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
     return true;
 }
 
-bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc,
-			VmxnetRateLimit *l)
+bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc
+#ifdef CONFIG_RATE_LIMIT
+			, VmxnetRateLimit *l
+#endif
+			)
 {
     assert(pkt);
 
@@ -607,16 +610,21 @@ bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc,
     if (pkt->has_virt_hdr ||
 	pkt->virt_hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE) {
 
+#ifdef CONFIG_RATE_LIMIT
 	if (l && l->io_limits_enabled) {
             vmxnet_tx_delay(l, pkt->payload_len + pkt->hdr_len);
 	}
-
+#endif
 	qemu_sendv_packet(nc, pkt->vec,
 			  pkt->payload_frags + VMXNET_TX_PKT_PL_START_FRAG);
 	return true;
     }
 
+#ifdef CONFIG_RATE_LIMIT
     return vmxnet_tx_pkt_do_sw_fragmentation(pkt, nc, l);
+#else
+    return vmxnet_tx_pkt_do_sw_fragmentation(pkt, nc);
+#endif
 }
 
 /*
