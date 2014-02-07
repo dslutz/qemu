@@ -3226,6 +3226,21 @@ typedef struct MptCmd {
     struct MptState *state;
 } MptCmd;
 
+#define TYPE_PCI_LSI MPTSCSI_PCI_SPI_CTRLNAME
+
+#define PCI_LSI(obj) \
+     OBJECT_CHECK(MptState, (obj), TYPE_PCI_LSI)
+
+#define TYPE_PCI_SAS MPTSCSI_PCI_SAS_CTRLNAME
+
+#define PCI_SAS(obj) \
+     OBJECT_CHECK(MptState, (obj), TYPE_PCI_SAS)
+
+#define TYPE_PCI_SAS_E MPTSCSI_PCI_SAS_E_CTRLNAME
+
+#define PCI_SAS_E(obj) \
+     OBJECT_CHECK(MptState, (obj), TYPE_PCI_SAS_E)
+
 typedef struct MptState {
     PCIDevice dev;
     MemoryRegion mmio_io;
@@ -3234,6 +3249,7 @@ typedef struct MptState {
 
     MptConfigurationPagesSupported *config_pages;
 
+    qemu_irq irq;
     MPTCTRLTYPE ctrl_type;
     MPTSTATE state;
     MPTWHOINIT who_init;
@@ -3333,11 +3349,11 @@ static void mpt_update_interrupt(MptState *s)
             msix_notify(&s->dev, 0);
         } else {
             trace_mpt_irq_raise();
-            qemu_irq_raise(s->dev.irq[0]);
+            qemu_irq_raise(s->irq);
         }
     } else if (!msix_enabled(&s->dev)) {
         trace_mpt_irq_lower(s->intr_status, s->intr_mask);
-        qemu_irq_lower(s->dev.irq[0]);
+        qemu_irq_lower(s->irq);
     }
 }
 
@@ -6304,6 +6320,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
                          PCI_BASE_ADDRESS_MEM_TYPE_32, &s->diag_io);
     }
 
+    s->irq = pci_allocate_irq(dev);
     mpt_msi_init(s);
 
     if (vmware_hw || pci_is_express(&s->dev)) {
@@ -6347,7 +6364,7 @@ static int mpt_scsi_init(PCIDevice *dev, MPTCTRLTYPE ctrl_type)
         s->max_devices = s->ports * MPTSCSI_PCI_SAS_DEVICES_PER_PORT_MAX;
     }
 
-    scsi_bus_new(&s->bus, &dev->qdev, &mpt_scsi_info, NULL);
+    scsi_bus_new(&s->bus, sizeof(s->bus), &dev->qdev, &mpt_scsi_info, NULL);
     scsi_bus_legacy_handle_cmdline(&s->bus, &err);
     if (err != NULL) {
         error_free(err);
