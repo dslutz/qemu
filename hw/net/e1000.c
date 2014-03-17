@@ -38,7 +38,6 @@
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
-#include "qemu/iov.h"
 #include <time.h>
 #ifdef CONFIG_RATE_LIMIT
 #include "qemu/thread.h"
@@ -1206,13 +1205,16 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     }
 
     if (s->peer_has_vhdr) {
-	iov_ofs = sizeof(struct virtio_net_hdr);
-	filter_buf += iov_ofs;
-	size -= iov_ofs;
-	while (iov->iov_len <= iov_ofs) {
-	    iov_ofs -= iov->iov_len;
-	    iov++;
-	}
+        iov_ofs = sizeof(struct virtio_net_hdr);
+        filter_buf += iov_ofs;
+        if (size <= iov_ofs)
+            return size;
+        size -= iov_ofs;
+        while (iov->iov_len <= iov_ofs) {
+            iov_ofs -= iov->iov_len;
+            iovcnt--;
+            iov++;
+        }
     }
 
     /* Pad to minimum Ethernet frame length */
