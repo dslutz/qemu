@@ -43,7 +43,7 @@
 
 #define VM1004_SUSPEND_OFF (1 << 13)
 
-extern CPUX86State *vmmouse_env;
+CPUX86State *vmmouse_env;
 
 typedef struct VMPortState
 {
