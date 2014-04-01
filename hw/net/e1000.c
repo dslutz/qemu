@@ -38,7 +38,6 @@
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
-#include "qemu/iov.h"
 #include <time.h>
 #ifdef CONFIG_RATE_LIMIT
 #include "qemu/thread.h"
@@ -192,12 +191,16 @@ typedef struct E1000State_st {
     OBJECT_CHECK(E1000State, (obj), TYPE_E1000VMW)
 
 #ifdef CONFIG_RATE_LIMIT
+#define MUTEX_TRYLOCK(s)               \
+        qemu_mutex_trylock(&s->co_mutex)
+
 #define MUTEX_LOCK(s)                  \
         qemu_mutex_lock(&s->co_mutex);
 
 #define MUTEX_UNLOCK(s)                \
         qemu_mutex_unlock(&s->co_mutex);
 #else
+#define MUTEX_TRYLOCK(s)  0
 #define MUTEX_LOCK(s)
 #define MUTEX_UNLOCK(s)
 #endif
@@ -424,8 +427,15 @@ e1000_mit_timer(void *opaque)
     E1000State *s = opaque;
 
     s->mit_timer_on = 0;
+
+    if (MUTEX_TRYLOCK(s)) {
+	/* if we can't get the mutex, just return */
+	return;
+    }
+
     /* Call set_interrupt_cause to update the irq level (if necessary). */
     set_interrupt_cause(s, 0, s->mac_reg[ICR]);
+    MUTEX_UNLOCK(s);
 }
 
 static void
@@ -1195,13 +1205,16 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     }
 
     if (s->peer_has_vhdr) {
-	iov_ofs = sizeof(struct virtio_net_hdr);
-	filter_buf += iov_ofs;
-	size -= iov_ofs;
-	while (iov->iov_len <= iov_ofs) {
-	    iov_ofs -= iov->iov_len;
-	    iov++;
-	}
+        iov_ofs = sizeof(struct virtio_net_hdr);
+        filter_buf += iov_ofs;
+        if (size <= iov_ofs)
+            return size;
+        size -= iov_ofs;
+        while (iov->iov_len <= iov_ofs) {
+            iov_ofs -= iov->iov_len;
+            iovcnt--;
+            iov++;
+        }
     }
 
     /* Pad to minimum Ethernet frame length */
