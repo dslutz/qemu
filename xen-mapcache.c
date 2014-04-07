@@ -266,7 +266,10 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
 
 #ifdef DO_BIG_ENTRY
     if (mapcache->bigEntry.vaddr_base == NULL) {
-        xen_remap_bucket(&mapcache->bigEntry, phys_addr + size, 0);
+        hwaddr maxsize = phys_addr + size;
+        if (maxsize > 0x800000000)
+            maxsize = 0x800000000;
+        xen_remap_bucket(&mapcache->bigEntry, maxsize, 0);
     }
     if ((phys_addr < mapcache->bigEntry.size) &&
         ((phys_addr + size) <= mapcache->bigEntry.size)) {
