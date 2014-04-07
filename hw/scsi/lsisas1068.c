@@ -5155,7 +5155,7 @@ static void mpt_init_config_pages_spi(MptState *s)
     PMptConfigurationPagesSpi p_pages = &s->config_pages->u.spi_pages;
 
     /* Clear everything first. */
-    memset(p_pages, 0, sizeof(PMptConfigurationPagesSpi));
+    memset(p_pages, 0, sizeof(MptConfigurationPagesSpi));
 
     for (i = 0; i < ARRAY_SIZE(p_pages->port_pages); i++) {
         MptConfigurationPageSCSISPIPort0 *p_port_page_0 =
