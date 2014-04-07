@@ -792,7 +792,7 @@ static void cpu_ioreq_move(ioreq_t *req)
 }
 
 # if defined(__i386__) || defined(__x86_64__)
-CPUX86State *vmmouse_env;
+extern CPUX86State *vmmouse_env;
 static bool env_hack;
 static void sync_regs_from_shared(ioreq_t *req)
 {
