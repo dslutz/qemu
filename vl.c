@@ -446,8 +446,8 @@ static QemuOptsList qemu_machine_opts = {
             .help = "pci addr of xen platform pci; 0 => do not add",
         }, {
             .name = "pci_hole_min_size",
-            .type = QEMU_OPT_NUMBER,
-            .help = "minimum size of mmio hole in physical address space",
+            .type = QEMU_OPT_SIZE,
+            .help = "minimum size of PCI mmio hole below 4G in physical address space",
         },
         { /* End of list */ }
     },
@@ -4080,9 +4080,9 @@ int main(int argc, char **argv, char **envp)
     xen_platform_pci = qemu_opt_get_number(machine_opts,
                                            "xen_platform_pci",
                                            xen_enabled() ? -1 : 0);
-    pci_hole_min_size = qemu_opt_get_number(machine_opts,
-                                            "pci_hole_min_size",
-                                            pci_hole_min_size);
+    pci_hole_min_size = qemu_opt_get_size(machine_opts,
+					  "pci_hole_min_size",
+					  pci_hole_min_size);
     fprintf(stderr, "%s: vmware_hw=%d xen_platform_pci=%d"
             " pci_hole_min_size=%llu\n",
             __func__, vmware_hw, xen_platform_pci,
