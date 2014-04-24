@@ -42,12 +42,18 @@ QEMUPutMouseEntry *qemu_add_mouse_event_handler(QEMUPutMouseEvent *func,
 void qemu_remove_mouse_event_handler(QEMUPutMouseEntry *entry);
 void qemu_activate_mouse_event_handler(QEMUPutMouseEntry *entry);
 
+QEMUPutMouseEntry *qemu_add_mouse_abs_pos_handler(QEMUPutMouseEvent *func,
+                                                  void *opaque,
+                                                  const char *name);
+void qemu_remove_mouse_abs_pos_handler(QEMUPutMouseEntry *entry);
+
 QEMUPutLEDEntry *qemu_add_led_event_handler(QEMUPutLEDEvent *func, void *opaque);
 void qemu_remove_led_event_handler(QEMUPutLEDEntry *entry);
 
 void kbd_put_keycode(int keycode);
 void kbd_put_ledstate(int ledstate);
 void kbd_mouse_event(int dx, int dy, int dz, int buttons_state);
+void kbd_mouse_abs_pos(int dx, int dy, int dz, int buttons_state);
 
 /* Does the current mouse generate absolute events */
 int kbd_mouse_is_absolute(void);

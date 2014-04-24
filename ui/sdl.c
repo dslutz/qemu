@@ -457,7 +457,9 @@ static void sdl_send_mouse_event(int dx, int dy, int dz, int x, int y, int state
     if (kbd_mouse_is_absolute()) {
         dx = x * 0x7FFF / (real_screen->w - 1);
         dy = y * 0x7FFF / (real_screen->h - 1);
+        kbd_mouse_abs_pos(dx, dy, 0, buttons);
     } else if (guest_cursor) {
+        kbd_mouse_abs_pos(x, y, 0, buttons);
         x -= guest_x;
         y -= guest_y;
         guest_x += x;
