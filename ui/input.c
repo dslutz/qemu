@@ -524,7 +524,7 @@ void kbd_mouse_abs_pos(int x, int y, int z, int buttons_state)
     QEMUPutMouseEvent *mouse_event;
     void *mouse_event_opaque;
     int width, height;
-    int rot_x, rot_y;
+    int rot_x = x, rot_y = y;
 
     if (QTAILQ_EMPTY(&mouse_abs_pos_handlers)) {
         return;
@@ -540,8 +540,6 @@ void kbd_mouse_abs_pos(int x, int y, int z, int buttons_state)
 
     switch (graphic_rotate) {
     case 0:
-        rot_x = x;
-        rot_y = y;
         break;
     case 90:
         rot_x = width - y;
