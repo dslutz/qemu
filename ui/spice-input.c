@@ -81,6 +81,7 @@ typedef struct QemuSpicePointer {
     SpiceMouseInstance  mouse;
     SpiceTabletInstance tablet;
     int width, height, x, y;
+    int mx, my;
     Notifier mouse_mode;
     bool absolute;
 } QemuSpicePointer;
@@ -109,6 +110,12 @@ static int map_buttons(int spice_buttons)
 static void mouse_motion(SpiceMouseInstance *sin, int dx, int dy, int dz,
                          uint32_t buttons_state)
 {
+    QemuSpicePointer *pointer = container_of(sin, QemuSpicePointer, tablet);
+
+    pointer->mx += dx;
+    pointer->my += dy;
+    kbd_mouse_abs_pos(pointer->mx, pointer->my, 0,
+                      map_buttons(buttons_state));
     kbd_mouse_event(dx, dy, dz, map_buttons(buttons_state));
 }
 
@@ -147,6 +154,8 @@ static void tablet_position(SpiceTabletInstance* sin, int x, int y,
 
     pointer->x = x * 0x7FFF / (pointer->width - 1);
     pointer->y = y * 0x7FFF / (pointer->height - 1);
+    kbd_mouse_abs_pos(pointer->x, pointer->y, 0,
+                      map_buttons(buttons_state));
     kbd_mouse_event(pointer->x, pointer->y, 0, map_buttons(buttons_state));
 }
 

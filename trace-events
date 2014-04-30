@@ -196,6 +196,10 @@ hd_geometry_guess(void *bs, uint32_t cyls, uint32_t heads, uint32_t secs, int tr
 jazz_led_read(uint64_t addr, uint8_t val) "read addr=0x%"PRIx64": 0x%x"
 jazz_led_write(uint64_t addr, uint8_t new) "write addr=0x%"PRIx64": 0x%x"
 
+# hw/display/xenfb.c
+xenfb_mouse_event(void *opaque, int dx, int dy, int dz, int button_state, int abs_pointer_wanted) "%p x %d y %d z %d bs %#x abs %d"
+xenfb_input_connected(void *xendev, int abs_pointer_wanted) "%p abs %d"
+
 # hw/net/lance.c
 lance_mem_readw(uint64_t addr, uint32_t ret) "addr=%"PRIx64"val=0x%04x"
 lance_mem_writew(uint64_t addr, uint32_t val) "addr=%"PRIx64"val=0x%04x"
@@ -213,6 +217,23 @@ slavio_intctlm_mem_writel_target(uint32_t cpu) "Set master irq cpu %d"
 slavio_check_interrupts(uint32_t pending, uint32_t intregm_disabled) "pending %x disabled %x"
 slavio_set_irq(uint32_t target_cpu, int irq, uint32_t pil, int level) "Set cpu %d irq %d -> pil %d level %d"
 slavio_set_timer_irq_cpu(int cpu, int level) "Set cpu %d local timer level %d"
+
+# hw/input/ps2.c
+ps2_put_keycode(void *opaque, int keycode) "%p keycode %d"
+ps2_read_data(void *opaque) "%p"
+ps2_set_ledstate(void *s, int ledstate) "%p ledstate %d"
+ps2_reset_keyboard(void *s) "%p"
+ps2_write_keyboard(void *opaque, int val) "%p val %d"
+ps2_keyboard_set_translation(void *opaque, int mode) "%p mode %d"
+ps2_mouse_send_packet(void *s, int dx1, int dy1, int dz1, int b) "%p x %d y %d z %d bs %#x"
+ps2_mouse_event_disabled(void *opaque, int dx, int dy, int dz, int buttons_state, int mouse_dx, int mouse_dy, int mouse_dz) "%p x %d y %d z %d bs %#x mx %d my %d mz %d "
+ps2_mouse_event(void *opaque, int dx, int dy, int dz, int buttons_state, int mouse_dx, int mouse_dy, int mouse_dz) "%p x %d y %d z %d bs %#x mx %d my %d mz %d "
+ps2_mouse_fake_event(void *opaque) "%p"
+ps2_write_mouse(void *opaque, int val) "%p val %d"
+ps2_kbd_reset(void *opaque) "%p"
+ps2_mouse_reset(void *opaque) "%p"
+ps2_kbd_init(void *s) "%p"
+ps2_mouse_init(void *s) "%p"
 
 # hw/misc/slavio_misc.c
 slavio_misc_update_irq_raise(void) "Raise IRQ"
@@ -1111,6 +1132,22 @@ displaychangelistener_register(void *dcl, const char *name) "%p [ %s ]"
 displaychangelistener_unregister(void *dcl, const char *name) "%p [ %s ]"
 ppm_save(const char *filename, void *display_surface) "%s surface=%p"
 
+# ui/input.c
+qemu_add_mouse_event_handler(void *s, void *func, void *opaque, int absolute, int index, const char *name) "%p func %p opaque %p abs %d index %d name:%s"
+qemu_activate_mouse_event_handler(void *entry) "%p"
+qemu_remove_mouse_event_handler(void *entry) "%p"
+qemu_add_mouse_abs_pos_handler(void *s, void *func, void *opaque, const char *name) "%p func %p opaque %p name:%s"
+qemu_remove_mouse_abs_pos_handler(void *entry) "%p"
+kbd_mouse_event(void *entry, int dx, int dy, int dz, int buttons_state, int abs) "%p dx %d dy %d dz %d bs %#x abs %d"
+kbd_mouse_abs_pos(void *entry, int x, int y, int rot_x, int rot_y, int z, int buttons_state) "%p x %d y %d rot_x %d rot_y %d z %d bs %#x"
+vmptr_set_xy(int x, int y) "x %d y %d"
+do_mouse_set(void *mon, int index) "%p index %d"
+
+# ui/vnc.c
+vnc_pointer_event(void *vs, int button_mask, int x, int y, int absolute) "%p bm %#x x %d y %d abs %d"
+vnc_pointer_event_1(void *vs, int x, int y) "%p x %d y %d"
+vnc_pointer_event_2(void *vs, int last_x, int last_y, int x, int y) "%p lx %d ly %d x %d y %d"
+
 # hw/display/vmware_vga.c
 vmware_value_read(uint32_t index, uint32_t value) "index %d, value 0x%x"
 vmware_value_write(uint32_t index, uint32_t value) "index %d, value 0x%x"
@@ -1276,6 +1313,7 @@ vmport_ioport_write(void *opaque, uint64_t addr, uint64_t val, uint32_t size) "o
 vmmouse_get_status(void *s, uint16_t status, uint16_t nb_queue) "s=%p status=%#x nb_queue=%#x"
 vmmouse_mouse_event(void *opaque, int x, int y, int dz, int buttons_state, uint16_t nb_queue) "opaque=%p x=%d y=%d dz=%d buttons_state=%#x nb_queue=%#x"
 vmmouse_mouse_event_full(void *opaque, int x, int y, int dz, int buttons_state, uint16_t nb_queue) "opaque=%p x=%d y=%d dz=%d buttons_state=%#x nb_queue=%#x"
+vmmouse_mouse_abs_pos(void *opaque, int x, int y, int z, int buttons_state) "opaque=%p x=%d y=%d z=%d buttons_state=%#x"
 vmmouse_remove_handler(void *s) "s=%p"
 vmmouse_remove_handler_active(void *s, void *entry) "s=%p entry=%p"
 vmmouse_update_handler_status(void *s, uint16_t status) "s=%p status=%#x"
@@ -1288,6 +1326,14 @@ vmmouse_request_absolute(void *s) "s=%p"
 vmmouse_disable(void *s) "s=%p"
 vmmouse_data(void *s, uint32_t *data, uint32_t size) "s=%p data=%p size=%d"
 vmmouse_ioport_read(void *opaque, uint32_t addr, uint16_t command) "opaque=%p addr=%#x command=%#x"
+vmmouse_getptrlocation(void *opaque, uint32_t result, uint16_t x, uint16_t y) "opaque=%p result=%#x x=%d y=%d"
+vmmouse_setptrlocation(void *opaque, uint16_t ox, uint16_t oy, uint32_t in, uint16_t x, uint16_t y, int abs) "opaque=%p ox=%d oy=%d in=%#x x=%d y=%d abs %d"
+vmmouse_setptrlocation_1(void *opaque, int ox, int oy, int dx, int dy) "opaque=%p ox=%d oy=%d dx=%d dy=%d"
+vmmouse_setptrlocation_2(void *opaque, int ldx, int ldy, int dx, int dy, int div_x, int div_y) "opaque=%p ldx=%d ldy=%d dx=%d dy=%d div_x=%d div_y=%d"
+vmmouse_setptrlocation_3(void *opaque, int div_x, int div_y, int down_x, int down_y) "opaque=%p div_x=%d div_y=%d down_x=%d down_y=%d"
+vmmouse_setptrlocation_4(void *opaque, int status, int nb_queue) "opaque=%p status=%d nb_queue=%d"
+vmmouse_status(void *opaque, uint32_t status) "opaque=%p status=%#x"
+vmmouse_command(void *opaque, uint32_t cmd) "opaque=%p cmd=%d"
 vmmouse_ioport_read_unknown_vmcommand(void *opaque, uint32_t addr, uint32_t command) "opaque=%p addr=%#x command=%#x"
 vmmouse_ioport_read_unknown_command(void *opaque, uint32_t addr, uint16_t command) "opaque=%p addr=%#x command=%#x"
 vmmouse_reset(void *s) "s=%p"
