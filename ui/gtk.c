@@ -617,12 +617,15 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
     if (kbd_mouse_is_absolute()) {
         dx = x * 0x7FFF / (surface_width(s->ds) - 1);
         dy = y * 0x7FFF / (surface_height(s->ds) - 1);
+        kbd_mouse_abs_pos(dx, dy, 0, s->button_mask);
     } else if (s->last_x == -1 || s->last_y == -1) {
         dx = 0;
         dy = 0;
+        kbd_mouse_abs_pos(x, y, 0, s->button_mask);
     } else {
         dx = x - s->last_x;
         dy = y - s->last_y;
+        kbd_mouse_abs_pos(x, y, 0, s->button_mask);
     }
 
     s->last_x = x;

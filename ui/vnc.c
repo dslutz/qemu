@@ -1521,16 +1521,24 @@ static void pointer_event(VncState *vs, int button_mask, int x, int y)
     if (button_mask & 0x10)
         dz = 1;
 
+    trace_vnc_pointer_event(vs, button_mask, x, y, vs->absolute);
     if (vs->absolute) {
+        kbd_mouse_abs_pos(width  > 1 ? x * 0x7FFF / (width  - 1) : 0x4000,
+                          height > 1 ? y * 0x7FFF / (height - 1) : 0x4000,
+                          0, buttons);
         kbd_mouse_event(width  > 1 ? x * 0x7FFF / (width  - 1) : 0x4000,
                         height > 1 ? y * 0x7FFF / (height - 1) : 0x4000,
                         dz, buttons);
     } else if (vnc_has_feature(vs, VNC_FEATURE_POINTER_TYPE_CHANGE)) {
+        kbd_mouse_abs_pos(x, y, 0, buttons);
+        trace_vnc_pointer_event_1(vs, x, y);
         x -= 0x7FFF;
         y -= 0x7FFF;
 
         kbd_mouse_event(x, y, dz, buttons);
     } else {
+        kbd_mouse_abs_pos(x, y, 0, buttons);
+        trace_vnc_pointer_event_2(vs, vs->last_x, vs->last_y, x, y);
         if (vs->last_x != -1)
             kbd_mouse_event(x - vs->last_x,
                             y - vs->last_y,

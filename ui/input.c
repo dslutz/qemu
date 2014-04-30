@@ -30,6 +30,8 @@
 #include "qapi-types.h"
 #include "ui/keymaps.h"
 
+#include "trace.h"
+
 struct QEMUPutMouseEntry {
     QEMUPutMouseEvent *qemu_put_mouse_event;
     void *qemu_put_mouse_event_opaque;
@@ -60,6 +62,8 @@ static QTAILQ_HEAD(, QEMUPutKbdEntry) kbd_handlers =
     QTAILQ_HEAD_INITIALIZER(kbd_handlers);
 static QTAILQ_HEAD(, QEMUPutMouseEntry) mouse_handlers =
     QTAILQ_HEAD_INITIALIZER(mouse_handlers);
+static QTAILQ_HEAD(, QEMUPutMouseEntry) mouse_abs_pos_handlers =
+    QTAILQ_HEAD_INITIALIZER(mouse_abs_pos_handlers);
 static NotifierList mouse_mode_notifiers =
     NOTIFIER_LIST_INITIALIZER(mouse_mode_notifiers);
 
@@ -355,6 +359,9 @@ QEMUPutMouseEntry *qemu_add_mouse_event_handler(QEMUPutMouseEvent *func,
 
     s = g_malloc0(sizeof(QEMUPutMouseEntry));
 
+    trace_qemu_add_mouse_event_handler(s, func, opaque, absolute, mouse_index + 1,
+                                       name);
+
     s->qemu_put_mouse_event = func;
     s->qemu_put_mouse_event_opaque = opaque;
     s->qemu_put_mouse_event_absolute = absolute;
@@ -370,6 +377,7 @@ QEMUPutMouseEntry *qemu_add_mouse_event_handler(QEMUPutMouseEvent *func,
 
 void qemu_activate_mouse_event_handler(QEMUPutMouseEntry *entry)
 {
+    trace_qemu_activate_mouse_event_handler(entry);
     QTAILQ_REMOVE(&mouse_handlers, entry, node);
     QTAILQ_INSERT_HEAD(&mouse_handlers, entry, node);
 
@@ -380,10 +388,41 @@ void qemu_remove_mouse_event_handler(QEMUPutMouseEntry *entry)
 {
     QTAILQ_REMOVE(&mouse_handlers, entry, node);
 
+    trace_qemu_remove_mouse_event_handler(entry);
     g_free(entry->qemu_put_mouse_event_name);
     g_free(entry);
 
     check_mode_change();
+}
+
+QEMUPutMouseEntry *qemu_add_mouse_abs_pos_handler(QEMUPutMouseEvent *func,
+                                                void *opaque,
+                                                const char *name)
+{
+    QEMUPutMouseEntry *s;
+
+    s = g_malloc0(sizeof(QEMUPutMouseEntry));
+
+    trace_qemu_add_mouse_abs_pos_handler(s, func, opaque, name);
+
+    s->qemu_put_mouse_event = func;
+    s->qemu_put_mouse_event_opaque = opaque;
+    s->qemu_put_mouse_event_absolute = 0; /* not used */
+    s->qemu_put_mouse_event_name = g_strdup(name);
+    s->index = 0; /* not used */
+
+    QTAILQ_INSERT_TAIL(&mouse_abs_pos_handlers, s, node);
+
+    return s;
+}
+
+void qemu_remove_mouse_abs_pos_handler(QEMUPutMouseEntry *entry)
+{
+    QTAILQ_REMOVE(&mouse_abs_pos_handlers, entry, node);
+
+    trace_qemu_remove_mouse_abs_pos_handler(entry);
+    g_free(entry->qemu_put_mouse_event_name);
+    g_free(entry);
 }
 
 QEMUPutLEDEntry *qemu_add_led_event_handler(QEMUPutLEDEvent *func,
@@ -443,6 +482,8 @@ void kbd_mouse_event(int dx, int dy, int dz, int buttons_state)
     }
 
     entry = QTAILQ_FIRST(&mouse_handlers);
+    trace_kbd_mouse_event(entry, dx, dy, dz, buttons_state,
+                          entry->qemu_put_mouse_event_absolute);
 
     mouse_event = entry->qemu_put_mouse_event;
     mouse_event_opaque = entry->qemu_put_mouse_event_opaque;
@@ -473,6 +514,57 @@ void kbd_mouse_event(int dx, int dy, int dz, int buttons_state)
             mouse_event(mouse_event_opaque,
                         dy, height - dx, dz, buttons_state);
             break;
+        }
+    }
+}
+
+void kbd_mouse_abs_pos(int x, int y, int z, int buttons_state)
+{
+    QEMUPutMouseEntry *entry;
+    QEMUPutMouseEvent *mouse_event;
+    void *mouse_event_opaque;
+    int width, height;
+    int rot_x, rot_y;
+
+    if (QTAILQ_EMPTY(&mouse_abs_pos_handlers)) {
+        return;
+    }
+
+    if (kbd_mouse_is_absolute()) {
+        width = 0x7fff;
+        height = 0x7fff;
+    } else {
+        width = graphic_width - 1;
+        height = graphic_height - 1;
+    }
+
+    switch (graphic_rotate) {
+    case 0:
+        rot_x = x;
+        rot_y = y;
+        break;
+    case 90:
+        rot_x = width - y;
+        rot_y = x;
+        break;
+    case 180:
+        rot_x = width - x;
+        rot_y = height - y;
+        break;
+    case 270:
+        rot_x = y;
+        rot_y = height - x;
+        break;
+    }
+    QTAILQ_FOREACH(entry, &mouse_abs_pos_handlers, node) {
+        trace_kbd_mouse_abs_pos(entry, x, y, rot_x, rot_y, z, buttons_state);
+
+        mouse_event = entry->qemu_put_mouse_event;
+        mouse_event_opaque = entry->qemu_put_mouse_event_opaque;
+
+        if (mouse_event) {
+            mouse_event(mouse_event_opaque,
+                        rot_x, rot_y, z, buttons_state);
         }
     }
 }
@@ -528,6 +620,7 @@ void do_mouse_set(Monitor *mon, const QDict *qdict)
     int index = qdict_get_int(qdict, "index");
     int found = 0;
 
+    trace_do_mouse_set(mon, index);
     if (QTAILQ_EMPTY(&mouse_handlers)) {
         monitor_printf(mon, "No mouse devices connected\n");
         return;
