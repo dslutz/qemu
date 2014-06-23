@@ -23,6 +23,7 @@
  */
 #include "hw/hw.h"
 #include "ui/console.h"
+#include "ui/input.h"
 #include "hw/input/ps2.h"
 #include "hw/i386/pc.h"
 #include "hw/qdev.h"
@@ -136,9 +137,17 @@ static void vmmouse_mouse_event(void *opaque, int x, int y, int dz, int buttons_
     i8042_isa_mouse_fake_event(s->ps2_mouse);
 }
 
+#if 0 //XXXDMK
 static void vmmouse_mouse_abs_pos(void *opaque, int x, int y, int z, int buttons_state)
 {
     VMMouseState *s = opaque;
+    static uint32_t bmap[INPUT_BUTTON_MAX] = {
+        [INPUT_BUTTON_LEFT]        = 0x01,
+        [INPUT_BUTTON_MIDDLE]      = 0x04,
+        [INPUT_BUTTON_RIGHT]       = 0x02,
+        [INPUT_BUTTON_WHEEL_UP]    = 0x10,
+        [INPUT_BUTTON_WHEEL_DOWN]  = 0x20,
+    };
 
     trace_vmmouse_mouse_abs_pos(opaque, x, y, z, buttons_state);
     DPRINTF("vmmouse_mouse_abs_pos(%d, %d, %d, %d)\n",
@@ -146,7 +155,11 @@ static void vmmouse_mouse_abs_pos(void *opaque, int x, int y, int z, int buttons
 
     s->set_x = x;
     s->set_y = y;
-    s->set_buttons_state = buttons_state;
+    if (s->set_buttons_state != buttons_state) {
+        qemu_input_update_buttons(NULL, bmap, s->set_buttons_state,
+            buttons_state);
+        s->set_buttons_state = buttons_state;
+    }
     s->div_x = 0;
     s->div_y = 0;
     s->div_x_down = 0;
@@ -156,6 +169,7 @@ static void vmmouse_mouse_abs_pos(void *opaque, int x, int y, int z, int buttons
     s->gpl_dx = 0;
     s->gpl_dy = 0;
 }
+#endif
 
 static void vmmouse_remove_handler(VMMouseState *s)
 {
@@ -266,8 +280,8 @@ static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
     case VMMOUSE_SETPTRLOCATION:
         trace_vmmouse_setptrlocation(opaque, s->set_x, s->set_y, data[1],
                                      (data[1] >> 16) & 0xFFFF, data[1] & 0xFFFF,
-                                     kbd_mouse_is_absolute());
-        if (kbd_mouse_is_absolute()) {
+                                     qemu_input_is_absolute());
+        if (qemu_input_is_absolute()) {
             trace_vmmouse_setptrlocation_4(opaque, s->status, s->nb_queue);
         } else {
             int dx, dy;
@@ -323,7 +337,11 @@ static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
             if (dx || dy) {
                 s->div_x_down = 0;
                 s->div_y_down = 0;
-                kbd_mouse_event(dx, dy, 0, s->set_buttons_state);
+                //kbd_mouse_event(dx, dy, 0, s->set_buttons_state);
+		//qemu_input_update_buttons(
+		qemu_input_queue_rel(NULL, INPUT_AXIS_X, dx);
+		qemu_input_queue_rel(NULL, INPUT_AXIS_Y, dy);
+		qemu_input_event_sync();
             } else {
                 trace_vmmouse_setptrlocation_3(opaque, s->div_x, s->div_y,
                                                s->div_x_down, s->div_y_down);
@@ -458,8 +476,10 @@ static void vmmouse_realizefn(DeviceState *dev, Error **errp)
     trace_vmmouse_initfn(s, dev);
     DPRINTF("vmmouse_init\n");
 
+#if 0 //XXXDMK
     qemu_add_mouse_abs_pos_handler(vmmouse_mouse_abs_pos,
                                    s, "vmmouse");
+#endif
 
     vmport_register(VMMOUSE_GETPTRLOCATION, vmmouse_ioport_read, s);
     vmport_register(VMMOUSE_SETPTRLOCATION, vmmouse_ioport_read, s);
@@ -478,10 +498,11 @@ static void vmmouse_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = vmmouse_realizefn;
-    dc->no_user = 1;
     dc->reset = vmmouse_reset;
     dc->vmsd = &vmstate_vmmouse;
     dc->props = vmmouse_properties;
+    /* Reason: pointer property "ps2_mouse" */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo vmmouse_info = {

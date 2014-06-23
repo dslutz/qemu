@@ -1059,7 +1059,7 @@ start_xmit(E1000State *s)
             s->co_running = true;
             DBGOUT(RATE, "e1000 starting coroutine: s=%p\n", s);
             s->co_thread = g_malloc0(sizeof(QemuThread));
-            qemu_thread_create(s->co_thread, e1000_xmit_co_entry, s, QEMU_THREAD_JOINABLE);
+            qemu_thread_create(s->co_thread, "e1000", e1000_xmit_co_entry, s, QEMU_THREAD_JOINABLE);
         }
         else
             qemu_cond_signal(s->co_cond);
@@ -1833,7 +1833,7 @@ static bool e1000_peer_has_vnet_hdr(E1000State *d)
 
     if (peer &&
         peer->info->type == NET_CLIENT_OPTIONS_KIND_TAP &&
-        tap_has_vnet_hdr(peer)) {
+        qemu_has_vnet_hdr(peer)) {
         return true;
     }
     return false;
@@ -1957,10 +1957,10 @@ static int pci_e1000_common_init(PCIDevice *pci_dev, E1000State *d)
     d->peer_has_vhdr = e1000_peer_has_vnet_hdr(d);
     if (d->peer_has_vhdr) {
         printf("e1000 vhdr enabled\n");
-        tap_set_vnet_hdr_len(qemu_get_queue(d->nic)->peer,
+        qemu_set_vnet_hdr_len(qemu_get_queue(d->nic)->peer,
                              sizeof(struct virtio_net_hdr));
 
-        tap_using_vnet_hdr(qemu_get_queue(d->nic)->peer, 1);
+        qemu_using_vnet_hdr(qemu_get_queue(d->nic)->peer, 1);
     } else
         printf("e1000 vhdr disabled\n");
 

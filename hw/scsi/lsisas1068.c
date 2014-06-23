@@ -6396,7 +6396,8 @@ static Property mptscsi_properties[] = {
 static Property mptsas_properties[] = {
     DEFINE_PROP_UINT32("ports", MptState, ports,
                        MPTSCSI_PCI_SAS_PORTS_DEFAULT),
-    DEFINE_PROP_HEX64("sas_address", MptState, sas_addr, 0),
+    //XXXDMK fix this?
+    DEFINE_PROP_UINT64("sas_address", MptState, sas_addr, 0),
     DEFINE_PROP_BIT("use_msi", MptState, flags,
                     MPT_FLAG_USE_MSI, false),
 #ifdef USE_MSIX
