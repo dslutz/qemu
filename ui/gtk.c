@@ -626,27 +626,6 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
     x = (motion->x - mx) / s->scale_x;
     y = (motion->y - my) / s->scale_y;
 
-#if 0 //XXXDMK <<<<<<< HEAD
-    if (x < 0 || y < 0 ||
-        x >= surface_width(s->ds) ||
-        y >= surface_height(s->ds)) {
-        return TRUE;
-    }
-
-    if (kbd_mouse_is_absolute()) {
-        dx = x * 0x7FFF / (surface_width(s->ds) - 1);
-        dy = y * 0x7FFF / (surface_height(s->ds) - 1);
-        kbd_mouse_abs_pos(dx, dy, 0, s->button_mask);
-    } else if (s->last_x == -1 || s->last_y == -1) {
-        dx = 0;
-        dy = 0;
-        kbd_mouse_abs_pos(x, y, 0, s->button_mask);
-    } else {
-        dx = x - s->last_x;
-        dy = y - s->last_y;
-        kbd_mouse_abs_pos(x, y, 0, s->button_mask);
-    }
-#else
     if (qemu_input_is_absolute()) {
         if (x < 0 || y < 0 ||
             x >= surface_width(s->ds) ||
@@ -663,7 +642,6 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
         qemu_input_queue_rel(s->dcl.con, INPUT_AXIS_Y, y - s->last_y);
         qemu_input_event_sync();
     }
-#endif
     s->last_x = x;
     s->last_y = y;
     s->last_set = TRUE;

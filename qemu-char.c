@@ -678,13 +678,6 @@ static void io_watch_poll_finalize(GSource *source)
      * but we support older glib versions that do not have them.
      */
     IOWatchPoll *iwp = io_watch_poll_from_source(source);
-#if 0 // needed?
-    if (iwp->src) {
-	g_source_destroy(iwp->src);
-	g_source_unref(iwp->src);
-	iwp->src = NULL;
-    }
-#endif
     assert(iwp->src == NULL);
 }
 

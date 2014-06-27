@@ -909,29 +909,6 @@ static int vnc_update_client(VncState *vs, int has_dirty, bool sync)
         height = MIN(pixman_image_get_height(vd->server), vs->client_height);
         width = MIN(pixman_image_get_width(vd->server), vs->client_width);
 
-#if 0 //XXXDMK <<<<<<< HEAD
-        for (y = 0; y < height; y++) {
-            int x;
-            int last_x = -1;
-
-            x = find_first_bit(vs->dirty[y], width / 16);
-
-            for ( ; x < width / 16; x++) {
-                if (test_and_clear_bit(x, vs->dirty[y])) {
-                    if (last_x == -1) {
-                        last_x = x;
-                    }
-                } else {
-                    if (last_x != -1) {
-                        int h = find_and_clear_dirty_height(vs, y, last_x, x,
-                                                            height);
-
-                        n += vnc_job_add_rect(job, last_x * 16, y,
-                                              (x - last_x) * 16, h);
-			last_x = -1;
-                    }
-                }
-#else //=======
         y = 0;
         for (;;) {
             int x, h;
@@ -942,7 +919,6 @@ static int vnc_update_client(VncState *vs, int has_dirty, bool sync)
             if (offset == height * VNC_DIRTY_BPL(vs)) {
                 /* no more dirty bits */
                 break;
-#endif //>>>>>>> v2.0.0
             }
             y = offset / VNC_DIRTY_BPL(vs);
             x = offset % VNC_DIRTY_BPL(vs);
@@ -1544,30 +1520,7 @@ static void pointer_event(VncState *vs, int button_mask, int x, int y)
         vs->last_bmask = button_mask;
     }
 
-    //XXXDMK trace_vnc_pointer_event(vs, button_mask, x, y, vs->absolute);
     if (vs->absolute) {
-#if 0 //XXXDMK <<<<<<< HEAD
-        kbd_mouse_abs_pos(width  > 1 ? x * 0x7FFF / (width  - 1) : 0x4000,
-                          height > 1 ? y * 0x7FFF / (height - 1) : 0x4000,
-                          0, buttons);
-        kbd_mouse_event(width  > 1 ? x * 0x7FFF / (width  - 1) : 0x4000,
-                        height > 1 ? y * 0x7FFF / (height - 1) : 0x4000,
-                        dz, buttons);
-    } else if (vnc_has_feature(vs, VNC_FEATURE_POINTER_TYPE_CHANGE)) {
-        kbd_mouse_abs_pos(x, y, 0, buttons);
-        trace_vnc_pointer_event_1(vs, x, y);
-        x -= 0x7FFF;
-        y -= 0x7FFF;
-
-        kbd_mouse_event(x, y, dz, buttons);
-    } else {
-        kbd_mouse_abs_pos(x, y, 0, buttons);
-        trace_vnc_pointer_event_2(vs, vs->last_x, vs->last_y, x, y);
-        if (vs->last_x != -1)
-            kbd_mouse_event(x - vs->last_x,
-                            y - vs->last_y,
-                            dz, buttons);
-#else //=======
         qemu_input_queue_abs(con, INPUT_AXIS_X, x, width);
         qemu_input_queue_abs(con, INPUT_AXIS_Y, y, height);
     } else if (vnc_has_feature(vs, VNC_FEATURE_POINTER_TYPE_CHANGE)) {
@@ -1578,7 +1531,6 @@ static void pointer_event(VncState *vs, int button_mask, int x, int y)
             qemu_input_queue_rel(con, INPUT_AXIS_X, x - vs->last_x);
             qemu_input_queue_rel(con, INPUT_AXIS_Y, y - vs->last_y);
         }
-#endif //>>>>>>> v2.0.0
         vs->last_x = x;
         vs->last_y = y;
     }
@@ -2729,52 +2681,6 @@ static int vnc_refresh_server_surface(VncDisplay *vd)
     if (vd->guest.format != VNC_SERVER_FB_FORMAT) {
         int width = pixman_image_get_width(vd->server);
         tmpbuf = qemu_pixman_linebuf_create(VNC_SERVER_FB_FORMAT, width);
-#if 0 //XXXDMK <<<<<<< HEAD
-    }
-    guest_row = (uint8_t *)pixman_image_get_data(vd->guest.fb);
-    server_row = (uint8_t *)pixman_image_get_data(vd->server);
-    for (y = 0; y < height; y++) {
-        int x, xx;
-	
-        x = find_first_bit(vd->guest.dirty[y], width / 16);
-        if (x != width / 16) {
-            uint8_t *guest_ptr;
-            uint8_t *server_ptr;
-
-            if (vd->guest.format != VNC_SERVER_FB_FORMAT) {
-                qemu_pixman_linebuf_fill(tmpbuf, vd->guest.fb, width, 0, y);
-                guest_ptr = (uint8_t *)pixman_image_get_data(tmpbuf);
-            } else {
-                guest_ptr = guest_row;
-            }
-            server_ptr = server_row;
-
-	    if (x) {
-		guest_ptr += cmp_bytes * x;
-		server_ptr += cmp_bytes * x;
-		x *= 16;
-	    }
-
-            for ( ; x + 15 < width; ) {
-                if (test_and_clear_bit((x / 16), vd->guest.dirty[y])
-                    && memcmp(server_ptr, guest_ptr, cmp_bytes) != 0) {
-
-                    memcpy(server_ptr, guest_ptr, cmp_bytes);
-                    if (!vd->non_adaptive)
-                        vnc_rect_updated(vd, x, y, &tv);
-                    QTAILQ_FOREACH(vs, &vd->clients, next) {
-                        set_bit((x / 16), vs->dirty[y]);
-                    }
-                    has_dirty++;
-                }
-
-                xx = x / 16;
-                x = find_next_bit(vd->guest.dirty[y], width / 16, xx + 1);
-
-		server_ptr += cmp_bytes * (x - xx);
-		guest_ptr += cmp_bytes * (x - xx);
-		x *= 16;
-#else //=======
     } else {
         guest_row0 = (uint8_t *)pixman_image_get_data(vd->guest.fb);
         guest_stride = pixman_image_get_stride(vd->guest.fb);
@@ -2818,7 +2724,6 @@ static int vnc_refresh_server_surface(VncDisplay *vd)
             if (!vd->non_adaptive) {
                 vnc_rect_updated(vd, x * VNC_DIRTY_PIXELS_PER_BIT,
                                  y, &tv);
-#endif //>>>>>>> v2.0.0
             }
             QTAILQ_FOREACH(vs, &vd->clients, next) {
                 set_bit(x, vs->dirty[y]);

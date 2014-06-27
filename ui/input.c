@@ -14,10 +14,6 @@ struct QemuInputHandlerState {
 };
 static QTAILQ_HEAD(, QemuInputHandlerState) handlers =
     QTAILQ_HEAD_INITIALIZER(handlers);
-//XXXDMK needed?
-//static QTAILQ_HEAD(, QEMUPutMouseEntry) mouse_abs_pos_handlers =
-//static QTAILQ_HEAD(, QemuInputHandlerState) mouse_abs_pos_handlers =
-//    QTAILQ_HEAD_INITIALIZER(mouse_abs_pos_handlers);
 static NotifierList mouse_mode_notifiers =
     NOTIFIER_LIST_INITIALIZER(mouse_mode_notifiers);
 
@@ -185,38 +181,6 @@ InputEvent *qemu_input_event_new_key(KeyValue *key, bool down)
     return evt;
 }
 
-#if 0 //XXXDMK
-QEMUPutMouseEntry *qemu_add_mouse_abs_pos_handler(QEMUPutMouseEvent *func,
-                                                void *opaque,
-                                                const char *name)
-{
-    QEMUPutMouseEntry *s;
-
-    s = g_malloc0(sizeof(QEMUPutMouseEntry));
-
-    trace_qemu_add_mouse_abs_pos_handler(s, func, opaque, name);
-
-    s->qemu_put_mouse_event = func;
-    s->qemu_put_mouse_event_opaque = opaque;
-    s->qemu_put_mouse_event_absolute = 0; /* not used */
-    s->qemu_put_mouse_event_name = g_strdup(name);
-    s->index = 0; /* not used */
-
-    QTAILQ_INSERT_TAIL(&mouse_abs_pos_handlers, s, node);
-
-    return s;
-}
-
-void qemu_remove_mouse_abs_pos_handler(QEMUPutMouseEntry *entry)
-{
-    QTAILQ_REMOVE(&mouse_abs_pos_handlers, entry, node);
-
-    trace_qemu_remove_mouse_abs_pos_handler(entry);
-    g_free(entry->qemu_put_mouse_event_name);
-    g_free(entry);
-}
-#endif
-
 void qemu_input_event_send_key(QemuConsole *src, KeyValue *key, bool down)
 {
     InputEvent *evt;
@@ -320,57 +284,6 @@ void qemu_input_queue_abs(QemuConsole *src, InputAxis axis, int value, int size)
     qemu_input_event_send(src, evt);
     qapi_free_InputEvent(evt);
 }
-
-#if 0 //<<<<<<< HEAD
-void kbd_mouse_abs_pos(int x, int y, int z, int buttons_state)
-{
-    QEMUPutMouseEntry *entry;
-    QEMUPutMouseEvent *mouse_event;
-    void *mouse_event_opaque;
-    int width, height;
-    int rot_x = x, rot_y = y;
-
-    if (QTAILQ_EMPTY(&mouse_abs_pos_handlers)) {
-        return;
-    }
-
-    if (kbd_mouse_is_absolute()) {
-        width = 0x7fff;
-        height = 0x7fff;
-    } else {
-        width = graphic_width - 1;
-        height = graphic_height - 1;
-    }
-
-    switch (graphic_rotate) {
-    case 0:
-        break;
-    case 90:
-        rot_x = width - y;
-        rot_y = x;
-        break;
-    case 180:
-        rot_x = width - x;
-        rot_y = height - y;
-        break;
-    case 270:
-        rot_x = y;
-        rot_y = height - x;
-        break;
-    }
-    QTAILQ_FOREACH(entry, &mouse_abs_pos_handlers, node) {
-        trace_kbd_mouse_abs_pos(entry, x, y, rot_x, rot_y, z, buttons_state);
-
-        mouse_event = entry->qemu_put_mouse_event;
-        mouse_event_opaque = entry->qemu_put_mouse_event_opaque;
-
-        if (mouse_event) {
-            mouse_event(mouse_event_opaque,
-                        rot_x, rot_y, z, buttons_state);
-        }
-    }
-}
-#endif
 
 void qemu_input_check_mode_change(void)
 {

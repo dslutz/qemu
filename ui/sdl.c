@@ -436,33 +436,6 @@ static void sdl_mouse_mode_change(Notifier *notify, void *data)
 
 static void sdl_send_mouse_event(int dx, int dy, int x, int y, int state)
 {
-#if 0 //XXXDMK <<<<<<< HEAD
-    int buttons = 0;
-
-    if (state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-        buttons |= MOUSE_EVENT_LBUTTON;
-    }
-    if (state & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-        buttons |= MOUSE_EVENT_RBUTTON;
-    }
-    if (state & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
-        buttons |= MOUSE_EVENT_MBUTTON;
-    }
-
-    if (kbd_mouse_is_absolute()) {
-        dx = x * 0x7FFF / (real_screen->w - 1);
-        dy = y * 0x7FFF / (real_screen->h - 1);
-        kbd_mouse_abs_pos(dx, dy, 0, buttons);
-    } else if (guest_cursor) {
-        kbd_mouse_abs_pos(x, y, 0, buttons);
-        x -= guest_x;
-        y -= guest_y;
-        guest_x += x;
-        guest_y += y;
-        dx = x;
-        dy = y;
-    }
-#else //=======
     static uint32_t bmap[INPUT_BUTTON_MAX] = {
         [INPUT_BUTTON_LEFT]       = SDL_BUTTON(SDL_BUTTON_LEFT),
         [INPUT_BUTTON_MIDDLE]     = SDL_BUTTON(SDL_BUTTON_MIDDLE),
@@ -494,7 +467,6 @@ static void sdl_send_mouse_event(int dx, int dy, int x, int y, int state)
         qemu_input_queue_rel(dcl->con, INPUT_AXIS_X, dx);
         qemu_input_queue_rel(dcl->con, INPUT_AXIS_Y, dy);
     }
-#endif //>>>>>>> v2.0.0
     qemu_input_event_sync();
 }
 

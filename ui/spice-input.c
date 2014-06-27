@@ -98,13 +98,8 @@ static void kbd_leds(void *opaque, int ledstate)
 typedef struct QemuSpicePointer {
     SpiceMouseInstance  mouse;
     SpiceTabletInstance tablet;
-#if 0 //XXXDMK <<<<<<< HEAD
-    int width, height, x, y;
-    int mx, my;
-#else //=======
     int width, height;
     uint32_t last_bmask;
-#endif //>>>>>>> v2.0.0
     Notifier mouse_mode;
     bool absolute;
 } QemuSpicePointer;
@@ -137,21 +132,11 @@ static void spice_update_buttons(QemuSpicePointer *pointer,
 static void mouse_motion(SpiceMouseInstance *sin, int dx, int dy, int dz,
                          uint32_t buttons_state)
 {
-#if 0 //XXXMDK <<<<<<< HEAD
-    QemuSpicePointer *pointer = container_of(sin, QemuSpicePointer, tablet);
-
-    pointer->mx += dx;
-    pointer->my += dy;
-    kbd_mouse_abs_pos(pointer->mx, pointer->my, 0,
-                      map_buttons(buttons_state));
-    kbd_mouse_event(dx, dy, dz, map_buttons(buttons_state));
-#else //=======
     QemuSpicePointer *pointer = container_of(sin, QemuSpicePointer, mouse);
     spice_update_buttons(pointer, dz, buttons_state);
     qemu_input_queue_rel(NULL, INPUT_AXIS_X, dx);
     qemu_input_queue_rel(NULL, INPUT_AXIS_Y, dy);
     qemu_input_event_sync();
-#endif //>>>>>>> v2.0.0
 }
 
 static void mouse_buttons(SpiceMouseInstance *sin, uint32_t buttons_state)
@@ -189,18 +174,10 @@ static void tablet_position(SpiceTabletInstance* sin, int x, int y,
 {
     QemuSpicePointer *pointer = container_of(sin, QemuSpicePointer, tablet);
 
-#if 0 //XXXMDK <<<<<<< HEAD
-    pointer->x = x * 0x7FFF / (pointer->width - 1);
-    pointer->y = y * 0x7FFF / (pointer->height - 1);
-    kbd_mouse_abs_pos(pointer->x, pointer->y, 0,
-                      map_buttons(buttons_state));
-    kbd_mouse_event(pointer->x, pointer->y, 0, map_buttons(buttons_state));
-#else //=======
     spice_update_buttons(pointer, 0, buttons_state);
     qemu_input_queue_abs(NULL, INPUT_AXIS_X, x, pointer->width);
     qemu_input_queue_abs(NULL, INPUT_AXIS_Y, y, pointer->height);
     qemu_input_event_sync();
-#endif //>>>>>>> v2.0.0
 }
 
 

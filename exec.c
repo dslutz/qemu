@@ -2022,25 +2022,25 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                     val = ldq_p(buf);
                     error |= io_mem_write(mr, addr1, val, 8);
                     break;
-		case 7:
-		case 6:
-		case 5:
+                case 7:
+                case 6:
+                case 5:
                     fprintf(stderr,
                             "%s: write addr1=%lx l=%ld len=%d\n",
-			    __func__, (long)addr1, (long)l, len);
-		    l = 4;
-		    /* Fall thru */
+                            __func__, (long)addr1, (long)l, len);
+                    l = 4;
+                    /* Fall thru */
                 case 4:
                     /* 32 bit write access */
                     val = ldl_p(buf);
                     error |= io_mem_write(mr, addr1, val, 4);
                     break;
-		case 3:
+                case 3:
                     fprintf(stderr,
                             "%s: write addr1=%lx l=%ld len=%d\n",
-			    __func__, (long)addr1, (long)l, len);
-		    l = 2;
-		    /* Fall thru */
+                            __func__, (long)addr1, (long)l, len);
+                    l = 2;
+                    /* Fall thru */
                 case 2:
                     /* 16 bit write access */
                     val = lduw_p(buf);
@@ -2074,25 +2074,25 @@ bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                     error |= io_mem_read(mr, addr1, &val, 8);
                     stq_p(buf, val);
                     break;
-		case 7:
-		case 6:
-		case 5:
+                case 7:
+                case 6:
+                case 5:
                     fprintf(stderr,
                             "%s: read addr1=%lx l=%ld len=%d\n",
-			    __func__, (long)addr1, (long)l, len);
-		    l = 4;
-		    /* Fall thru */
+                            __func__, (long)addr1, (long)l, len);
+                    l = 4;
+                    /* Fall thru */
                 case 4:
                     /* 32 bit read access */
                     error |= io_mem_read(mr, addr1, &val, 4);
                     stl_p(buf, val);
                     break;
-		case 3:
+                case 3:
                     fprintf(stderr,
                             "%s: read addr1=%lx l=%ld len=%d\n",
-			    __func__, (long)addr1, (long)l, len);
-		    l = 2;
-		    /* Fall thru */
+                            __func__, (long)addr1, (long)l, len);
+                    l = 2;
+                    /* Fall thru */
                 case 2:
                     /* 16 bit read access */
                     error |= io_mem_read(mr, addr1, &val, 2);

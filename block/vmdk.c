@@ -645,7 +645,7 @@ static int vmdk_open_vmdk4(BlockDriverState *bs,
         error_set(errp, QERR_UNKNOWN_BLOCK_FORMAT_FEATURE,
                   bs->device_name, "vmdk", buf);
         return -ENOTSUP;
-#if 0 //XXXDMK
+#if 0 //XXXDMK - true only if you need to move it back to a vmware instance
     } else if (le32_to_cpu(header.version) == 3 && (flags & BDRV_O_RDWR)) {
         /* VMware KB 2064959 explains that version 3 added support for
          * persistent changed block tracking (CBT), and backup software can
