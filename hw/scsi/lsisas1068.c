@@ -5950,6 +5950,8 @@ static void mpt_config_save(QEMUFile *f, void *pv, size_t size)
 {
     MptState *s = container_of(pv, MptState, config_pages);
 
+    qemu_put_buffer(f, (void *)s->config_pages,
+                    sizeof(MptConfigurationPagesSupported));
     // XXXDMK save config stuff(?)
     if (s->config_pages && s->ctrl_type == MPTCTRLTYPE_SCSI_SAS) {
 	PMptConfigurationPagesSas psas_pages =
@@ -5986,8 +5988,6 @@ static void mpt_config_save(QEMUFile *f, void *pv, size_t size)
 			    psas_pages->cb_sas_io_unit_page_1);
 	}
     }
-    qemu_put_buffer(f, (void *)s->config_pages,
-                    sizeof(MptConfigurationPagesSupported));
 }
 
 static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
@@ -6030,12 +6030,12 @@ static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 	if (ret != sizeof(uint32_t)) {
 	    return -EINVAL;
 	}
-	qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_0,
+	ret = qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_0,
 			    sizeof(uint32_t));
 	if (ret != sizeof(uint32_t)) {
 	    return -EINVAL;
 	}
-	qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_1,
+	ret = qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_1,
 			    sizeof(uint32_t));
 	if (ret != sizeof(uint32_t)) {
 	    return -EINVAL;
@@ -6043,7 +6043,7 @@ static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 	
 	if (psas_pages->pa_phy_s) {
 	    psas_pages->pa_phy_s = g_malloc(sizeof(MptPHY));
-	    qemu_get_buffer(f, (void *)psas_pages->pa_phy_s,
+	    ret = qemu_get_buffer(f, (void *)psas_pages->pa_phy_s,
 			    sizeof(MptPHY));
 	    if (ret != sizeof(MptPHY)) {
 		return -EINVAL;
@@ -6052,7 +6052,7 @@ static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 	if (psas_pages->p_manufacturing_page_7) {
 	    psas_pages->p_manufacturing_page_7 =
 	        g_malloc(psas_pages->cb_manufacturing_page_7);
-	    qemu_get_buffer(f, (void *)psas_pages->p_manufacturing_page_7,
+	    ret = qemu_get_buffer(f, (void *)psas_pages->p_manufacturing_page_7,
 			    psas_pages->cb_manufacturing_page_7);
 	    if (ret != psas_pages->cb_manufacturing_page_7) {
 		return -EINVAL;
@@ -6061,7 +6061,7 @@ static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 	if (psas_pages->p_sas_io_unit_page_0) {
 	    psas_pages->p_sas_io_unit_page_0 =
 		g_malloc(psas_pages->cb_sas_io_unit_page_0);
-	    qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_0,
+	    ret = qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_0,
 			    psas_pages->cb_sas_io_unit_page_0);
 	    if (ret != psas_pages->cb_sas_io_unit_page_0) {
 		return -EINVAL;
@@ -6070,7 +6070,7 @@ static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 	if (psas_pages->p_sas_io_unit_page_1) {
 	    psas_pages->p_sas_io_unit_page_1 =
 		g_malloc(psas_pages->cb_sas_io_unit_page_1);
-	    qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_1,
+	    ret = qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_1,
 			    psas_pages->cb_sas_io_unit_page_1);
 	    if (ret != psas_pages->cb_sas_io_unit_page_1) {
 		return -EINVAL;
