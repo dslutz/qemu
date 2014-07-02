@@ -5950,6 +5950,42 @@ static void mpt_config_save(QEMUFile *f, void *pv, size_t size)
 {
     MptState *s = container_of(pv, MptState, config_pages);
 
+    // XXXDMK save config stuff(?)
+    if (s->config_pages && s->ctrl_type == MPTCTRLTYPE_SCSI_SAS) {
+	PMptConfigurationPagesSas psas_pages =
+	    &s->config_pages->u.sas_pages;
+	PMptSASDevice p_sas_deviceCurr = psas_pages->p_sas_device_head;
+
+	while (p_sas_deviceCurr) {
+	    PMptSASDevice pDevCur = p_sas_deviceCurr;
+	    qemu_put_buffer(f, (void *)pDevCur,
+			    sizeof(MptSASDevice));
+	    p_sas_deviceCurr = p_sas_deviceCurr->p_next;
+	}
+	qemu_put_buffer(f, (void *)&psas_pages->cb_manufacturing_page_7,
+			    sizeof(uint32_t));
+	qemu_put_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_0,
+			    sizeof(uint32_t));
+	qemu_put_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_1,
+			    sizeof(uint32_t));
+	
+	if (psas_pages->pa_phy_s) {
+	    qemu_put_buffer(f, (void *)psas_pages->pa_phy_s,
+			    sizeof(MptPHY));
+	}
+	if (psas_pages->p_manufacturing_page_7) {
+	    qemu_put_buffer(f, (void *)psas_pages->p_manufacturing_page_7,
+			    psas_pages->cb_manufacturing_page_7);
+	}
+	if (psas_pages->p_sas_io_unit_page_0) {
+	    qemu_put_buffer(f, (void *)psas_pages->p_sas_io_unit_page_0,
+			    psas_pages->cb_sas_io_unit_page_0);
+	}
+	if (psas_pages->p_sas_io_unit_page_1) {
+	    qemu_put_buffer(f, (void *)psas_pages->p_sas_io_unit_page_1,
+			    psas_pages->cb_sas_io_unit_page_1);
+	}
+    }
     qemu_put_buffer(f, (void *)s->config_pages,
                     sizeof(MptConfigurationPagesSupported));
 }
@@ -5957,10 +5993,89 @@ static void mpt_config_save(QEMUFile *f, void *pv, size_t size)
 static int mpt_config_load(QEMUFile *f, void *pv, size_t size)
 {
     MptState *s = container_of(pv, MptState, config_pages);
+
     int ret = qemu_get_buffer(f, (void *)s->config_pages,
                               sizeof(MptConfigurationPagesSupported));
     if (ret != sizeof(MptConfigurationPagesSupported)) {
         return -EINVAL;
+    }
+    // XXXDMK save config stuff(?)
+    if (s->ctrl_type == MPTCTRLTYPE_SCSI_SAS && s->config_pages->u.sas_pages.c_devices) {
+	PMptConfigurationPagesSas psas_pages =
+	    &s->config_pages->u.sas_pages;
+	PMptSASDevice p_sas_deviceCurr, p_sas_devicePrev = NULL;
+	int i;
+
+	// recreate the device list
+	for (i = 0; i < psas_pages->c_devices; i++) {
+	    p_sas_deviceCurr = g_malloc(sizeof(MptSASDevice));
+	    ret = qemu_get_buffer(f, (void *)p_sas_deviceCurr, sizeof(MptSASDevice));
+	    if (ret != sizeof(MptSASDevice)) {
+		return -EINVAL;
+	    }
+
+	    if (p_sas_devicePrev == NULL) {
+		psas_pages->p_sas_device_head = p_sas_deviceCurr;
+	    } else {
+		p_sas_devicePrev->p_next = p_sas_deviceCurr;
+	    }
+	    p_sas_deviceCurr->p_prev = p_sas_devicePrev;
+	    p_sas_deviceCurr->p_next = NULL;
+	    p_sas_devicePrev = p_sas_deviceCurr;
+	}
+	psas_pages->p_sas_device_tail = p_sas_devicePrev;
+
+	ret = qemu_get_buffer(f, (void *)&psas_pages->cb_manufacturing_page_7,
+			    sizeof(uint32_t));
+	if (ret != sizeof(uint32_t)) {
+	    return -EINVAL;
+	}
+	qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_0,
+			    sizeof(uint32_t));
+	if (ret != sizeof(uint32_t)) {
+	    return -EINVAL;
+	}
+	qemu_get_buffer(f, (void *)&psas_pages->cb_sas_io_unit_page_1,
+			    sizeof(uint32_t));
+	if (ret != sizeof(uint32_t)) {
+	    return -EINVAL;
+	}
+	
+	if (psas_pages->pa_phy_s) {
+	    psas_pages->pa_phy_s = g_malloc(sizeof(MptPHY));
+	    qemu_get_buffer(f, (void *)psas_pages->pa_phy_s,
+			    sizeof(MptPHY));
+	    if (ret != sizeof(MptPHY)) {
+		return -EINVAL;
+	    }
+	}
+	if (psas_pages->p_manufacturing_page_7) {
+	    psas_pages->p_manufacturing_page_7 =
+	        g_malloc(psas_pages->cb_manufacturing_page_7);
+	    qemu_get_buffer(f, (void *)psas_pages->p_manufacturing_page_7,
+			    psas_pages->cb_manufacturing_page_7);
+	    if (ret != psas_pages->cb_manufacturing_page_7) {
+		return -EINVAL;
+	    }
+	}
+	if (psas_pages->p_sas_io_unit_page_0) {
+	    psas_pages->p_sas_io_unit_page_0 =
+		g_malloc(psas_pages->cb_sas_io_unit_page_0);
+	    qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_0,
+			    psas_pages->cb_sas_io_unit_page_0);
+	    if (ret != psas_pages->cb_sas_io_unit_page_0) {
+		return -EINVAL;
+	    }
+	}
+	if (psas_pages->p_sas_io_unit_page_1) {
+	    psas_pages->p_sas_io_unit_page_1 =
+		g_malloc(psas_pages->cb_sas_io_unit_page_1);
+	    qemu_get_buffer(f, (void *)psas_pages->p_sas_io_unit_page_1,
+			    psas_pages->cb_sas_io_unit_page_1);
+	    if (ret != psas_pages->cb_sas_io_unit_page_1) {
+		return -EINVAL;
+	    }
+	}
     }
     return 0;
 }
@@ -6070,16 +6185,15 @@ static const VMStateDescription vmstate_mpt = {
 
 static const VMStateDescription vmstate_mpte = {
     .name = "lsimpte",
-    .version_id = 0,
-    .minimum_version_id = 0,
-    .minimum_version_id_old = 0,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_PCIE_DEVICE(dev, MptState),
-
+        VMSTATE_UINT32(ctrl_type, MptState),
         VMSTATE_BUFFER_UNSAFE_INFO(config_pages, MptState, 0,
                                    mpt_config_vmstate_info, 0),
 
-        VMSTATE_UINT32(ctrl_type, MptState),
         VMSTATE_UINT32(state, MptState),
         VMSTATE_UINT32(who_init, MptState),
         VMSTATE_UINT16(next_handle, MptState),
