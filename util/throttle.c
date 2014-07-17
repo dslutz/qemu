@@ -313,6 +313,28 @@ void throttle_config(ThrottleState *ts, ThrottleConfig *cfg)
 
     ts->cfg = *cfg;
 
+    /* CloudSwitch -- replace any read/write limits with their sum */
+
+    if (ts->cfg.buckets[THROTTLE_BPS_READ].avg != 0 ||
+        ts->cfg.buckets[THROTTLE_BPS_WRITE].avg != 0) {
+        ts->cfg.buckets[THROTTLE_BPS_TOTAL].avg =
+		    ts->cfg.buckets[THROTTLE_BPS_READ].avg +
+		ts->cfg.buckets[THROTTLE_BPS_WRITE].avg;
+        ts->cfg.buckets[THROTTLE_BPS_READ].avg = 0;
+        ts->cfg.buckets[THROTTLE_BPS_WRITE].avg = 0;
+    }
+
+    if (ts->cfg.buckets[THROTTLE_OPS_READ].avg != 0 ||
+        ts->cfg.buckets[THROTTLE_OPS_WRITE].avg != 0) {
+        ts->cfg.buckets[THROTTLE_OPS_TOTAL].avg = 
+		    ts->cfg.buckets[THROTTLE_OPS_READ].avg +
+		ts->cfg.buckets[THROTTLE_OPS_WRITE].avg;
+        ts->cfg.buckets[THROTTLE_OPS_READ].avg = 0;
+        ts->cfg.buckets[THROTTLE_OPS_WRITE].avg = 0;
+    }
+
+    /* end CloudSwitch change */
+
     for (i = 0; i < BUCKETS_COUNT; i++) {
         throttle_fix_bucket(&ts->cfg.buckets[i]);
     }
