@@ -52,14 +52,13 @@ enum {
     DEBUG_GENERAL,	DEBUG_IO,	DEBUG_MMIO,	DEBUG_INTERRUPT,
     DEBUG_RX,		DEBUG_TX,	DEBUG_MDIC,	DEBUG_EEPROM,
     DEBUG_UNKNOWN,	DEBUG_TXSUM,	DEBUG_TXERR,	DEBUG_RXERR,
-    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,	
+    DEBUG_RXFILTER,     DEBUG_PHY,      DEBUG_NOTYET,
 #ifdef CONFIG_RATE_LIMIT
     DEBUG_RATE,
 #endif
 };
 #define DBGBIT(x)	(1<<DEBUG_##x)
 static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
-//XXX static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL) | DBGBIT(RATE);
 
 #define	DBGOUT(what, fmt, ...) do { \
     if (debugflags & DBGBIT(what)) \
@@ -142,7 +141,7 @@ typedef struct E1000State_st {
         char tse;
         int8_t ip;
         int8_t tcp;
-        char cptse;      // current packet tse bit
+        char cptse;     // current packet tse bit
     } tx;
 
     struct {
@@ -365,7 +364,6 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
         /* Only for 8257x */
         val |= E1000_ICR_INT_ASSERTED;
     }
-
     s->mac_reg[ICR] = val;
 
     /*
@@ -429,8 +427,8 @@ e1000_mit_timer(void *opaque)
     s->mit_timer_on = 0;
 
     if (MUTEX_TRYLOCK(s)) {
-	/* if we can't get the mutex, just return */
-	return;
+        /* if we can't get the mutex, just return */
+        return;
     }
 
     /* Call set_interrupt_cause to update the irq level (if necessary). */
@@ -581,7 +579,6 @@ set_mdic(E1000State *s, int index, uint32_t val)
         set_ics(s, 0, E1000_ICR_MDAC);
     }
 }
-
 
 static uint32_t
 get_eecd(E1000State *s, int index)
@@ -878,7 +875,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
         tp->tcp = (op & E1000_TXD_CMD_TCP) ? 1 : 0;
         tp->tse = (op & E1000_TXD_CMD_TSE) ? 1 : 0;
         tp->tso_frames = 0;
-        if (tp->tucso == 0) {        // this is probably wrong
+        if (tp->tucso == 0) {   // this is probably wrong
             DBGOUT(TXSUM, "TCP/UDP: cso 0!\n");
             tp->tucso = tp->tucss + (tp->tcp ? 16 : 6);
         }
@@ -1071,7 +1068,6 @@ start_xmit(E1000State *s)
 #endif
 }
 
-
 static int
 receive_filter(E1000State *s, const uint8_t *buf, int size)
 {
@@ -1087,10 +1083,10 @@ receive_filter(E1000State *s, const uint8_t *buf, int size)
             return 0;
     }
 
-    if (rctl & E1000_RCTL_UPE)                        // promiscuous
+    if (rctl & E1000_RCTL_UPE)          // promiscuous
         return 1;
 
-    if ((buf[0] & 1) && (rctl & E1000_RCTL_MPE))        // promiscuous mcast
+    if ((buf[0] & 1) && (rctl & E1000_RCTL_MPE))    // promiscuous mcast
         return 1;
 
     if ((rctl & E1000_RCTL_BAM) && !memcmp(buf, bcast, sizeof bcast))
@@ -1225,7 +1221,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
         min_iov.iov_len = size = sizeof(min_buf);
         iovcnt = 1;
         iov = &min_iov;
-	iov_ofs = 0;
+        iov_ofs = 0;
     } else if (iov->iov_len - iov_ofs < MAXIMUM_ETHERNET_HDR_LEN) {
         /* This is very unlikely, but may happen. */
         iov_to_buf(iov, iovcnt, iov_ofs, min_buf, MAXIMUM_ETHERNET_HDR_LEN);
@@ -1455,7 +1451,7 @@ set_ims(E1000State *s, int index, uint32_t val)
     set_ics(s, 0, 0);
 }
 
-#define getreg(x)        [x] = mac_readreg
+#define getreg(x)   [x] = mac_readreg
 static uint32_t (*macreg_readops[])(E1000State *, int) = {
     getreg(PBA),	getreg(RCTL),	getreg(TDH),	getreg(TXDCTL),
     getreg(WUFC),	getreg(TDT),	getreg(CTRL),	getreg(LEDCTL),
@@ -1476,7 +1472,7 @@ static uint32_t (*macreg_readops[])(E1000State *, int) = {
 };
 enum { NREADOPS = ARRAY_SIZE(macreg_readops) };
 
-#define putreg(x)      [x] = mac_writereg
+#define putreg(x)   [x] = mac_writereg
 static void (*macreg_writeops[])(E1000State *, int, uint32_t) = {
     putreg(PBA),	putreg(EERD),	putreg(SWSM),	putreg(WUFC),
     putreg(TDBAL),	putreg(TDBAH),	putreg(TXDCTL),	putreg(RDBAH),
@@ -1910,10 +1906,10 @@ static int pci_e1000_common_init(PCIDevice *pci_dev, E1000State *d)
     }
     if (PCI_DEVICE_GET_CLASS(pci_dev)->device_id == E1000_VMW_DEVID) {
         memmove(d->eeprom_data, e1000_vmw_eeprom_template,
-                sizeof e1000_vmw_eeprom_template);
+            sizeof e1000_vmw_eeprom_template);
     } else {
         memmove(d->eeprom_data, e1000_eeprom_template,
-                sizeof e1000_eeprom_template);
+            sizeof e1000_eeprom_template);
     }
 
     qemu_macaddr_default_if_unset(&d->conf.macaddr);

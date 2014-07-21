@@ -40,14 +40,14 @@
 #define VMMOUSE_STATUS          40
 #define VMMOUSE_COMMAND         41
 
-#define VMMOUSE_READ_ID			0x45414552
-#define VMMOUSE_DISABLE			0x000000f5
-#define VMMOUSE_REQUEST_RELATIVE	0x4c455252
-#define VMMOUSE_REQUEST_ABSOLUTE	0x53424152
+#define VMMOUSE_READ_ID                 0x45414552
+#define VMMOUSE_DISABLE                 0x000000f5
+#define VMMOUSE_REQUEST_RELATIVE        0x4c455252
+#define VMMOUSE_REQUEST_ABSOLUTE        0x53424152
 
-#define VMMOUSE_QUEUE_SIZE	1024
+#define VMMOUSE_QUEUE_SIZE      1024
 
-#define VMMOUSE_VERSION		0x3442554a
+#define VMMOUSE_VERSION         0x3442554a
 
 #ifdef DEBUG_VMMOUSE
 #define DPRINTF(fmt, ...) printf(fmt, ## __VA_ARGS__)
@@ -179,6 +179,7 @@ static void vmmouse_read_id(VMMouseState *s)
 
     trace_vmmouse_read_id(s, s->nb_queue);
     s->queue[s->in_queue++] = VMMOUSE_VERSION;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
     s->nb_queue++;
     s->status = 0;
 }
@@ -221,7 +222,7 @@ static void vmmouse_data(VMMouseState *s, uint32_t *data, uint32_t size)
 
     for (i = 0; i < size; i++) {
         data[i] = s->queue[s->out_queue++];
-	s->out_queue = s->out_queue % VMMOUSE_QUEUE_SIZE;
+        s->out_queue = s->out_queue % VMMOUSE_QUEUE_SIZE;
     }
 
     s->nb_queue -= size;
@@ -304,10 +305,10 @@ static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
                 s->div_x_down = 0;
                 s->div_y_down = 0;
                 //kbd_mouse_event(dx, dy, 0, s->set_buttons_state);
-		//qemu_input_update_buttons(
-		qemu_input_queue_rel(NULL, INPUT_AXIS_X, dx);
-		qemu_input_queue_rel(NULL, INPUT_AXIS_Y, dy);
-		qemu_input_event_sync();
+                //qemu_input_update_buttons(
+                qemu_input_queue_rel(NULL, INPUT_AXIS_X, dx);
+                qemu_input_queue_rel(NULL, INPUT_AXIS_Y, dy);
+                qemu_input_event_sync();
             } else {
                 trace_vmmouse_setptrlocation_3(opaque, s->div_x, s->div_y,
                                                s->div_x_down, s->div_y_down);

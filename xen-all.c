@@ -801,14 +801,14 @@ static void sync_regs_from_shared(ioreq_t *req)
 
     if (!current_cpu) {
         if (!vmmouse_env) {
-	    vmmouse_env = g_malloc(sizeof (CPUX86State));
-	}
-	env = vmmouse_env;
-	env_hack = true;
+            vmmouse_env = g_malloc(sizeof (CPUX86State));
+        }
+        env = vmmouse_env;
+        env_hack = true;
     }
     else {
-	cpu = X86_CPU(current_cpu);
-	env = &cpu->env;
+        cpu = X86_CPU(current_cpu);
+        env = &cpu->env;
     }
     env->regs[R_EAX] = req->vmdata[0];
     env->regs[R_EBX] = req->vmdata[1];
@@ -824,8 +824,8 @@ static void sync_regs_to_shared(ioreq_t *req)
     CPUX86State *env = &cpu->env;
 
     if (env_hack) {
-	env = vmmouse_env;
-	env_hack = false;
+        env = vmmouse_env;
+        env_hack = false;
     }
     req->vmdata[0] = env->regs[R_EAX];
     req->vmdata[1] = env->regs[R_EBX];
@@ -853,13 +853,13 @@ static void handle_ioreq(ioreq_t *req)
     switch (req->type) {
         case IOREQ_TYPE_PIO:
 #if defined(__i386__) || defined(__x86_64__)
-	    if (req->addr == 0x5658)
-		sync_regs_from_shared(req);
+            if (req->addr == 0x5658)
+                sync_regs_from_shared(req);
 #endif
             cpu_ioreq_pio(req);
 #if defined(__i386__) || defined(__x86_64__)
-	    if (req->addr == 0x5658)
-		sync_regs_to_shared(req);
+            if (req->addr == 0x5658)
+                sync_regs_to_shared(req);
 #endif
             break;
         case IOREQ_TYPE_COPY:

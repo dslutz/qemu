@@ -511,12 +511,12 @@ static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
     delay = now >= lim->slice_end ? 0 : lim->slice_end - now;
 
     if (delay > FUDGE) {
-	struct timespec req;
+        struct timespec req;
 
-	req.tv_sec = 0;
-	req.tv_nsec = delay - FUDGE;
-	nanosleep(&req, NULL);
-	now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        req.tv_sec = 0;
+        req.tv_nsec = delay - FUDGE;
+        nanosleep(&req, NULL);
+        now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     }
 
     if (lim->slice_end > now) now = lim->slice_end;
@@ -526,11 +526,10 @@ static inline void vmxnet_tx_delay(VmxnetRateLimit *lim, uint32_t len)
 
 #ifdef CONFIG_RATE_LIMIT
 static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
-					      NetClientState *nc, 
-					      VmxnetRateLimit *l)
+    NetClientState *nc, VmxnetRateLimit *l)
 #else
 static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
-					      NetClientState *nc)
+    NetClientState *nc)
 #endif
 {
     struct iovec fragment[VMXNET_MAX_FRAG_SG_LIST];
@@ -569,8 +568,8 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
         eth_fix_ip4_checksum(l3_iov_base, l3_iov_len);
 
 #ifdef CONFIG_RATE_LIMIT
-	if (l && l->io_limits_enabled)
-	    vmxnet_tx_delay(l, (uint32_t)fragment_len);
+        if (l && l->io_limits_enabled)
+            vmxnet_tx_delay(l, (uint32_t)fragment_len);
 #endif
 
         qemu_sendv_packet(nc, fragment, dst_idx);
@@ -584,9 +583,9 @@ static bool vmxnet_tx_pkt_do_sw_fragmentation(struct VmxnetTxPkt *pkt,
 
 bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc
 #ifdef CONFIG_RATE_LIMIT
-			, VmxnetRateLimit *l
+    , VmxnetRateLimit *l
 #endif
-			)
+    )
 {
     assert(pkt);
 
@@ -611,13 +610,13 @@ bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc
 	pkt->virt_hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE) {
 
 #ifdef CONFIG_RATE_LIMIT
-	if (l && l->io_limits_enabled) {
+        if (l && l->io_limits_enabled) {
             vmxnet_tx_delay(l, pkt->payload_len + pkt->hdr_len);
-	}
+        }
 #endif
-	qemu_sendv_packet(nc, pkt->vec,
-			  pkt->payload_frags + VMXNET_TX_PKT_PL_START_FRAG);
-	return true;
+        qemu_sendv_packet(nc, pkt->vec,
+            pkt->payload_frags + VMXNET_TX_PKT_PL_START_FRAG);
+        return true;
     }
 
 #ifdef CONFIG_RATE_LIMIT

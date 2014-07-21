@@ -157,7 +157,7 @@ void vmxnet_tx_pkt_reset(struct VmxnetTxPkt *pkt);
  */
 #ifdef CONFIG_RATE_LIMIT
 bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc,
-			VmxnetRateLimit *l);
+    VmxnetRateLimit *l);
 #else
 bool vmxnet_tx_pkt_send(struct VmxnetTxPkt *pkt, NetClientState *nc);
 #endif
