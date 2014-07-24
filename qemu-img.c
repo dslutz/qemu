@@ -1149,7 +1149,7 @@ static int img_convert(int argc, char **argv)
     out_baseimg = NULL;
     compress = 0;
     skip_create = 0;
-    force_zero_init = 1;
+    force_zero_init = 0;
     for(;;) {
         c = getopt(argc, argv, "f:O:B:s:hce6o:pS:t:qn:z");
         if (c == -1) {
