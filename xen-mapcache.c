@@ -88,6 +88,7 @@ typedef struct MapCache {
 
     phys_offset_to_gaddr_t phys_offset_to_gaddr;
     void *opaque;
+    ram_addr_t ram_size;
     hwaddr max_ram;
 } MapCache;
 
@@ -113,6 +114,7 @@ void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque, ram_addr_t ram_s
 
     mapcache->phys_offset_to_gaddr = f;
     mapcache->opaque = opaque;
+    mapcache->ram_size = ram_size;
     mapcache->max_ram = ram_size;
 
     QTAILQ_INIT(&mapcache->locked_entries);
@@ -271,35 +273,49 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
     hwaddr bigIdx = phys_addr >> BIG_SHIFT;
     hwaddr bigOffset = phys_addr & (BIG_SIZE - 1);
 
-    if (phys_addr + size > mapcache->max_ram)
+    if ( phys_addr + size > mapcache->max_ram )
     {
         trace_xen_map_cache_3(mapcache->max_ram, mapcache->max_ram >> BIG_SHIFT,
                               phys_addr + size, (phys_addr + size) >> BIG_SHIFT);
-#if 0
         mapcache->max_ram = phys_addr + size;
-#endif
     }
         
-    if (bigIdx < DO_BIG_ENTRY) {
-        if (mapcache->bigEntry[bigIdx].vaddr_base == NULL) {
+    if ( bigIdx < DO_BIG_ENTRY )
+    {
+        if ( mapcache->bigEntry[bigIdx].vaddr_base == NULL ||
+             (size && lock && phys_addr > mapcache->ram_size) )
+        {
             hwaddr maxsize = mapcache->max_ram - phys_addr;
 
-            if (maxsize > BIG_SIZE)
+            if ( phys_addr > mapcache->max_ram )
+                maxsize = bigOffset + size;
+            if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
             xen_remap_bucket(&mapcache->bigEntry[bigIdx], maxsize, bigIdx << (30 - MCACHE_BUCKET_SHIFT));
         }
-        if ((bigOffset < mapcache->bigEntry[bigIdx].size) &&
-            ((bigOffset + size) <= mapcache->bigEntry[bigIdx].size)) {
-            if (test_bits(bigOffset >> XC_PAGE_SHIFT,
-                          size >> XC_PAGE_SHIFT,
-                          mapcache->bigEntry[bigIdx].valid_mapping)) {
+        if ( (bigOffset < mapcache->bigEntry[bigIdx].size) &&
+             ((bigOffset + size) <= mapcache->bigEntry[bigIdx].size) )
+        {
+            if ( test_bits(bigOffset >> XC_PAGE_SHIFT,
+                           size >> XC_PAGE_SHIFT,
+                           mapcache->bigEntry[bigIdx].valid_mapping) )
+            {
                 trace_xen_map_cache_return_1(
-                    phys_addr, size, bigIdx, bigOffset, lock, mapcache->bigEntry[bigIdx].size,
+                    phys_addr, size, bigIdx, bigOffset, lock,
+		    mapcache->bigEntry[bigIdx].size,
                     mapcache->bigEntry[bigIdx].vaddr_base,
                     mapcache->bigEntry[bigIdx].vaddr_base + bigOffset);
                 return mapcache->bigEntry[bigIdx].vaddr_base + bigOffset;
             }
+	    else
+	    {
+                trace_xen_map_cache_big_err(bigIdx, bigIdx, bigOffset, phys_addr, size);
+	    }
+        }
+        else
+        {
+            trace_xen_map_cache_big_miss(bigIdx, bigIdx, bigOffset, phys_addr, size);
         }
     }
     else
@@ -346,7 +362,8 @@ tryagain:
     }
 
 #ifdef DO_BIG_ENTRY
-    entry = &mapcache->entry[(address_index + (address_index >> 8)) % mapcache->nr_buckets];
+    entry = &mapcache->entry[(address_index + (address_index >> 8)) %
+                             mapcache->nr_buckets];
 #else
     entry = &mapcache->entry[address_index % mapcache->nr_buckets];
 #endif
@@ -421,9 +438,9 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
     for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
     {
         ret = (uint8_t*)ptr - mapcache->bigEntry[bigIdx].vaddr_base;
-        if (mapcache->bigEntry[bigIdx].vaddr_base &&
-            ((uint8_t*)ptr >= mapcache->bigEntry[bigIdx].vaddr_base) &&
-            (ret < mapcache->bigEntry[bigIdx].size))
+        if ( mapcache->bigEntry[bigIdx].vaddr_base &&
+             ((uint8_t*)ptr >= mapcache->bigEntry[bigIdx].vaddr_base) &&
+             (ret < mapcache->bigEntry[bigIdx].size) )
         {
             trace_xen_ram_addr_from_mapcache_4(ptr, ret, bigIdx);
             return ret;
@@ -472,10 +489,10 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
 
     for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
     {
-        if (mapcache->bigEntry[bigIdx].vaddr_base &&
-            (buffer >= mapcache->bigEntry[bigIdx].vaddr_base) &&
-            ((buffer - mapcache->bigEntry[bigIdx].vaddr_base) <
-             mapcache->bigEntry[bigIdx].size))
+        if ( mapcache->bigEntry[bigIdx].vaddr_base &&
+             (buffer >= mapcache->bigEntry[bigIdx].vaddr_base) &&
+             ((buffer - mapcache->bigEntry[bigIdx].vaddr_base) <
+              mapcache->bigEntry[bigIdx].size) )
         {
             trace_xen_invalidate_map_cache_entry_6(buffer, bigIdx);
             return;
