@@ -47,7 +47,7 @@
 #define mapcache_lock()   ((void)0)
 #define mapcache_unlock() ((void)0)
 
-#define ERRI_MAX 4
+#define ERRI_MAX 6
 
 typedef struct MapCacheEntry {
     hwaddr paddr_index;
@@ -273,8 +273,11 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
 
     if (phys_addr + size > mapcache->max_ram)
     {
-        trace_xen_map_cache_3(mapcache->max_ram, phys_addr + size);
+        trace_xen_map_cache_3(mapcache->max_ram, mapcache->max_ram >> BIG_SHIFT,
+                              phys_addr + size, (phys_addr + size) >> BIG_SHIFT);
+#if 0
         mapcache->max_ram = phys_addr + size;
+#endif
     }
         
     if (bigIdx < DO_BIG_ENTRY) {
@@ -283,6 +286,7 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
 
             if (maxsize > BIG_SIZE)
                 maxsize = BIG_SIZE;
+            trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
             xen_remap_bucket(&mapcache->bigEntry[bigIdx], maxsize, bigIdx << (30 - MCACHE_BUCKET_SHIFT));
         }
         if ((bigOffset < mapcache->bigEntry[bigIdx].size) &&
@@ -297,6 +301,10 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
                 return mapcache->bigEntry[bigIdx].vaddr_base + bigOffset;
             }
         }
+    }
+    else
+    {
+        trace_xen_map_cache_old(bigIdx, bigIdx);
     }
 #endif
 
