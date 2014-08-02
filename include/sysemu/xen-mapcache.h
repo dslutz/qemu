@@ -17,7 +17,7 @@ typedef hwaddr (*phys_offset_to_gaddr_t)(hwaddr start_addr,
 #ifdef CONFIG_XEN
 
 void xen_map_cache_init(phys_offset_to_gaddr_t f,
-                        void *opaque);
+                        void *opaque, ram_addr_t ram_size);
 uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
                        uint8_t lock);
 ram_addr_t xen_ram_addr_from_mapcache(void *ptr);
@@ -28,7 +28,7 @@ void xen_dump_map_cache(Monitor *mon, const QDict *qdict);
 #else
 
 static inline void xen_map_cache_init(phys_offset_to_gaddr_t f,
-                                      void *opaque)
+                                      void *opaque, ram_addr_t ram_size)
 {
 }
 

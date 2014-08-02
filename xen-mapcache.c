@@ -31,7 +31,9 @@
 #elif defined(__x86_64__)
 #  define MCACHE_BUCKET_SHIFT 16
 #  define MCACHE_MAX_SIZE     (1UL<<20) /* 1MB Cap */
-#  define DO_BIG_ENTRY
+#  define BIG_SHIFT           30        /* 1GB */
+#  define BIG_SIZE            (1UL << BIG_SHIFT) /* 1GB */
+#  define DO_BIG_ENTRY        64        /* 64GB */
 #endif
 #define MCACHE_BUCKET_SIZE (1UL << MCACHE_BUCKET_SHIFT)
 
@@ -45,7 +47,7 @@
 #define mapcache_lock()   ((void)0)
 #define mapcache_unlock() ((void)0)
 
-#define ERRI_MAX 4
+#define ERRI_MAX 5
 
 typedef struct MapCacheEntry {
     hwaddr paddr_index;
@@ -73,7 +75,7 @@ typedef struct MapCacheRev {
 
 typedef struct MapCache {
 #ifdef DO_BIG_ENTRY
-    MapCacheEntry bigEntry;
+    MapCacheEntry bigEntry[DO_BIG_ENTRY];
 #endif
     MapCacheEntry *entry;
     unsigned long nr_buckets;
@@ -86,6 +88,8 @@ typedef struct MapCache {
 
     phys_offset_to_gaddr_t phys_offset_to_gaddr;
     void *opaque;
+    ram_addr_t ram_size;
+    hwaddr max_ram;
 } MapCache;
 
 static MapCache *mapcache;
@@ -99,17 +103,19 @@ static inline int test_bits(int nr, int size, const unsigned long *addr)
         return 0;
 }
 
-void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque)
+void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque, ram_addr_t ram_size)
 {
     unsigned long size;
     struct rlimit rlimit_as;
 
-    trace_xen_map_cache_init(f, opaque, MCACHE_BUCKET_SIZE);
+    trace_xen_map_cache_init(f, opaque, MCACHE_BUCKET_SIZE, ram_size);
 
     mapcache = g_malloc0(sizeof (MapCache));
 
     mapcache->phys_offset_to_gaddr = f;
     mapcache->opaque = opaque;
+    mapcache->ram_size = ram_size;
+    mapcache->max_ram = ram_size;
 
     QTAILQ_INIT(&mapcache->locked_entries);
 
@@ -263,25 +269,60 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
     hwaddr __size = size;
     hwaddr __test_bit_size = size;
     bool translated = false;
-
+    int entryIdx;
 #ifdef DO_BIG_ENTRY
-    if (mapcache->bigEntry.vaddr_base == NULL) {
-        hwaddr maxsize = phys_addr + size;
-        if (maxsize > 0x800000000)
-            maxsize = 0x800000000;
-        xen_remap_bucket(&mapcache->bigEntry, maxsize, 0);
+    hwaddr bigIdx = phys_addr >> BIG_SHIFT;
+    hwaddr bigOffset = phys_addr & (BIG_SIZE - 1);
+
+    if ( phys_addr + size > mapcache->max_ram )
+    {
+        trace_xen_map_cache_3(mapcache->max_ram, mapcache->max_ram >> BIG_SHIFT,
+                              phys_addr + size, (phys_addr + size) >> BIG_SHIFT);
+        mapcache->max_ram = phys_addr + size;
     }
-    if ((phys_addr < mapcache->bigEntry.size) &&
-        ((phys_addr + size) <= mapcache->bigEntry.size)) {
-        if (test_bits(phys_addr >> XC_PAGE_SHIFT,
-                      size >> XC_PAGE_SHIFT,
-                      mapcache->bigEntry.valid_mapping)) {
-            trace_xen_map_cache_return_1(
-                phys_addr, size, lock, mapcache->bigEntry.size,
-                mapcache->bigEntry.vaddr_base,
-                mapcache->bigEntry.vaddr_base + phys_addr);
-            return mapcache->bigEntry.vaddr_base + phys_addr;
+        
+    if ( bigIdx < DO_BIG_ENTRY )
+    {
+        if ( mapcache->bigEntry[bigIdx].vaddr_base == NULL )
+        {
+            hwaddr maxsize = bigOffset + size;
+
+            if ( !size )
+                maxsize = mapcache->max_ram - phys_addr;
+            if ( maxsize < bigOffset + size)
+                maxsize = bigOffset + size;
+            if ( maxsize > BIG_SIZE )
+                maxsize = BIG_SIZE;
+            trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
+            xen_remap_bucket(&mapcache->bigEntry[bigIdx], maxsize, bigIdx << (30 - MCACHE_BUCKET_SHIFT));
         }
+        if ( (bigOffset < mapcache->bigEntry[bigIdx].size) &&
+             ((bigOffset + size) <= mapcache->bigEntry[bigIdx].size) )
+        {
+            if ( test_bits(bigOffset >> XC_PAGE_SHIFT,
+                           size >> XC_PAGE_SHIFT,
+                           mapcache->bigEntry[bigIdx].valid_mapping) )
+            {
+                trace_xen_map_cache_return_1(
+                    phys_addr, size, bigIdx, bigOffset, lock,
+                    mapcache->bigEntry[bigIdx].size,
+                    mapcache->bigEntry[bigIdx].vaddr_base,
+                    mapcache->bigEntry[bigIdx].vaddr_base + bigOffset);
+                return mapcache->bigEntry[bigIdx].vaddr_base + bigOffset;
+            }
+            else
+            {
+                trace_xen_map_cache_big_err(bigIdx, bigIdx, bigOffset, phys_addr, size);
+            }
+        }
+        else
+        {
+            trace_xen_map_cache_big_miss(bigIdx, bigIdx, bigOffset, phys_addr, size);
+        }
+    }
+    else
+    {
+        trace_xen_map_cache_old(bigIdx, bigIdx);
     }
 #endif
 
@@ -323,16 +364,18 @@ tryagain:
     }
 
 #ifdef DO_BIG_ENTRY
-    entry = &mapcache->entry[(address_index + (address_index >> 8)) % mapcache->nr_buckets];
+    entryIdx = (address_index + (address_index >> 8)) % mapcache->nr_buckets;
 #else
-    entry = &mapcache->entry[address_index % mapcache->nr_buckets];
+    entryIdx = address_index % mapcache->nr_buckets;
 #endif
+    entry = &mapcache->entry[entryIdx];
 
     while (entry && entry->lock && entry->vaddr_base &&
             (entry->paddr_index != address_index || entry->size < __size ||
              ((entry->erri[0].err_cnt != 0) &&
               !test_bits(address_offset >> XC_PAGE_SHIFT, size >> XC_PAGE_SHIFT,
                          entry->valid_mapping)))) {
+        entryIdx = -1;
         pentry = entry;
         entry = entry->next;
     }
@@ -347,7 +390,7 @@ tryagain:
                 !test_bits(address_offset >> XC_PAGE_SHIFT,
                     __test_bit_size >> XC_PAGE_SHIFT,
                     entry->valid_mapping)) {
-            trace_xen_map_cache_2(phys_addr, address_index, size, __size, lock);
+            trace_xen_map_cache_2(phys_addr, address_index, size, __size, lock, entryIdx);
             xen_remap_bucket(entry, __size, address_index);
         }
     }
@@ -391,16 +434,21 @@ ram_addr_t xen_ram_addr_from_mapcache(void *ptr)
     MapCacheRev *reventry;
     int found = 0;
     int cost = 0;
-#ifdef DO_BIG_ENTRY
-    ram_addr_t ret = (uint8_t*)ptr - mapcache->bigEntry.vaddr_base;
-
-    if (((uint8_t*)ptr >= mapcache->bigEntry.vaddr_base) &&
-        (ret < mapcache->bigEntry.size)) {
-        trace_xen_ram_addr_from_mapcache_4(ptr, ret);
-        return ret;
-    }
-#else
     ram_addr_t ret;
+#ifdef DO_BIG_ENTRY
+    int bigIdx;
+
+    for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
+    {
+        ret = (uint8_t*)ptr - mapcache->bigEntry[bigIdx].vaddr_base;
+        if ( mapcache->bigEntry[bigIdx].vaddr_base &&
+             ((uint8_t*)ptr >= mapcache->bigEntry[bigIdx].vaddr_base) &&
+             (ret < mapcache->bigEntry[bigIdx].size) )
+        {
+            trace_xen_ram_addr_from_mapcache_4(ptr, ret, bigIdx);
+            return ret;
+        }
+    }
 #endif
 
     trace_xen_ram_addr_from_mapcache(ptr);
@@ -439,12 +487,19 @@ void xen_invalidate_map_cache_entry(uint8_t *buffer)
     MapCacheRev *reventry;
     int found = 0;
     int cost = 0;
-
 #ifdef DO_BIG_ENTRY
-    if ((buffer >= mapcache->bigEntry.vaddr_base) &&
-        ((buffer - mapcache->bigEntry.vaddr_base) < mapcache->bigEntry.size)) {
-        trace_xen_invalidate_map_cache_entry_6(buffer);
-        return;
+    int bigIdx;
+
+    for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
+    {
+        if ( mapcache->bigEntry[bigIdx].vaddr_base &&
+             (buffer >= mapcache->bigEntry[bigIdx].vaddr_base) &&
+             ((buffer - mapcache->bigEntry[bigIdx].vaddr_base) <
+              mapcache->bigEntry[bigIdx].size) )
+        {
+            trace_xen_invalidate_map_cache_entry_6(buffer, bigIdx);
+            return;
+        }
     }
 #endif
     trace_xen_invalidate_map_cache_entry(buffer);
@@ -563,28 +618,32 @@ void xen_dump_map_cache(Monitor *mon, const QDict *qdict)
 {
     unsigned long i;
     MapCacheRev *reventry;
-
 #ifdef DO_BIG_ENTRY
-    monitor_printf(mon,
-                   "bigEntry: paddr_index=%#"PRIx64
-                   " size=%#"PRIx64" lock=%d"
-                   " 0.err_cnt=%d .err_idx=%d"
-                   " 1.err_cnt=%d .err_idx=%d"
-                   " 2.err_cnt=%d .err_idx=%d"
-                   " 3.err_cnt=%d .err_idx=%d"
-                   " vaddr_base=%p\n",
-                   mapcache->bigEntry.paddr_index,
-                   mapcache->bigEntry.size,
-                   mapcache->bigEntry.lock,
-                   mapcache->bigEntry.erri[0].err_cnt,
-                   mapcache->bigEntry.erri[0].err_idx,
-                   mapcache->bigEntry.erri[1].err_cnt,
-                   mapcache->bigEntry.erri[1].err_idx,
-                   mapcache->bigEntry.erri[2].err_cnt,
-                   mapcache->bigEntry.erri[2].err_idx,
-                   mapcache->bigEntry.erri[3].err_cnt,
-                   mapcache->bigEntry.erri[3].err_idx,
-                   mapcache->bigEntry.vaddr_base);
+    int bigIdx;
+
+    for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
+    {
+        monitor_printf(mon,
+                       "bigEntry[%02d]: paddr_index=%#"PRIx64
+                       " size=%#"PRIx64" lock=%d"
+                       " 0.err_cnt=%d .err_idx=%d"
+                       " 1.err_cnt=%d .err_idx=%d"
+                       " 2.err_cnt=%d .err_idx=%d"
+                       " 3.err_cnt=%d .err_idx=%d"
+                       " vaddr_base=%p\n", bigIdx,
+                       mapcache->bigEntry[bigIdx].paddr_index,
+                       mapcache->bigEntry[bigIdx].size,
+                       mapcache->bigEntry[bigIdx].lock,
+                       mapcache->bigEntry[bigIdx].erri[0].err_cnt,
+                       mapcache->bigEntry[bigIdx].erri[0].err_idx,
+                       mapcache->bigEntry[bigIdx].erri[1].err_cnt,
+                       mapcache->bigEntry[bigIdx].erri[1].err_idx,
+                       mapcache->bigEntry[bigIdx].erri[2].err_cnt,
+                       mapcache->bigEntry[bigIdx].erri[2].err_idx,
+                       mapcache->bigEntry[bigIdx].erri[3].err_cnt,
+                       mapcache->bigEntry[bigIdx].erri[3].err_idx,
+                       mapcache->bigEntry[bigIdx].vaddr_base);
+    }
 #endif
 
     QTAILQ_FOREACH(reventry, &mapcache->locked_entries, next) {
