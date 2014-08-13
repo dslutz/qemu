@@ -291,16 +291,40 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
                 maxsize = mapcache->max_ram - phys_addr;
             if ( maxsize < bigOffset + size)
                 maxsize = bigOffset + size;
+            if ( maxsize % XC_PAGE_SIZE )
+            {
+                hwaddr newMaxSize = maxsize +
+                    XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
+#ifdef DEBUG_HV_326
+                fprintf(stderr,
+			"xen-mapcache: maxsize=0x%lx(%ld) ==> 0x%lx(%ld)\n",
+                        (long)maxsize, (long)maxsize,
+                        (long)newMaxSize, (long)newMaxSize);
+#endif
+                maxsize = newMaxSize;
+            }
             if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
+            mapcache->bigEntry[bigIdx].lock = lock;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
             xen_remap_bucket(&mapcache->bigEntry[bigIdx], maxsize, bigIdx << (30 - MCACHE_BUCKET_SHIFT));
         }
         if ( (bigOffset < mapcache->bigEntry[bigIdx].size) &&
              ((bigOffset + size) <= mapcache->bigEntry[bigIdx].size) )
         {
+            /* __test_bit_size is always a multiple of XC_PAGE_SIZE */
+            if (size) {
+                __test_bit_size = size + (phys_addr & (XC_PAGE_SIZE - 1));
+
+                if (__test_bit_size % XC_PAGE_SIZE) {
+                    __test_bit_size += XC_PAGE_SIZE - (__test_bit_size % XC_PAGE_SIZE);
+                }
+            } else {
+                __test_bit_size = XC_PAGE_SIZE;
+            }
+
             if ( test_bits(bigOffset >> XC_PAGE_SHIFT,
-                           size >> XC_PAGE_SHIFT,
+                           __test_bit_size >> XC_PAGE_SHIFT,
                            mapcache->bigEntry[bigIdx].valid_mapping) )
             {
                 trace_xen_map_cache_return_1(
@@ -397,7 +421,7 @@ tryagain:
 
     if ((entry->erri[0].err_cnt != 0) &&
         !test_bits(address_offset >> XC_PAGE_SHIFT,
-                   size >> XC_PAGE_SHIFT, entry->valid_mapping)) {
+                   __test_bit_size >> XC_PAGE_SHIFT, entry->valid_mapping)) {
         mapcache->last_entry = NULL;
         if (!translated && mapcache->phys_offset_to_gaddr) {
             phys_addr = mapcache->phys_offset_to_gaddr(phys_addr, size,
