@@ -291,6 +291,8 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
                 maxsize = mapcache->max_ram - phys_addr;
             if ( maxsize < bigOffset + size)
                 maxsize = bigOffset + size;
+	    if ( maxsize % XC_PAGE_SIZE )
+                maxsize += XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
             if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
