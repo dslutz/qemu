@@ -299,8 +299,19 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
         if ( (bigOffset < mapcache->bigEntry[bigIdx].size) &&
              ((bigOffset + size) <= mapcache->bigEntry[bigIdx].size) )
         {
+            /* __test_bit_size is always a multiple of XC_PAGE_SIZE */
+            if (size) {
+                __test_bit_size = size + (phys_addr & (XC_PAGE_SIZE - 1));
+
+                if (__test_bit_size % XC_PAGE_SIZE) {
+                    __test_bit_size += XC_PAGE_SIZE - (__test_bit_size % XC_PAGE_SIZE);
+                }
+            } else {
+                __test_bit_size = XC_PAGE_SIZE;
+            }
+
             if ( test_bits(bigOffset >> XC_PAGE_SHIFT,
-                           size >> XC_PAGE_SHIFT,
+                           __test_bit_size >> XC_PAGE_SHIFT,
                            mapcache->bigEntry[bigIdx].valid_mapping) )
             {
                 trace_xen_map_cache_return_1(
@@ -397,7 +408,7 @@ tryagain:
 
     if ((entry->erri[0].err_cnt != 0) &&
         !test_bits(address_offset >> XC_PAGE_SHIFT,
-                   size >> XC_PAGE_SHIFT, entry->valid_mapping)) {
+                   __test_bit_size >> XC_PAGE_SHIFT, entry->valid_mapping)) {
         mapcache->last_entry = NULL;
         if (!translated && mapcache->phys_offset_to_gaddr) {
             phys_addr = mapcache->phys_offset_to_gaddr(phys_addr, size,
