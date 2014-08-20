@@ -292,14 +292,7 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
             if ( maxsize < bigOffset + size)
                 maxsize = bigOffset + size;
             if ( maxsize % XC_PAGE_SIZE )
-            {
-                hwaddr newMaxSize = maxsize +
-                    XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
-                fprintf(stderr, "maxsize=0x%lx(%ld) ==> 0x%lx(%ld)\n",
-                        (long)maxsize, (long)maxsize,
-                        (long)newMaxSize, (long)newMaxSize);
-                maxsize = newMaxSize;
-            }
+                maxsize += XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
             if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
             mapcache->bigEntry[bigIdx].lock = lock;
