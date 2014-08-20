@@ -910,9 +910,7 @@ xen_remap_bucket_6(int idx, int err_cnt, int err_idx) " idx %d err_cnt %d err_id
 xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_1(uint64_t phys_addr, uint64_t address_index, uint64_t size, uint64_t size1, int lock) "do %#"PRIx64"[%#"PRIx64"] size %#"PRIx64"=>%#"PRIx64" lock %d"
 xen_map_cache_2(uint64_t phys_addr, uint64_t address_index, uint64_t size, uint64_t size1, int lock) "do %#"PRIx64"[%#"PRIx64"] size %#"PRIx64"=>%#"PRIx64" lock %d"
-xen_map_cache_3(uint64_t old, int oldGiB, uint64_t new, int newGiB) "old %#"PRIx64"[%dGiB] new %#"PRIx64"[%dGiB]"
-xen_map_cache_big(int bigIdxDec, uint64_t bigIdxHex, long bigOffset, uint64_t phys_addr, uint64_t size) "bigIdx %d [%#"PRIx64"] bigOffset %lx for %#"PRIx64" size %#"PRIx64
-xen_map_cache_old(int bigIdxDec, uint64_t bigIdxHex) "bigIdx %d [%#"PRIx64"]"
+xen_map_cache_3(uint64_t old, uint64_t new) "old %#"PRIx64" new %#"PRIx64
 xen_map_cache_return(void* ptr) "%p"
 xen_map_cache_return_1(uint64_t phys_addr, uint64_t size, int bigIdx, int bigOffset, int lock, uint64_t maxSize, void* vaddr_base, void* ptr) "got %#"PRIx64" size %#"PRIx64" bigIdx %d bigOffset %x lock %d maxSize %#"PRIx64" vaddr_base %p ptr %p"
 xen_ram_addr_from_mapcache(void* ptr) "%p"
