@@ -47,7 +47,7 @@
 #define mapcache_lock()   ((void)0)
 #define mapcache_unlock() ((void)0)
 
-#define ERRI_MAX 5
+#define ERRI_MAX 6
 
 typedef struct MapCacheEntry {
     hwaddr paddr_index;
@@ -269,7 +269,6 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
     hwaddr __size = size;
     hwaddr __test_bit_size = size;
     bool translated = false;
-    int entryIdx;
 #ifdef DO_BIG_ENTRY
     hwaddr bigIdx = phys_addr >> BIG_SHIFT;
     hwaddr bigOffset = phys_addr & (BIG_SIZE - 1);
@@ -283,10 +282,13 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
         
     if ( bigIdx < DO_BIG_ENTRY )
     {
-        if ( mapcache->bigEntry[bigIdx].vaddr_base == NULL )
+        if ( mapcache->bigEntry[bigIdx].vaddr_base == NULL ||
+             (size && lock && phys_addr > mapcache->ram_size) )
         {
-            hwaddr maxsize = bigOffset + size;
+            hwaddr maxsize = mapcache->max_ram - phys_addr;
 
+            if ( phys_addr > mapcache->max_ram )
+                maxsize = bigOffset + size;
             if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
@@ -312,15 +314,15 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
             {
                 trace_xen_map_cache_return_1(
                     phys_addr, size, bigIdx, bigOffset, lock,
-                    mapcache->bigEntry[bigIdx].size,
+		    mapcache->bigEntry[bigIdx].size,
                     mapcache->bigEntry[bigIdx].vaddr_base,
                     mapcache->bigEntry[bigIdx].vaddr_base + bigOffset);
                 return mapcache->bigEntry[bigIdx].vaddr_base + bigOffset;
             }
-            else
-            {
+	    else
+	    {
                 trace_xen_map_cache_big_err(bigIdx, bigIdx, bigOffset, phys_addr, size);
-            }
+	    }
         }
         else
         {
@@ -371,18 +373,17 @@ tryagain:
     }
 
 #ifdef DO_BIG_ENTRY
-    entryIdx = (address_index + (address_index >> 8)) % mapcache->nr_buckets;
+    entry = &mapcache->entry[(address_index + (address_index >> 8)) %
+                             mapcache->nr_buckets];
 #else
-    entryIdx = address_index % mapcache->nr_buckets;
+    entry = &mapcache->entry[address_index % mapcache->nr_buckets];
 #endif
-    entry = &mapcache->entry[entryIdx];
 
     while (entry && entry->lock && entry->vaddr_base &&
             (entry->paddr_index != address_index || entry->size < __size ||
              ((entry->erri[0].err_cnt != 0) &&
               !test_bits(address_offset >> XC_PAGE_SHIFT, size >> XC_PAGE_SHIFT,
                          entry->valid_mapping)))) {
-        entryIdx = -1;
         pentry = entry;
         entry = entry->next;
     }
@@ -397,7 +398,7 @@ tryagain:
                 !test_bits(address_offset >> XC_PAGE_SHIFT,
                     __test_bit_size >> XC_PAGE_SHIFT,
                     entry->valid_mapping)) {
-            trace_xen_map_cache_2(phys_addr, address_index, size, __size, lock, entryIdx);
+            trace_xen_map_cache_2(phys_addr, address_index, size, __size, lock);
             xen_remap_bucket(entry, __size, address_index);
         }
     }
