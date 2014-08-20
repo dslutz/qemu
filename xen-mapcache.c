@@ -291,11 +291,8 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
                 maxsize = mapcache->max_ram - phys_addr;
             if ( maxsize < bigOffset + size)
                 maxsize = bigOffset + size;
-            if ( maxsize % XC_PAGE_SIZE )
-                maxsize += XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
             if ( maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
-            mapcache->bigEntry[bigIdx].lock = lock;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
             xen_remap_bucket(&mapcache->bigEntry[bigIdx], maxsize, bigIdx << (30 - MCACHE_BUCKET_SHIFT));
         }
