@@ -1236,7 +1236,7 @@ int xen_hvm_init(MemoryRegion **ram_memory)
     state->bufioreq_local_port = rc;
 
     /* Init RAM management */
-    xen_map_cache_init(xen_phys_offset_to_gaddr, state, ram_size);
+    xen_map_cache_init(xen_phys_offset_to_gaddr, state);
     xen_ram_init(ram_size, ram_memory);
 
     qemu_add_vm_change_state_handler(xen_hvm_change_state_handler, state);
