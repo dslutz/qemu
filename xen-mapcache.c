@@ -295,12 +295,9 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
             {
                 hwaddr newMaxSize = maxsize +
                     XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
-#ifdef DEBUG_HV_326
-                fprintf(stderr,
-			"xen-mapcache: maxsize=0x%lx(%ld) ==> 0x%lx(%ld)\n",
+                fprintf(stderr, "maxsize=0x%lx(%ld) ==> 0x%lx(%ld)\n",
                         (long)maxsize, (long)maxsize,
                         (long)newMaxSize, (long)newMaxSize);
-#endif
                 maxsize = newMaxSize;
             }
             if ( maxsize > BIG_SIZE )
