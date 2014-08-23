@@ -24,14 +24,18 @@
 #include "trace.h"
 
 
-#if defined(__i386__)
+#if defined(MAPCACHE_BIG)
+#  define MCACHE_BUCKET_SHIFT 16
+#  define MCACHE_MAX_SIZE     (1UL<<20) /* 1MB Cap */
+#  define DO_BIG_ENTRY
+#elif defined(__i386__)
 #  define MCACHE_BUCKET_SHIFT 16
 #  define MCACHE_MAX_SIZE     (1UL<<31) /* 2GB Cap */
 #  define DO_XEN_MAPCACHE_MUNMAP
 #elif defined(__x86_64__)
-#  define MCACHE_BUCKET_SHIFT 16
-#  define MCACHE_MAX_SIZE     (1UL<<20) /* 1MB Cap */
-#  define DO_BIG_ENTRY
+#  define MCACHE_BUCKET_SHIFT 20
+#  define MCACHE_MAX_SIZE     (1UL<<35) /* 32GB Cap */
+#  define DO_XEN_MAPCACHE_MUNMAP
 #endif
 #define MCACHE_BUCKET_SIZE (1UL << MCACHE_BUCKET_SHIFT)
 
