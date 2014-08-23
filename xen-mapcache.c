@@ -90,6 +90,9 @@ typedef struct MapCache {
     void *opaque;
     ram_addr_t ram_size;
     hwaddr max_ram;
+#ifdef DO_BIG_ENTRY
+    int bigIdxMax;
+#endif
 } MapCache;
 
 static MapCache *mapcache;
@@ -116,6 +119,9 @@ void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque, ram_addr_t ram_s
     mapcache->opaque = opaque;
     mapcache->ram_size = ram_size;
     mapcache->max_ram = ram_size;
+#ifdef DO_BIG_ENTRY
+    mapcache->bigIdxMax = -1;
+#endif
 
     QTAILQ_INIT(&mapcache->locked_entries);
 
@@ -274,9 +280,16 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
     hwaddr bigIdx = phys_addr >> BIG_SHIFT;
     hwaddr bigOffset = phys_addr & (BIG_SIZE - 1);
 
+    if ( mapcache->bigIdxMax < 0 )
+    {
+        mapcache->bigIdxMax = (phys_addr + size) >> BIG_SHIFT;
+	trace_xen_map_cache_init_2(phys_addr, size, mapcache->bigIdxMax);
+    }
+
     if ( phys_addr + size > mapcache->max_ram )
     {
-        trace_xen_map_cache_3(mapcache->max_ram, mapcache->max_ram >> BIG_SHIFT,
+        trace_xen_map_cache_3(bigIdx, mapcache->bigIdxMax,
+			      mapcache->max_ram, mapcache->max_ram >> BIG_SHIFT,
                               phys_addr + size, (phys_addr + size) >> BIG_SHIFT);
         mapcache->max_ram = phys_addr + size;
     }
@@ -287,23 +300,15 @@ uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
         {
             hwaddr maxsize = bigOffset + size;
 
-            if ( !size )
-                maxsize = mapcache->max_ram - phys_addr;
-            if ( maxsize < bigOffset + size)
-                maxsize = bigOffset + size;
+            trace_xen_map_cache_big_2(bigIdx, maxsize, maxsize);
             if ( maxsize % XC_PAGE_SIZE )
             {
                 hwaddr newMaxSize = maxsize +
                     XC_PAGE_SIZE - (maxsize % XC_PAGE_SIZE);
-#ifdef DEBUG_HV_326
-                fprintf(stderr,
-			"xen-mapcache: maxsize=0x%lx(%ld) ==> 0x%lx(%ld)\n",
-                        (long)maxsize, (long)maxsize,
-                        (long)newMaxSize, (long)newMaxSize);
-#endif
+                trace_xen_map_cache_big_1(maxsize, maxsize, newMaxSize, newMaxSize);
                 maxsize = newMaxSize;
             }
-            if ( maxsize > BIG_SIZE )
+            if ( bigIdx < (hwaddr)mapcache->bigIdxMax || maxsize > BIG_SIZE )
                 maxsize = BIG_SIZE;
             mapcache->bigEntry[bigIdx].lock = lock;
             trace_xen_map_cache_big(bigIdx, bigIdx, bigOffset, phys_addr, size);
@@ -647,26 +652,27 @@ void xen_dump_map_cache(Monitor *mon, const QDict *qdict)
 
     for (bigIdx = 0; bigIdx < DO_BIG_ENTRY; bigIdx++)
     {
-        monitor_printf(mon,
-                       "bigEntry[%02d]: paddr_index=%#"PRIx64
-                       " size=%#"PRIx64" lock=%d"
-                       " 0.err_cnt=%d .err_idx=%d"
-                       " 1.err_cnt=%d .err_idx=%d"
-                       " 2.err_cnt=%d .err_idx=%d"
-                       " 3.err_cnt=%d .err_idx=%d"
-                       " vaddr_base=%p\n", bigIdx,
-                       mapcache->bigEntry[bigIdx].paddr_index,
-                       mapcache->bigEntry[bigIdx].size,
-                       mapcache->bigEntry[bigIdx].lock,
-                       mapcache->bigEntry[bigIdx].erri[0].err_cnt,
-                       mapcache->bigEntry[bigIdx].erri[0].err_idx,
-                       mapcache->bigEntry[bigIdx].erri[1].err_cnt,
-                       mapcache->bigEntry[bigIdx].erri[1].err_idx,
-                       mapcache->bigEntry[bigIdx].erri[2].err_cnt,
-                       mapcache->bigEntry[bigIdx].erri[2].err_idx,
-                       mapcache->bigEntry[bigIdx].erri[3].err_cnt,
-                       mapcache->bigEntry[bigIdx].erri[3].err_idx,
-                       mapcache->bigEntry[bigIdx].vaddr_base);
+        if ( mapcache->bigEntry[bigIdx].vaddr_base )
+            monitor_printf(mon,
+                           "bigEntry[%02d]: paddr_index=%#"PRIx64
+                           " size=%#"PRIx64" lock=%d"
+                           " 0.err_cnt=%d .err_idx=%d"
+                           " 1.err_cnt=%d .err_idx=%d"
+                           " 2.err_cnt=%d .err_idx=%d"
+                           " 3.err_cnt=%d .err_idx=%d"
+                           " vaddr_base=%p\n", bigIdx,
+                           mapcache->bigEntry[bigIdx].paddr_index,
+                           mapcache->bigEntry[bigIdx].size,
+                           mapcache->bigEntry[bigIdx].lock,
+                           mapcache->bigEntry[bigIdx].erri[0].err_cnt,
+                           mapcache->bigEntry[bigIdx].erri[0].err_idx,
+                           mapcache->bigEntry[bigIdx].erri[1].err_cnt,
+                           mapcache->bigEntry[bigIdx].erri[1].err_idx,
+                           mapcache->bigEntry[bigIdx].erri[2].err_cnt,
+                           mapcache->bigEntry[bigIdx].erri[2].err_idx,
+                           mapcache->bigEntry[bigIdx].erri[3].err_cnt,
+                           mapcache->bigEntry[bigIdx].erri[3].err_idx,
+                           mapcache->bigEntry[bigIdx].vaddr_base);
     }
 #endif
 
