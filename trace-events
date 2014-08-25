@@ -900,6 +900,7 @@ cpu_ioreq_move(void *req, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint6
 # xen-mapcache.c
 xen_map_cache_init(void *f, void *opaque, uint64_t bkt_size, uint64_t ram_size) "f %p opaque %p bkt_size %#"PRIx64" ram_size %#"PRIx64
 xen_map_cache_init_1(long nr_buckets, long size) "nr_buckets = %lx size %lu"
+xen_map_cache_init_2(uint64_t phys_addr, uint64_t size, int bigIdxMax) "phys_addr %#"PRIx64" size %#"PRIx64" bigIdxMax=%d"
 xen_remap_bucket(uint64_t index, uint64_t size) "index %#"PRIx64" size %#"PRIx64
 xen_remap_bucket_1(uint64_t address_index, uint64_t size, void* vaddr_base, int erri_idx, long nb_pfn) "index %#"PRIx64" size %#"PRIx64" vaddr_base %p erri_idx %d nb_pfn %ld"
 xen_remap_bucket_2(uint64_t phys_addr, unsigned int i, int err) "miss %#"PRIx64" i %u err %d"
@@ -910,8 +911,10 @@ xen_remap_bucket_6(int idx, int err_cnt, int err_idx) " idx %d err_cnt %d err_id
 xen_map_cache(uint64_t phys_addr, uint64_t size, int lock) "want %#"PRIx64" size %#"PRIx64" lock %d"
 xen_map_cache_1(uint64_t phys_addr, uint64_t address_index, uint64_t size, uint64_t size1, int lock) "do %#"PRIx64"[%#"PRIx64"] size %#"PRIx64"=>%#"PRIx64" lock %d"
 xen_map_cache_2(uint64_t phys_addr, uint64_t address_index, uint64_t size, uint64_t size1, int lock, int entryIdx) "do %#"PRIx64"[%#"PRIx64"] size %#"PRIx64"=>%#"PRIx64" lock %d entryIdx %d"
-xen_map_cache_3(uint64_t old, int oldGiB, uint64_t new, int newGiB) "old %#"PRIx64"[%dGiB] new %#"PRIx64"[%dGiB]"
+xen_map_cache_3(int bigIdx, int bigIdxMax, uint64_t old, int oldGiB, uint64_t new, int newGiB) "bigIdx %d bigIdxMax %d old %#"PRIx64"[%dGiB] new %#"PRIx64"[%dGiB]"
 xen_map_cache_big(int bigIdxDec, uint64_t bigIdxHex, long bigOffset, uint64_t phys_addr, uint64_t size) "bigIdx %d [%#"PRIx64"] bigOffset %lx for %#"PRIx64" size %#"PRIx64
+xen_map_cache_big_1(uint64_t maxsizeHex, long maxsizeDec, uint64_t newMaxSizeHex, long newMaxSizeDec) "maxsize %#"PRIx64"[%ld] ==> %#"PRIx64"[%ld]"
+xen_map_cache_big_2(int bigIdx, uint64_t maxsizeHex, long maxsizeDec) "bigIdx %d maxsize %#"PRIx64"[%ld]"
 xen_map_cache_big_err(int bigIdxDec, uint64_t bigIdxHex, long bigOffset, uint64_t phys_addr, uint64_t size) "bigIdx %d [%#"PRIx64"] bigOffset %lx for %#"PRIx64" size %#"PRIx64
 xen_map_cache_big_miss(int bigIdxDec, uint64_t bigIdxHex, long bigOffset, uint64_t phys_addr, uint64_t size) "bigIdx %d [%#"PRIx64"] bigOffset %lx for %#"PRIx64" size %#"PRIx64
 xen_map_cache_old(int bigIdxDec, uint64_t bigIdxHex) "bigIdx %d [%#"PRIx64"]"
