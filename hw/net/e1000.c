@@ -1785,10 +1785,8 @@ e1000_cleanup(NetClientState *nc)
 }
 
 static void
-pci_e1000_uninit(PCIDevice *dev)
+pci_e1000_common_uninit(E1000State *d)
 {
-    E1000State *d = E1000(dev);
-
 #ifdef CONFIG_RATE_LIMIT
     if (d->co_thread != NULL) {
         d->co_shutdown = true;
@@ -1811,6 +1809,20 @@ pci_e1000_uninit(PCIDevice *dev)
     memory_region_destroy(&d->mmio);
     memory_region_destroy(&d->io);
     qemu_del_nic(d->nic);
+}
+
+static void
+pci_e1000_uninit(PCIDevice *dev)
+{
+    E1000State *d = E1000(dev);
+    pci_e1000_common_uninit(d);
+}
+
+static void
+pci_e1000_vmw_uninit(PCIDevice *dev)
+{
+    E1000State *d = E1000VMW(dev);
+    pci_e1000_common_uninit(d);
 }
 
 static NetClientInfo net_e1000_info = {
@@ -2049,7 +2061,7 @@ static void e1000_vmw_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->init = pci_e1000_vmw_init;
-    k->exit = pci_e1000_uninit;
+    k->exit = pci_e1000_vmw_uninit;
     k->romfile = "pxe-e1000.rom";
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = E1000_VMW_DEVID;
