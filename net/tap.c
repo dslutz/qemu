@@ -33,6 +33,21 @@
 #include <sys/socket.h>
 #include <net/if.h>
 
+#include <sys/types.h>
+#include <net/ethernet.h>
+#include <ifaddrs.h>
+typedef uint16_t u16;
+#include <linux/if_packet.h>
+#include <netinet/in.h>
+/* Since we cannot include the real files... */
+/* from include/linux/if_packet.h */
+#define PACKET_VNET_HDR 15
+/* from include/linux/if_ether.h */
+#define ETH_ALEN 6
+/* sizeof(struct virtio_net_hdr) from include/linux/virtio_net.h */
+#define PACKET_VNET_SIZE 10
+
+
 #include "net/net.h"
 #include "clients.h"
 #include "monitor/monitor.h"
@@ -55,6 +70,7 @@ typedef struct TAPState {
     bool using_vnet_hdr;
     bool has_ufo;
     bool enabled;
+    bool raw;
     VHostNetState *vhost_net;
     unsigned host_vnet_hdr_len;
 } TAPState;
@@ -64,6 +80,220 @@ static int launch_script(const char *setup_script, const char *ifname, int fd);
 static int tap_can_send(void *opaque);
 static void tap_send(void *opaque);
 static void tap_writable(void *opaque);
+
+static int tap_raw_probe_vnet_hdr_len(int len)
+{
+    QEMU_BUILD_BUG_ON(sizeof(struct virtio_net_hdr) != PACKET_VNET_SIZE);
+    if (len == sizeof(struct virtio_net_hdr)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static void tap_raw_set_vnet_hdr_len(int fd, int len)
+{
+    if (len) {
+        int val = 1;
+        int ret = setsockopt(fd, SOL_PACKET, PACKET_VNET_HDR,
+                             (const char *)&val, sizeof(val));
+        if (ret < 0) {
+            fprintf(stderr, "setsockopt(SOL_PACKET, PACKET_VNET_HDR) failed: %s. Exiting.\n",
+                    strerror(errno));
+            abort();
+        }
+    }
+}
+
+static int source_hwaddr(const char *ifname, int ifname_size,
+                         uint8_t buf[ETH_ALEN])
+{
+    struct ifaddrs *ifaphead, *ifap;
+    int l = sizeof(ifap->ifa_name);
+
+    if (l > ifname_size) {
+        l = ifname_size;
+    }
+    if (getifaddrs(&ifaphead) != 0) {
+        fprintf(stderr, "getifaddrs %s failed", ifname);
+        perror("getifaddrs");
+        return -1;
+    }
+
+    for (ifap = ifaphead; ifap; ifap = ifap->ifa_next) {
+        struct sockaddr_ll *sll =
+            (struct sockaddr_ll *)ifap->ifa_addr;
+
+        if (!sll || sll->sll_family != AF_PACKET)
+            continue;
+        if (strncmp(ifap->ifa_name, ifname, l) != 0)
+            continue;
+        memcpy(buf, sll->sll_addr, ETH_ALEN);
+        break;
+    }
+    freeifaddrs(ifaphead);
+    return ifap ? 0 : 1;
+}
+
+static int enable_promisc(int s, const char *iface_alias,
+                          int ifname_size)
+{
+    struct ifreq ifr;
+    struct packet_mreq pr;
+    int ret;
+    int l = IFNAMSIZ;
+
+    if (l > ifname_size)
+        l = ifname_size;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface_alias, l);
+    ret = ioctl(s, SIOCGIFINDEX, &ifr);
+    if (ret < 0) {
+        error_report("ioctl(SIOCGIFINDEX): %m");
+        return -1;
+    }
+
+    memset(&pr, 0, sizeof(pr));
+    pr.mr_ifindex = ifr.ifr_ifindex;
+    pr.mr_type = PACKET_MR_PROMISC;
+    ret = setsockopt(s, SOL_PACKET, PACKET_ADD_MEMBERSHIP,
+                     &pr, sizeof(pr));
+    return ret;
+}
+
+static int enable_allmulti(int s, const char *iface_alias,
+                           int ifname_size)
+{
+    struct ifreq ifr;
+    struct packet_mreq pr;
+    int ret;
+    int l = IFNAMSIZ;
+
+    if (l > ifname_size)
+        l = ifname_size;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface_alias, l);
+    ret = ioctl(s, SIOCGIFINDEX, &ifr);
+    if (ret < 0) {
+        error_report("ioctl(SIOCGIFINDEX): %m");
+        return -1;
+    }
+
+    memset(&pr, 0, sizeof(pr));
+    pr.mr_ifindex = ifr.ifr_ifindex;
+    pr.mr_type = PACKET_MR_ALLMULTI;
+    ret = setsockopt(s, SOL_PACKET, PACKET_ADD_MEMBERSHIP,
+                     &pr, sizeof(pr));
+    return ret;
+}
+
+static int tap_raw_open(char *ifname, int ifname_size, int *vnet_hdr,
+                        int vnet_hdr_required, int mq_required)
+{
+    int fd, ret, ret1, l;
+    uint8_t smac[ETH_ALEN];
+    struct ifreq req;
+    struct sockaddr_ll lladdr;
+    struct timeval bind_time;
+    struct timeval recv_time;
+
+    if (mq_required) {
+        error_report("multi queue not supported");
+        return -1;
+    }
+    ret = source_hwaddr(ifname, ifname_size, smac);
+    if (ret < 0) {
+        error_report("Failed source_hwaddr for %.*s: %m",
+                     ifname_size, ifname);
+        return -1;
+    }
+    if (ret) {
+        error_report("source_hwaddr not found for %.*s",
+                     ifname_size, ifname);
+        return -1;
+    }
+
+    TFR(fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL)));
+    if (fd < 0) {
+        error_report("could not open raw socket: %m");
+        return -1;
+    }
+    l = IFNAMSIZ - 1;
+    if (l > ifname_size) {
+        l = ifname_size;
+    }
+    memset(&req, 0, sizeof(req));
+    strncpy(req.ifr_name, ifname, l);
+    ret = ioctl(fd, SIOCGIFINDEX, &req);
+    if (ret < 0) {
+        error_report("SIOCGIFINDEX failed: %m");
+        return -1;
+    }
+
+    memset(&lladdr, 0, sizeof(lladdr));
+    lladdr.sll_family   = AF_PACKET;
+    lladdr.sll_protocol = htons(ETH_P_ALL);
+    lladdr.sll_ifindex  = req.ifr_ifindex;
+    ret = bind(fd, (const struct sockaddr *)&lladdr, sizeof(lladdr));
+    if (ret < 0) {
+        error_report("bind failed: %m");
+        return -1;
+    }
+    gettimeofday(&bind_time, NULL);
+
+    ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+    if (ret < 0) {
+        error_report("fcntl(O_NONBLOCK) set failed: %m");
+        return -1;
+    }
+
+    /*
+     * Drop packets that are pending before bind time.
+     * May drop an extra one packet.
+     */
+    do {
+        fd_set rfds;
+        fd_set xfds;
+        int xret = 0;
+        struct timeval timeout = {
+            .tv_sec = 1,
+            .tv_usec = 0,
+        };
+        uint8_t xbuf[32];
+
+        FD_ZERO(&rfds);
+        FD_SET(fd, &rfds);
+        FD_ZERO(&xfds);
+        FD_SET(fd, &xfds);
+
+        xret = select(fd + 1, &rfds, NULL, &xfds, &timeout);
+        if (xret < 0) {
+            if (errno == EINTR)
+                continue;
+            error_report("tap_raw_open select: %m");
+            return -1;
+        } else if (xret > 0) {
+            ret = recv(fd, xbuf, sizeof(xbuf), MSG_TRUNC);
+            ret1 = ioctl(fd, SIOCGSTAMP, &recv_time);
+        } else {
+            gettimeofday(&recv_time, NULL);
+            ret1 = 0;
+        }
+    } while (!ret1 && (recv_time.tv_sec <= bind_time.tv_sec));
+
+    ret = enable_promisc(fd, ifname, ifname_size);
+    if (ret < 0) {
+        error_report("enable_promisc: %m");
+        return -1;
+    }
+
+    ret = enable_allmulti(fd, ifname, ifname_size);
+    if (ret < 0) {
+        error_report("enable_allmulti: %m");
+        return -1;
+    }
+    return fd;
+}
 
 static void tap_update_fd_handler(TAPState *s)
 {
@@ -234,7 +464,11 @@ int tap_has_vnet_hdr_len(NetClientState *nc, int len)
 
     assert(nc->info->type == NET_CLIENT_OPTIONS_KIND_TAP);
 
-    return tap_probe_vnet_hdr_len(s->fd, len);
+    if (s->raw) {
+        return tap_raw_probe_vnet_hdr_len(len);
+    } else {
+        return tap_probe_vnet_hdr_len(s->fd, len);
+    }
 }
 
 void tap_set_vnet_hdr_len(NetClientState *nc, int len)
@@ -242,10 +476,16 @@ void tap_set_vnet_hdr_len(NetClientState *nc, int len)
     TAPState *s = DO_UPCAST(TAPState, nc, nc);
 
     assert(nc->info->type == NET_CLIENT_OPTIONS_KIND_TAP);
-    assert(len == sizeof(struct virtio_net_hdr_mrg_rxbuf) ||
-           len == sizeof(struct virtio_net_hdr));
+    if (s->raw) {
+        assert(len == sizeof(struct virtio_net_hdr));
 
-    tap_fd_set_vnet_hdr_len(s->fd, len);
+        tap_raw_set_vnet_hdr_len(s->fd, len);
+    } else {
+        assert(len == sizeof(struct virtio_net_hdr_mrg_rxbuf) ||
+               len == sizeof(struct virtio_net_hdr));
+
+        tap_fd_set_vnet_hdr_len(s->fd, len);
+    }
     s->host_vnet_hdr_len = len;
 }
 
@@ -266,7 +506,9 @@ void tap_set_offload(NetClientState *nc, int csum, int tso4,
     if (s->fd < 0) {
         return;
     }
-
+    if (s->raw) {
+        return;
+    } 
     tap_fd_set_offload(s->fd, csum, tso4, tso6, ecn, ufo);
 }
 
@@ -320,7 +562,8 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
                                  const char *model,
                                  const char *name,
                                  int fd,
-                                 int vnet_hdr)
+                                 int vnet_hdr,
+				 int raw)
 {
     NetClientState *nc;
     TAPState *s;
@@ -329,18 +572,29 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
 
     s = DO_UPCAST(TAPState, nc, nc);
 
+    s->raw = raw;
     s->fd = fd;
     s->host_vnet_hdr_len = vnet_hdr ? sizeof(struct virtio_net_hdr) : 0;
     s->using_vnet_hdr = false;
-    s->has_ufo = tap_probe_has_ufo(s->fd);
+    if (s->raw) {
+        s->has_ufo = 0;
+    } else {
+        s->has_ufo = tap_probe_has_ufo(s->fd);
+    }
     s->enabled = true;
     tap_set_offload(&s->nc, 0, 0, 0, 0, 0);
     /*
      * Make sure host header length is set correctly in tap:
      * it might have been modified by another instance of qemu.
      */
-    if (tap_probe_vnet_hdr_len(s->fd, s->host_vnet_hdr_len)) {
-        tap_fd_set_vnet_hdr_len(s->fd, s->host_vnet_hdr_len);
+    if (s->raw) {
+        if (tap_raw_probe_vnet_hdr_len(s->host_vnet_hdr_len)) {
+            tap_raw_set_vnet_hdr_len(s->fd, s->host_vnet_hdr_len);
+        }
+    } else {
+        if (tap_probe_vnet_hdr_len(s->fd, s->host_vnet_hdr_len)) {
+            tap_fd_set_vnet_hdr_len(s->fd, s->host_vnet_hdr_len);
+        }
     }
     tap_read_poll(s, true);
     s->vhost_net = NULL;
@@ -539,7 +793,7 @@ int net_init_bridge(const NetClientOptions *opts, const char *name,
 
     vnet_hdr = tap_probe_vnet_hdr(fd);
 
-    s = net_tap_fd_init(peer, "bridge", name, fd, vnet_hdr);
+    s = net_tap_fd_init(peer, "bridge", name, fd, vnet_hdr, 0);
     if (!s) {
         close(fd);
         return -1;
@@ -565,8 +819,13 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
         vnet_hdr_required = 0;
     }
 
-    TFR(fd = tap_open(ifname, ifname_sz, vnet_hdr, vnet_hdr_required,
-                      mq_required));
+    if (tap->raw) {
+        TFR(fd = tap_raw_open(ifname, ifname_sz, vnet_hdr, vnet_hdr_required,
+                              mq_required));
+    } else {
+        TFR(fd = tap_open(ifname, ifname_sz, vnet_hdr, vnet_hdr_required,
+                          mq_required));
+    }
     if (fd < 0) {
         return -1;
     }
@@ -592,7 +851,7 @@ static int net_init_tap_one(const NetdevTapOptions *tap, NetClientState *peer,
 {
     TAPState *s;
 
-    s = net_tap_fd_init(peer, model, name, fd, vnet_hdr);
+    s = net_tap_fd_init(peer, model, name, fd, vnet_hdr, tap->raw);
     if (!s) {
         close(fd);
         return -1;
@@ -712,7 +971,11 @@ int net_init_tap(const NetClientOptions *opts, const char *name,
 
         fcntl(fd, F_SETFL, O_NONBLOCK);
 
-        vnet_hdr = tap_probe_vnet_hdr(fd);
+        if (tap->raw) {
+            vnet_hdr = 1;
+        } else {
+            vnet_hdr = tap_probe_vnet_hdr(fd);
+        }
 
         if (net_init_tap_one(tap, peer, "tap", name, NULL,
                              script, downscript,
@@ -726,9 +989,9 @@ int net_init_tap(const NetClientOptions *opts, const char *name,
 
         if (tap->has_ifname || tap->has_script || tap->has_downscript ||
             tap->has_vnet_hdr || tap->has_helper || tap->has_queues ||
-            tap->has_vhostfd) {
+            tap->has_vhostfd || tap->has_raw) {
             error_report("ifname=, script=, downscript=, vnet_hdr=, "
-                         "helper=, queues=, and vhostfd= "
+                         "helper=, queues=, raw=, and vhostfd= "
                          "are invalid with fds=");
             return -1;
         }
@@ -779,7 +1042,12 @@ int net_init_tap(const NetClientOptions *opts, const char *name,
         }
 
         fcntl(fd, F_SETFL, O_NONBLOCK);
-        vnet_hdr = tap_probe_vnet_hdr(fd);
+
+        if (tap->raw) {
+            vnet_hdr = 1;
+        } else {
+            vnet_hdr = tap_probe_vnet_hdr(fd);
+        }
 
         if (net_init_tap_one(tap, peer, "bridge", name, ifname,
                              script, downscript, vhostfdname,
@@ -798,6 +1066,10 @@ int net_init_tap(const NetClientOptions *opts, const char *name,
         if (tap->has_ifname) {
             pstrcpy(ifname, sizeof ifname, tap->ifname);
         } else {
+            if (tap->raw) {
+                error_report("Raw needs ifname");
+                return -1;
+            }
             ifname[0] = '\0';
         }
 
@@ -809,6 +1081,10 @@ int net_init_tap(const NetClientOptions *opts, const char *name,
             }
 
             if (queues > 1 && i == 0 && !tap->has_ifname) {
+                if (tap->raw) {
+                    error_report("Raw needs ifname");
+                    return -1;
+                }
                 if (tap_fd_get_ifname(fd, ifname)) {
                     error_report("Fail to get ifname");
                     return -1;
@@ -842,7 +1118,11 @@ int tap_enable(NetClientState *nc)
     if (s->enabled) {
         return 0;
     } else {
-        ret = tap_fd_enable(s->fd);
+        if (s->raw) {
+            ret = 0;
+        } else {
+            ret = tap_fd_enable(s->fd);
+        }
         if (ret == 0) {
             s->enabled = true;
             tap_update_fd_handler(s);
@@ -859,7 +1139,11 @@ int tap_disable(NetClientState *nc)
     if (s->enabled == 0) {
         return 0;
     } else {
-        ret = tap_fd_disable(s->fd);
+        if (s->raw) {
+            ret = 0;
+        } else {
+            ret = tap_fd_disable(s->fd);
+        }
         if (ret == 0) {
             qemu_purge_queued_packets(nc);
             s->enabled = false;

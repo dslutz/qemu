@@ -128,6 +128,9 @@ int tap_set_sndbuf(int fd, const NetdevTapOptions *tap)
 {
     int sndbuf;
 
+    if (tap->raw)
+        return 0;
+
     sndbuf = !tap->has_sndbuf       ? TAP_DEFAULT_SNDBUF :
              tap->sndbuf > INT_MAX  ? INT_MAX :
              tap->sndbuf;

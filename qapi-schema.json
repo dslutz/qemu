@@ -2905,6 +2905,8 @@
 #
 # @vhostforce: #optional vhost on for non-MSIX virtio guests
 #
+# @raw: #optional use raw mode
+#
 # @queues: #optional number of queues to be created for multiqueue capable tap
 #
 # Since 1.2
@@ -2923,6 +2925,7 @@
     '*vhostfd':    'str',
     '*vhostfds':   'str',
     '*vhostforce': 'bool',
+    '*raw':        'bool',
     '*queues':     'uint32'} }
 
 ##
