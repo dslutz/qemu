@@ -401,12 +401,15 @@ void vmxnet_tx_pkt_reset(struct VmxnetTxPkt *pkt)
     pkt->payload_len = 0;
     pkt->payload_frags = 0;
 
-    assert(pkt->raw);
-    for (i = 0; i < pkt->raw_frags; i++) {
-        assert(pkt->raw[i].iov_base);
-        cpu_physical_memory_unmap(pkt->raw[i].iov_base, pkt->raw[i].iov_len,
-                                  false, pkt->raw[i].iov_len);
-        pkt->raw[i].iov_len = 0;
+    if (pkt->max_raw_frags) {
+        assert(pkt->raw);
+        for (i = 0; i < pkt->raw_frags; i++) {
+            assert(pkt->raw[i].iov_base);
+            cpu_physical_memory_unmap(pkt->raw[i].iov_base,
+                                      pkt->raw[i].iov_len,
+                                      false, pkt->raw[i].iov_len);
+            pkt->raw[i].iov_len = 0;
+        }
     }
     pkt->raw_frags = 0;
 
