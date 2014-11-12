@@ -119,7 +119,8 @@ static const USBDescDevice desc_device_hub = {
         {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
-            .bmAttributes          = 0xe0,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER |
+                                     USB_CFG_ATT_WAKEUP,
             .nif = 1,
             .ifs = &desc_iface_hub,
         },
@@ -539,7 +540,7 @@ static const VMStateDescription vmstate_usb_hub_port = {
     .name = "usb-hub-port",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT16(wPortStatus, USBHubPort),
         VMSTATE_UINT16(wPortChange, USBHubPort),
         VMSTATE_END_OF_LIST()
@@ -550,7 +551,7 @@ static const VMStateDescription vmstate_usb_hub = {
     .name = "usb-hub",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_USB_DEVICE(dev, USBHubState),
         VMSTATE_STRUCT_ARRAY(ports, USBHubState, NUM_PORTS, 0,
                              vmstate_usb_hub_port, USBHubPort),

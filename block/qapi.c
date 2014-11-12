@@ -29,6 +29,61 @@
 #include "qapi/qmp-output-visitor.h"
 #include "qapi/qmp/types.h"
 
+BlockDeviceInfo *bdrv_block_device_info(BlockDriverState *bs)
+{
+    BlockDeviceInfo *info = g_malloc0(sizeof(*info));
+
+    info->file                   = g_strdup(bs->filename);
+    info->ro                     = bs->read_only;
+    info->drv                    = g_strdup(bs->drv->format_name);
+    info->encrypted              = bs->encrypted;
+    info->encryption_key_missing = bdrv_key_required(bs);
+
+    if (bs->node_name[0]) {
+        info->has_node_name = true;
+        info->node_name = g_strdup(bs->node_name);
+    }
+
+    if (bs->backing_file[0]) {
+        info->has_backing_file = true;
+        info->backing_file = g_strdup(bs->backing_file);
+    }
+
+    info->backing_file_depth = bdrv_get_backing_file_depth(bs);
+    info->detect_zeroes = bs->detect_zeroes;
+
+    if (bs->io_limits_enabled) {
+        ThrottleConfig cfg;
+        throttle_get_config(&bs->throttle_state, &cfg);
+        info->bps     = cfg.buckets[THROTTLE_BPS_TOTAL].avg;
+        info->bps_rd  = cfg.buckets[THROTTLE_BPS_READ].avg;
+        info->bps_wr  = cfg.buckets[THROTTLE_BPS_WRITE].avg;
+
+        info->iops    = cfg.buckets[THROTTLE_OPS_TOTAL].avg;
+        info->iops_rd = cfg.buckets[THROTTLE_OPS_READ].avg;
+        info->iops_wr = cfg.buckets[THROTTLE_OPS_WRITE].avg;
+
+        info->has_bps_max     = cfg.buckets[THROTTLE_BPS_TOTAL].max;
+        info->bps_max         = cfg.buckets[THROTTLE_BPS_TOTAL].max;
+        info->has_bps_rd_max  = cfg.buckets[THROTTLE_BPS_READ].max;
+        info->bps_rd_max      = cfg.buckets[THROTTLE_BPS_READ].max;
+        info->has_bps_wr_max  = cfg.buckets[THROTTLE_BPS_WRITE].max;
+        info->bps_wr_max      = cfg.buckets[THROTTLE_BPS_WRITE].max;
+
+        info->has_iops_max    = cfg.buckets[THROTTLE_OPS_TOTAL].max;
+        info->iops_max        = cfg.buckets[THROTTLE_OPS_TOTAL].max;
+        info->has_iops_rd_max = cfg.buckets[THROTTLE_OPS_READ].max;
+        info->iops_rd_max     = cfg.buckets[THROTTLE_OPS_READ].max;
+        info->has_iops_wr_max = cfg.buckets[THROTTLE_OPS_WRITE].max;
+        info->iops_wr_max     = cfg.buckets[THROTTLE_OPS_WRITE].max;
+
+        info->has_iops_size = cfg.op_size;
+        info->iops_size = cfg.op_size;
+    }
+
+    return info;
+}
+
 /*
  * Returns 0 on success, with *p_list either set to describe snapshot
  * information, or NULL because there are no snapshots.  Returns -errno on
@@ -204,76 +259,20 @@ void bdrv_query_info(BlockDriverState *bs,
         info->io_status = bs->iostatus;
     }
 
-    if (bs->dirty_bitmap) {
-        info->has_dirty = true;
-        info->dirty = g_malloc0(sizeof(*info->dirty));
-        info->dirty->count = bdrv_get_dirty_count(bs) * BDRV_SECTOR_SIZE;
-        info->dirty->granularity =
-         ((int64_t) BDRV_SECTOR_SIZE << hbitmap_granularity(bs->dirty_bitmap));
+    if (!QLIST_EMPTY(&bs->dirty_bitmaps)) {
+        info->has_dirty_bitmaps = true;
+        info->dirty_bitmaps = bdrv_query_dirty_bitmaps(bs);
     }
 
     if (bs->drv) {
         info->has_inserted = true;
-        info->inserted = g_malloc0(sizeof(*info->inserted));
-        info->inserted->file = g_strdup(bs->filename);
-        info->inserted->ro = bs->read_only;
-        info->inserted->drv = g_strdup(bs->drv->format_name);
-        info->inserted->encrypted = bs->encrypted;
-        info->inserted->encryption_key_missing = bdrv_key_required(bs);
-
-        if (bs->backing_file[0]) {
-            info->inserted->has_backing_file = true;
-            info->inserted->backing_file = g_strdup(bs->backing_file);
-        }
-
-        info->inserted->backing_file_depth = bdrv_get_backing_file_depth(bs);
-
-        if (bs->io_limits_enabled) {
-            ThrottleConfig cfg;
-            throttle_get_config(&bs->throttle_state, &cfg);
-            info->inserted->bps     = cfg.buckets[THROTTLE_BPS_TOTAL].avg;
-            info->inserted->bps_rd  = cfg.buckets[THROTTLE_BPS_READ].avg;
-            info->inserted->bps_wr  = cfg.buckets[THROTTLE_BPS_WRITE].avg;
-
-            info->inserted->iops    = cfg.buckets[THROTTLE_OPS_TOTAL].avg;
-            info->inserted->iops_rd = cfg.buckets[THROTTLE_OPS_READ].avg;
-            info->inserted->iops_wr = cfg.buckets[THROTTLE_OPS_WRITE].avg;
-
-            info->inserted->has_bps_max     =
-                cfg.buckets[THROTTLE_BPS_TOTAL].max;
-            info->inserted->bps_max         =
-                cfg.buckets[THROTTLE_BPS_TOTAL].max;
-            info->inserted->has_bps_rd_max  =
-                cfg.buckets[THROTTLE_BPS_READ].max;
-            info->inserted->bps_rd_max      =
-                cfg.buckets[THROTTLE_BPS_READ].max;
-            info->inserted->has_bps_wr_max  =
-                cfg.buckets[THROTTLE_BPS_WRITE].max;
-            info->inserted->bps_wr_max      =
-                cfg.buckets[THROTTLE_BPS_WRITE].max;
-
-            info->inserted->has_iops_max    =
-                cfg.buckets[THROTTLE_OPS_TOTAL].max;
-            info->inserted->iops_max        =
-                cfg.buckets[THROTTLE_OPS_TOTAL].max;
-            info->inserted->has_iops_rd_max =
-                cfg.buckets[THROTTLE_OPS_READ].max;
-            info->inserted->iops_rd_max     =
-                cfg.buckets[THROTTLE_OPS_READ].max;
-            info->inserted->has_iops_wr_max =
-                cfg.buckets[THROTTLE_OPS_WRITE].max;
-            info->inserted->iops_wr_max     =
-                cfg.buckets[THROTTLE_OPS_WRITE].max;
-
-            info->inserted->has_iops_size = cfg.op_size;
-            info->inserted->iops_size = cfg.op_size;
-        }
+        info->inserted = bdrv_block_device_info(bs);
 
         bs0 = bs;
         p_image_info = &info->inserted->image;
         while (1) {
             bdrv_query_image_info(bs0, p_image_info, &local_err);
-            if (error_is_set(&local_err)) {
+            if (local_err) {
                 error_propagate(errp, local_err);
                 goto err;
             }
@@ -294,7 +293,7 @@ void bdrv_query_info(BlockDriverState *bs,
     qapi_free_BlockInfo(info);
 }
 
-BlockStats *bdrv_query_stats(const BlockDriverState *bs)
+static BlockStats *bdrv_query_stats(const BlockDriverState *bs)
 {
     BlockStats *s;
 
@@ -321,6 +320,11 @@ BlockStats *bdrv_query_stats(const BlockDriverState *bs)
         s->parent = bdrv_query_stats(bs->file);
     }
 
+    if (bs->backing_hd) {
+        s->has_backing = true;
+        s->backing = bdrv_query_stats(bs->backing_hd);
+    }
+
     return s;
 }
 
@@ -333,7 +337,7 @@ BlockInfoList *qmp_query_block(Error **errp)
      while ((bs = bdrv_next(bs))) {
         BlockInfoList *info = g_malloc0(sizeof(*info));
         bdrv_query_info(bs, &info->value, &local_err);
-        if (error_is_set(&local_err)) {
+        if (local_err) {
             error_propagate(errp, local_err);
             goto err;
         }
@@ -356,7 +360,11 @@ BlockStatsList *qmp_query_blockstats(Error **errp)
 
      while ((bs = bdrv_next(bs))) {
         BlockStatsList *info = g_malloc0(sizeof(*info));
+        AioContext *ctx = bdrv_get_aio_context(bs);
+
+        aio_context_acquire(ctx);
         info->value = bdrv_query_stats(bs);
+        aio_context_release(ctx);
 
         *p_next = info;
         p_next = &info->next;
@@ -472,6 +480,7 @@ static void dump_qobject(fprintf_function func_fprintf, void *f,
         case QTYPE_QERROR: {
             QString *value = qerror_human((QError *)obj);
             func_fprintf(f, "%s", qstring_get_str(value));
+            QDECREF(value);
             break;
         }
         case QTYPE_NONE:
@@ -530,12 +539,11 @@ static void dump_qdict(fprintf_function func_fprintf, void *f, int indentation,
 void bdrv_image_info_specific_dump(fprintf_function func_fprintf, void *f,
                                    ImageInfoSpecific *info_spec)
 {
-    Error *local_err = NULL;
     QmpOutputVisitor *ov = qmp_output_visitor_new();
     QObject *obj, *data;
 
     visit_type_ImageInfoSpecific(qmp_output_get_visitor(ov), &info_spec, NULL,
-                                 &local_err);
+                                 &error_abort);
     obj = qmp_output_get_qobject(ov);
     assert(qobject_type(obj) == QTYPE_QDICT);
     data = qdict_get(qobject_to_qdict(obj), "data");

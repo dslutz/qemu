@@ -6,6 +6,7 @@
 #include "hw/qdev.h"
 #include "exec/memory.h"
 #include "sysemu/dma.h"
+#include "qapi/error.h"
 
 /* PCI includes legacy ISA access.  */
 #include "hw/isa/isa.h"
@@ -162,6 +163,9 @@ enum {
     QEMU_PCI_CAP_SHPC = (1 << QEMU_PCI_SHPC_BITNR),
 #define QEMU_PCI_SLOTID_BITNR 6
     QEMU_PCI_CAP_SLOTID = (1 << QEMU_PCI_SLOTID_BITNR),
+    /* PCI Express capability - Power Controller Present */
+#define QEMU_PCIE_SLTCAP_PCP_BITNR 7
+    QEMU_PCIE_SLTCAP_PCP = (1 << QEMU_PCIE_SLTCAP_PCP_BITNR),
 };
 
 #define TYPE_PCI_DEVICE "pci-device"
@@ -205,9 +209,6 @@ typedef struct PCIDeviceClass {
 
     /* pcie stuff */
     int is_express;   /* is this device pci express? */
-
-    /* device isn't hot-pluggable */
-    int no_hotplug;
 
     /* rom bar */
     const char *romfile;
@@ -316,6 +317,9 @@ pcibus_t pci_get_bar_addr(PCIDevice *pci_dev, int region_num);
 
 int pci_add_capability(PCIDevice *pdev, uint8_t cap_id,
                        uint8_t offset, uint8_t size);
+int pci_add_capability2(PCIDevice *pdev, uint8_t cap_id,
+                       uint8_t offset, uint8_t size,
+                       Error **errp);
 
 void pci_del_capability(PCIDevice *pci_dev, uint8_t cap_id, uint8_t cap_size);
 
@@ -334,15 +338,6 @@ MemoryRegion *pci_address_space_io(PCIDevice *dev);
 typedef void (*pci_set_irq_fn)(void *opaque, int irq_num, int level);
 typedef int (*pci_map_irq_fn)(PCIDevice *pci_dev, int irq_num);
 typedef PCIINTxRoute (*pci_route_irq_fn)(void *opaque, int pin);
-
-typedef enum {
-    PCI_HOTPLUG_DISABLED,
-    PCI_HOTPLUG_ENABLED,
-    PCI_COLDPLUG_ENABLED,
-} PCIHotplugState;
-
-typedef int (*pci_hotplug_fn)(DeviceState *qdev, PCIDevice *pci_dev,
-                              PCIHotplugState state);
 
 #define TYPE_PCI_BUS "PCI"
 #define PCI_BUS(obj) OBJECT_CHECK(PCIBus, (obj), TYPE_PCI_BUS)
@@ -363,7 +358,6 @@ PCIBus *pci_bus_new(DeviceState *parent, const char *name,
 void pci_bus_irqs(PCIBus *bus, pci_set_irq_fn set_irq, pci_map_irq_fn map_irq,
                   void *irq_opaque, int nirq);
 int pci_bus_get_irq_level(PCIBus *bus, int irq_num);
-void pci_bus_hotplug(PCIBus *bus, pci_hotplug_fn hotplug, DeviceState *dev);
 /* 0 <= pin <= 3 0 = INTA, 1 = INTB, 2 = INTC, 3 = INTD */
 int pci_swizzle_map_irq_fn(PCIDevice *pci_dev, int pin);
 PCIBus *pci_register_bus(DeviceState *parent, const char *name,
@@ -379,7 +373,6 @@ void pci_bus_fire_intx_routing_notifier(PCIBus *bus);
 void pci_device_set_intx_routing_notifier(PCIDevice *dev,
                                           PCIINTxRoutingNotifier notifier);
 void pci_device_reset(PCIDevice *dev);
-void pci_bus_reset(PCIBus *bus);
 
 PCIDevice *pci_nic_init(NICInfo *nd, PCIBus *rootbus,
                         const char *default_model,
@@ -394,6 +387,20 @@ int pci_bus_num(PCIBus *s);
 void pci_for_each_device(PCIBus *bus, int bus_num,
                          void (*fn)(PCIBus *bus, PCIDevice *d, void *opaque),
                          void *opaque);
+void pci_for_each_bus_depth_first(PCIBus *bus,
+                                  void *(*begin)(PCIBus *bus, void *parent_state),
+                                  void (*end)(PCIBus *bus, void *state),
+                                  void *parent_state);
+
+/* Use this wrapper when specific scan order is not required. */
+static inline
+void pci_for_each_bus(PCIBus *bus,
+                      void (*fn)(PCIBus *bus, void *opaque),
+                      void *opaque)
+{
+    pci_for_each_bus_depth_first(bus, NULL, fn, opaque);
+}
+
 PCIBus *pci_find_primary_bus(void);
 PCIBus *pci_device_root_bus(const PCIDevice *d);
 const char *pci_root_bus_path(PCIDevice *dev);

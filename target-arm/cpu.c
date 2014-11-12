@@ -19,19 +19,29 @@
  */
 
 #include "cpu.h"
+#include "internals.h"
 #include "qemu-common.h"
+#include "hw/qdev-properties.h"
+#include "qapi/qmp/qerror.h"
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
 #endif
 #include "hw/arm/arm.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
+#include "kvm_arm.h"
 
 static void arm_cpu_set_pc(CPUState *cs, vaddr value)
 {
     ARMCPU *cpu = ARM_CPU(cs);
 
     cpu->env.regs[15] = value;
+}
+
+static bool arm_cpu_has_work(CPUState *cs)
+{
+    return cs->interrupt_request &
+        (CPU_INTERRUPT_FIQ | CPU_INTERRUPT_HARD | CPU_INTERRUPT_EXITTB);
 }
 
 static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
@@ -58,7 +68,7 @@ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
         return;
     }
 
-    if (ri->type & ARM_CP_64BIT) {
+    if (cpreg_field_is_64bit(ri)) {
         CPREG_FIELD64(&cpu->env, ri) = ri->resetvalue;
     } else {
         CPREG_FIELD32(&cpu->env, ri) = ri->resetvalue;
@@ -74,11 +84,12 @@ static void arm_cpu_reset(CPUState *s)
 
     acc->parent_reset(s);
 
-    memset(env, 0, offsetof(CPUARMState, breakpoints));
+    memset(env, 0, offsetof(CPUARMState, features));
     g_hash_table_foreach(cpu->cp_regs, cp_reg_reset, cpu);
     env->vfp.xregs[ARM_VFP_FPSID] = cpu->reset_fpsid;
     env->vfp.xregs[ARM_VFP_MVFR0] = cpu->mvfr0;
     env->vfp.xregs[ARM_VFP_MVFR1] = cpu->mvfr1;
+    env->vfp.xregs[ARM_VFP_MVFR2] = cpu->mvfr2;
 
     if (arm_feature(env, ARM_FEATURE_IWMMXT)) {
         env->iwmmxt.cregs[ARM_IWMMXT_wCID] = 0x69051000 | 'Q';
@@ -87,6 +98,21 @@ static void arm_cpu_reset(CPUState *s)
     if (arm_feature(env, ARM_FEATURE_AARCH64)) {
         /* 64 bit CPUs always start in 64 bit mode */
         env->aarch64 = 1;
+#if defined(CONFIG_USER_ONLY)
+        env->pstate = PSTATE_MODE_EL0t;
+        /* Userspace expects access to CTL_EL0 and the cache ops */
+        env->cp15.c1_sys |= SCTLR_UCT | SCTLR_UCI;
+        /* and to the FP/Neon instructions */
+        env->cp15.c1_coproc = deposit64(env->cp15.c1_coproc, 20, 2, 3);
+#else
+        env->pstate = PSTATE_MODE_EL1h;
+        env->pc = cpu->rvbar;
+#endif
+    } else {
+#if defined(CONFIG_USER_ONLY)
+        /* Userspace expects access to cp10 and cp11 for FP/Neon */
+        env->cp15.c1_coproc = deposit64(env->cp15.c1_coproc, 20, 4, 0xf);
+#endif
     }
 
 #if defined(CONFIG_USER_ONLY)
@@ -100,13 +126,14 @@ static void arm_cpu_reset(CPUState *s)
     }
 #else
     /* SVC mode with interrupts disabled.  */
-    env->uncached_cpsr = ARM_CPU_MODE_SVC | CPSR_A | CPSR_F | CPSR_I;
+    env->uncached_cpsr = ARM_CPU_MODE_SVC;
+    env->daif = PSTATE_D | PSTATE_A | PSTATE_I | PSTATE_F;
     /* On ARMv7-M the CPSR_I is the value of the PRIMASK register, and is
        clear at reset.  Initial SP and PC are loaded from ROM.  */
     if (IS_M(env)) {
         uint32_t pc;
         uint8_t *rom;
-        env->uncached_cpsr &= ~CPSR_I;
+        env->daif &= ~PSTATE_I;
         rom = rom_ptr(0);
         if (rom) {
             /* We should really use ldl_phys here, in case the guest
@@ -119,6 +146,11 @@ static void arm_cpu_reset(CPUState *s)
             env->regs[15] = pc & ~1;
         }
     }
+
+    if (env->cp15.c1_sys & SCTLR_V) {
+            env->regs[15] = 0xFFFF0000;
+    }
+
     env->vfp.xregs[ARM_VFP_FPEXC] = 0;
 #endif
     set_flush_to_zero(1, &env->vfp.standard_fp_status);
@@ -128,12 +160,18 @@ static void arm_cpu_reset(CPUState *s)
                               &env->vfp.fp_status);
     set_float_detect_tininess(float_tininess_before_rounding,
                               &env->vfp.standard_fp_status);
-    tlb_flush(env, 1);
+    tlb_flush(s, 1);
     /* Reset is a state change for some CPUARMState fields which we
      * bake assumptions about into translated code, so we need to
      * tb_flush().
      */
     tb_flush(env);
+
+#ifndef CONFIG_USER_ONLY
+    if (kvm_enabled()) {
+        kvm_arm_reset_vcpu(cpu);
+    }
+#endif
 }
 
 #ifndef CONFIG_USER_ONLY
@@ -217,9 +255,47 @@ static void arm_cpu_initfn(Object *obj)
                        ARRAY_SIZE(cpu->gt_timer_outputs));
 #endif
 
+    /* DTB consumers generally don't in fact care what the 'compatible'
+     * string is, so always provide some string and trust that a hypothetical
+     * picky DTB consumer will also provide a helpful error message.
+     */
+    cpu->dtb_compatible = "qemu,unknown";
+    cpu->psci_version = 1; /* By default assume PSCI v0.1 */
+    cpu->kvm_target = QEMU_KVM_ARM_TARGET_NONE;
+
     if (tcg_enabled() && !inited) {
         inited = true;
         arm_translate_init();
+    }
+}
+
+static Property arm_cpu_reset_cbar_property =
+            DEFINE_PROP_UINT64("reset-cbar", ARMCPU, reset_cbar, 0);
+
+static Property arm_cpu_reset_hivecs_property =
+            DEFINE_PROP_BOOL("reset-hivecs", ARMCPU, reset_hivecs, false);
+
+static Property arm_cpu_rvbar_property =
+            DEFINE_PROP_UINT64("rvbar", ARMCPU, rvbar, 0);
+
+static void arm_cpu_post_init(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    if (arm_feature(&cpu->env, ARM_FEATURE_CBAR) ||
+        arm_feature(&cpu->env, ARM_FEATURE_CBAR_RO)) {
+        qdev_property_add_static(DEVICE(obj), &arm_cpu_reset_cbar_property,
+                                 &error_abort);
+    }
+
+    if (!arm_feature(&cpu->env, ARM_FEATURE_M)) {
+        qdev_property_add_static(DEVICE(obj), &arm_cpu_reset_hivecs_property,
+                                 &error_abort);
+    }
+
+    if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+        qdev_property_add_static(DEVICE(obj), &arm_cpu_rvbar_property,
+                                 &error_abort);
     }
 }
 
@@ -273,6 +349,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     }
     if (arm_feature(env, ARM_FEATURE_VFP4)) {
         set_feature(env, ARM_FEATURE_VFP3);
+        set_feature(env, ARM_FEATURE_VFP_FP16);
     }
     if (arm_feature(env, ARM_FEATURE_VFP3)) {
         set_feature(env, ARM_FEATURE_VFP);
@@ -281,14 +358,21 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         set_feature(env, ARM_FEATURE_V7MP);
         set_feature(env, ARM_FEATURE_PXN);
     }
+    if (arm_feature(env, ARM_FEATURE_CBAR_RO)) {
+        set_feature(env, ARM_FEATURE_CBAR);
+    }
+
+    if (cpu->reset_hivecs) {
+            cpu->reset_sctlr |= (1 << 13);
+    }
 
     register_cp_regs_for_features(cpu);
     arm_cpu_register_gdb_regs_for_features(cpu);
 
     init_cpreg_list(cpu);
 
-    cpu_reset(cs);
     qemu_init_vcpu(cs);
+    cpu_reset(cs);
 
     acc->parent_realize(dev, errp);
 }
@@ -318,6 +402,8 @@ static ObjectClass *arm_cpu_class_by_name(const char *cpu_model)
 static void arm926_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm926";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
@@ -331,6 +417,8 @@ static void arm926_initfn(Object *obj)
 static void arm946_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm946";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_MPU);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
@@ -342,6 +430,8 @@ static void arm946_initfn(Object *obj)
 static void arm1026_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm1026";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_AUXCR);
@@ -357,7 +447,7 @@ static void arm1026_initfn(Object *obj)
         ARMCPRegInfo ifar = {
             .name = "IFAR", .cp = 15, .crn = 6, .crm = 0, .opc1 = 0, .opc2 = 1,
             .access = PL1_RW,
-            .fieldoffset = offsetof(CPUARMState, cp15.c6_insn),
+            .fieldoffset = offsetofhigh32(CPUARMState, cp15.far_el1),
             .resetvalue = 0
         };
         define_one_arm_cp_reg(cpu, &ifar);
@@ -374,6 +464,8 @@ static void arm1136_r2_initfn(Object *obj)
      * for 1136_r2 (in particular r0p2 does not actually implement most
      * of the ID registers).
      */
+
+    cpu->dtb_compatible = "arm,arm1136";
     set_feature(&cpu->env, ARM_FEATURE_V6);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
@@ -403,6 +495,8 @@ static void arm1136_r2_initfn(Object *obj)
 static void arm1136_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm1136";
     set_feature(&cpu->env, ARM_FEATURE_V6K);
     set_feature(&cpu->env, ARM_FEATURE_V6);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
@@ -433,6 +527,8 @@ static void arm1136_initfn(Object *obj)
 static void arm1176_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm1176";
     set_feature(&cpu->env, ARM_FEATURE_V6K);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_VAPA);
@@ -463,6 +559,8 @@ static void arm1176_initfn(Object *obj)
 static void arm11mpcore_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,arm11mpcore";
     set_feature(&cpu->env, ARM_FEATURE_V6K);
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_VAPA);
@@ -516,6 +614,8 @@ static const ARMCPRegInfo cortexa8_cp_reginfo[] = {
 static void cortex_a8_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,cortex-a8";
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_VFP3);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
@@ -580,6 +680,8 @@ static const ARMCPRegInfo cortexa9_cp_reginfo[] = {
 static void cortex_a9_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,cortex-a9";
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_VFP3);
     set_feature(&cpu->env, ARM_FEATURE_VFP_FP16);
@@ -590,6 +692,7 @@ static void cortex_a9_initfn(Object *obj)
      * and valid configurations; we don't model A9UP).
      */
     set_feature(&cpu->env, ARM_FEATURE_V7MP);
+    set_feature(&cpu->env, ARM_FEATURE_CBAR);
     cpu->midr = 0x410fc090;
     cpu->reset_fpsid = 0x41033090;
     cpu->mvfr0 = 0x11110222;
@@ -612,26 +715,16 @@ static void cortex_a9_initfn(Object *obj)
     cpu->clidr = (1 << 27) | (1 << 24) | 3;
     cpu->ccsidr[0] = 0xe00fe015; /* 16k L1 dcache. */
     cpu->ccsidr[1] = 0x200fe015; /* 16k L1 icache. */
-    {
-        ARMCPRegInfo cbar = {
-            .name = "CBAR", .cp = 15, .crn = 15,  .crm = 0, .opc1 = 4,
-            .opc2 = 0, .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
-            .fieldoffset = offsetof(CPUARMState, cp15.c15_config_base_address)
-        };
-        define_one_arm_cp_reg(cpu, &cbar);
-        define_arm_cp_regs(cpu, cortexa9_cp_reginfo);
-    }
+    define_arm_cp_regs(cpu, cortexa9_cp_reginfo);
 }
 
 #ifndef CONFIG_USER_ONLY
-static int a15_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri,
-                           uint64_t *value)
+static uint64_t a15_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     /* Linux wants the number of processors from here.
      * Might as well set the interrupt-controller bit too.
      */
-    *value = ((smp_cpus - 1) << 24) | (1 << 23);
-    return 0;
+    return ((smp_cpus - 1) << 24) | (1 << 23);
 }
 #endif
 
@@ -649,15 +742,18 @@ static const ARMCPRegInfo cortexa15_cp_reginfo[] = {
 static void cortex_a15_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "arm,cortex-a15";
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_VFP4);
-    set_feature(&cpu->env, ARM_FEATURE_VFP_FP16);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
     set_feature(&cpu->env, ARM_FEATURE_ARM_DIV);
     set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
+    set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
     set_feature(&cpu->env, ARM_FEATURE_LPAE);
+    cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A15;
     cpu->midr = 0x412fc0f1;
     cpu->reset_fpsid = 0x410430f0;
     cpu->mvfr0 = 0x10110222;
@@ -697,6 +793,8 @@ static void ti925t_initfn(Object *obj)
 static void sa1100_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "intel,sa1100";
     set_feature(&cpu->env, ARM_FEATURE_STRONGARM);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     cpu->midr = 0x4401A11B;
@@ -715,6 +813,8 @@ static void sa1110_initfn(Object *obj)
 static void pxa250_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     cpu->midr = 0x69052100;
@@ -725,6 +825,8 @@ static void pxa250_initfn(Object *obj)
 static void pxa255_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     cpu->midr = 0x69052d00;
@@ -735,6 +837,8 @@ static void pxa255_initfn(Object *obj)
 static void pxa260_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     cpu->midr = 0x69052903;
@@ -745,6 +849,8 @@ static void pxa260_initfn(Object *obj)
 static void pxa261_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     cpu->midr = 0x69052d05;
@@ -755,6 +861,8 @@ static void pxa261_initfn(Object *obj)
 static void pxa262_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     cpu->midr = 0x69052d06;
@@ -765,6 +873,8 @@ static void pxa262_initfn(Object *obj)
 static void pxa270a0_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -776,6 +886,8 @@ static void pxa270a0_initfn(Object *obj)
 static void pxa270a1_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -787,6 +899,8 @@ static void pxa270a1_initfn(Object *obj)
 static void pxa270b0_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -798,6 +912,8 @@ static void pxa270b0_initfn(Object *obj)
 static void pxa270b1_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -809,6 +925,8 @@ static void pxa270b1_initfn(Object *obj)
 static void pxa270c0_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -820,6 +938,8 @@ static void pxa270c0_initfn(Object *obj)
 static void pxa270c5_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->dtb_compatible = "marvell,xscale";
     set_feature(&cpu->env, ARM_FEATURE_V5);
     set_feature(&cpu->env, ARM_FEATURE_XSCALE);
     set_feature(&cpu->env, ARM_FEATURE_IWMMXT);
@@ -834,14 +954,13 @@ static void arm_any_initfn(Object *obj)
     ARMCPU *cpu = ARM_CPU(obj);
     set_feature(&cpu->env, ARM_FEATURE_V8);
     set_feature(&cpu->env, ARM_FEATURE_VFP4);
-    set_feature(&cpu->env, ARM_FEATURE_VFP_FP16);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
-    set_feature(&cpu->env, ARM_FEATURE_ARM_DIV);
-    set_feature(&cpu->env, ARM_FEATURE_V7MP);
-#ifdef TARGET_AARCH64
-    set_feature(&cpu->env, ARM_FEATURE_AARCH64);
-#endif
+    set_feature(&cpu->env, ARM_FEATURE_V8_AES);
+    set_feature(&cpu->env, ARM_FEATURE_V8_SHA1);
+    set_feature(&cpu->env, ARM_FEATURE_V8_SHA256);
+    set_feature(&cpu->env, ARM_FEATURE_V8_PMULL);
+    set_feature(&cpu->env, ARM_FEATURE_CRC);
     cpu->midr = 0xffffffff;
 }
 #endif
@@ -892,6 +1011,13 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "any",         .initfn = arm_any_initfn },
 #endif
 #endif
+    { .name = NULL }
+};
+
+static Property arm_cpu_properties[] = {
+    DEFINE_PROP_BOOL("start-powered-off", ARMCPU, start_powered_off, false),
+    DEFINE_PROP_UINT32("midr", ARMCPU, midr, 0),
+    DEFINE_PROP_END_OF_LIST()
 };
 
 static void arm_cpu_class_init(ObjectClass *oc, void *data)
@@ -902,17 +1028,21 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
 
     acc->parent_realize = dc->realize;
     dc->realize = arm_cpu_realizefn;
+    dc->props = arm_cpu_properties;
 
     acc->parent_reset = cc->reset;
     cc->reset = arm_cpu_reset;
 
     cc->class_by_name = arm_cpu_class_by_name;
+    cc->has_work = arm_cpu_has_work;
     cc->do_interrupt = arm_cpu_do_interrupt;
     cc->dump_state = arm_cpu_dump_state;
     cc->set_pc = arm_cpu_set_pc;
     cc->gdb_read_register = arm_cpu_gdb_read_register;
     cc->gdb_write_register = arm_cpu_gdb_write_register;
-#ifndef CONFIG_USER_ONLY
+#ifdef CONFIG_USER_ONLY
+    cc->handle_mmu_fault = arm_cpu_handle_mmu_fault;
+#else
     cc->get_phys_page_debug = arm_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_arm_cpu;
 #endif
@@ -940,6 +1070,7 @@ static const TypeInfo arm_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(ARMCPU),
     .instance_init = arm_cpu_initfn,
+    .instance_post_init = arm_cpu_post_init,
     .instance_finalize = arm_cpu_finalizefn,
     .abstract = true,
     .class_size = sizeof(ARMCPUClass),
@@ -948,11 +1079,13 @@ static const TypeInfo arm_cpu_type_info = {
 
 static void arm_cpu_register_types(void)
 {
-    int i;
+    const ARMCPUInfo *info = arm_cpus;
 
     type_register_static(&arm_cpu_type_info);
-    for (i = 0; i < ARRAY_SIZE(arm_cpus); i++) {
-        cpu_register(&arm_cpus[i]);
+
+    while (info->name) {
+        cpu_register(info);
+        info++;
     }
 }
 

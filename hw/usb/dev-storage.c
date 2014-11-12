@@ -117,7 +117,7 @@ static const USBDescDevice desc_device_full = {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
             .iConfiguration        = STR_CONFIG_FULL,
-            .bmAttributes          = 0xc0,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER,
             .nif = 1,
             .ifs = &desc_iface_full,
         },
@@ -152,7 +152,7 @@ static const USBDescDevice desc_device_high = {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
             .iConfiguration        = STR_CONFIG_HIGH,
-            .bmAttributes          = 0xc0,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER,
             .nif = 1,
             .ifs = &desc_iface_high,
         },
@@ -189,7 +189,7 @@ static const USBDescDevice desc_device_super = {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
             .iConfiguration        = STR_CONFIG_SUPER,
-            .bmAttributes          = 0xc0,
+            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_SELFPOWER,
             .nif = 1,
             .ifs = &desc_iface_super,
         },
@@ -691,7 +691,7 @@ static USBDevice *usb_msd_init(USBBus *bus, const char *filename)
     qemu_opt_set(opts, "if", "none");
 
     /* create host drive */
-    dinfo = drive_init(opts, 0);
+    dinfo = drive_new(opts, 0);
     if (!dinfo) {
         qemu_opts_del(opts);
         return NULL;
@@ -716,7 +716,7 @@ static const VMStateDescription vmstate_usb_msd = {
     .name = "usb-storage",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_USB_DEVICE(dev, MSDState),
         VMSTATE_UINT32(mode, MSDState),
         VMSTATE_UINT32(scsi_len, MSDState),

@@ -20,6 +20,7 @@
  */
 
 #include "qxl.h"
+#include "trace.h"
 
 static void qxl_blit(PCIQXLDevice *qxl, QXLRect *rect)
 {
@@ -136,6 +137,12 @@ static void qxl_render_update_area_unlocked(PCIQXLDevice *qxl)
     for (i = 0; i < qxl->num_dirty_rects; i++) {
         if (qemu_spice_rect_is_empty(qxl->dirty+i)) {
             break;
+        }
+        if (qxl->dirty[i].left > qxl->dirty[i].right ||
+            qxl->dirty[i].top > qxl->dirty[i].bottom ||
+            qxl->dirty[i].right > qxl->guest_primary.surface.width ||
+            qxl->dirty[i].bottom > qxl->guest_primary.surface.height) {
+            continue;
         }
         qxl_blit(qxl, qxl->dirty+i);
         dpy_gfx_update(vga->con,

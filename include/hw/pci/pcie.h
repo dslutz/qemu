@@ -25,6 +25,7 @@
 #include "hw/pci/pci_regs.h"
 #include "hw/pci/pcie_regs.h"
 #include "hw/pci/pcie_aer.h"
+#include "hw/hotplug.h"
 
 typedef enum {
     /* for attention and power indicator */
@@ -75,6 +76,8 @@ struct PCIExpressDevice {
     PCIEAERLog aer_log;
 };
 
+#define COMPAT_PROP_PCP "power_controller_present"
+
 /* PCI express capability helper functions */
 int pcie_cap_init(PCIDevice *dev, uint8_t offset, uint8_t type, uint8_t port);
 int pcie_endpoint_cap_init(PCIDevice *dev, uint8_t offset);
@@ -122,4 +125,8 @@ extern const VMStateDescription vmstate_pcie_device;
     .offset     = vmstate_offset_value(_state, _field, PCIDevice),   \
 }
 
+void pcie_cap_slot_hotplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                              Error **errp);
+void pcie_cap_slot_hot_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                                 Error **errp);
 #endif /* QEMU_PCIE_H */

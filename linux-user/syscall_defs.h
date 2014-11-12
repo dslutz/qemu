@@ -27,6 +27,7 @@
 #define SOCKOP_getsockopt       15
 #define SOCKOP_sendmsg          16
 #define SOCKOP_recvmsg          17
+#define SOCKOP_accept4          18
 
 #define IPCOP_semop		1
 #define IPCOP_semget		2
@@ -52,7 +53,8 @@
 #define TARGET_IOC_NRBITS	8
 #define TARGET_IOC_TYPEBITS	8
 
-#if defined(TARGET_I386) || defined(TARGET_ARM) || defined(TARGET_SPARC) \
+#if defined(TARGET_I386) || (defined(TARGET_ARM) && defined(TARGET_ABI32)) \
+    || defined(TARGET_SPARC) \
     || defined(TARGET_M68K) || defined(TARGET_SH4) || defined(TARGET_CRIS)
     /* 16 bit uid wrappers emulation */
 #define USE_UID16
@@ -119,6 +121,16 @@ struct target_sockaddr {
     uint8_t sa_data[14];
 };
 
+struct target_sockaddr_ll {
+    uint16_t sll_family;   /* Always AF_PACKET */
+    uint16_t sll_protocol; /* Physical layer protocol */
+    int      sll_ifindex;  /* Interface number */
+    uint16_t sll_hatype;   /* ARP hardware type */
+    uint8_t  sll_pkttype;  /* Packet type */
+    uint8_t  sll_halen;    /* Length of address */
+    uint8_t  sll_addr[8];  /* Physical layer address */
+};
+
 struct target_sock_filter {
     abi_ushort code;
     uint8_t jt;
@@ -163,9 +175,19 @@ struct target_timespec {
     abi_long tv_nsec;
 };
 
+struct target_timezone {
+    abi_int tz_minuteswest;
+    abi_int tz_dsttime;
+};
+
 struct target_itimerval {
     struct target_timeval it_interval;
     struct target_timeval it_value;
+};
+
+struct target_itimerspec {
+    struct target_timespec it_interval;
+    struct target_timespec it_value;
 };
 
 typedef abi_long target_clock_t;
@@ -233,6 +255,10 @@ __target_cmsg_nxthdr (struct target_msghdr *__mhdr, struct target_cmsghdr *__cms
   return __cmsg;
 }
 
+struct target_mmsghdr {
+    struct target_msghdr msg_hdr;              /* Message header */
+    unsigned int         msg_len;              /* Number of bytes transmitted */
+};
 
 struct  target_rusage {
         struct target_timeval ru_utime;        /* user time used */
@@ -815,6 +841,7 @@ struct target_pollfd {
 #define TARGET_KDSKBLED        0x4B65	/* set led flags (not lights) */
 #define TARGET_KDGETLED        0x4B31	/* return current led state */
 #define TARGET_KDSETLED        0x4B32	/* set led state [lights, not flags] */
+#define TARGET_KDSIGACCEPT     0x4B4E
 
 #define TARGET_SIOCATMARK      0x8905
 
@@ -848,6 +875,7 @@ struct target_pollfd {
 #define TARGET_SIOCSIFSLAVE    0x8930
 #define TARGET_SIOCADDMULTI    0x8931          /* Multicast address lists      */
 #define TARGET_SIOCDELMULTI    0x8932
+#define TARGET_SIOCGIFINDEX    0x8933
 
 /* Bridging control calls */
 #define TARGET_SIOCGIFBR       0x8940          /* Bridging support             */
@@ -895,6 +923,7 @@ struct target_pollfd {
 #define TARGET_BLKSECTSET TARGET_IO(0x12,102)/* set max sectors per request (ll_rw_blk.c) */
 #define TARGET_BLKSECTGET TARGET_IO(0x12,103)/* get max sectors per request (ll_rw_blk.c) */
 #define TARGET_BLKSSZGET  TARGET_IO(0x12,104)/* get block device sector size */
+#define TARGET_BLKPG      TARGET_IO(0x12,105)/* Partition table and disk geometry handling */
 /* A jump here: 108-111 have been used for various private purposes. */
 #define TARGET_BLKBSZGET  TARGET_IOR(0x12, 112, abi_ulong)
 #define TARGET_BLKBSZSET  TARGET_IOW(0x12, 113, abi_ulong)
@@ -2111,6 +2140,8 @@ struct target_statfs64 {
 #define TARGET_F_SETOWN        8       /*  for sockets. */
 #define TARGET_F_GETOWN        9       /*  for sockets. */
 #endif
+#define TARGET_F_SETOWN_EX     15
+#define TARGET_F_GETOWN_EX     16
 
 #ifndef TARGET_F_RDLCK
 #define TARGET_F_RDLCK         0
@@ -2292,6 +2323,11 @@ struct target_eabi_flock64 {
 	int  l_pid;
 } QEMU_PACKED;
 #endif
+
+struct target_f_owner_ex {
+        int type;	/* Owner type of ID.  */
+        int pid;	/* ID of owner.  */
+};
 
 /* soundcard defines */
 /* XXX: convert them all to arch indepedent entries */
@@ -2509,7 +2545,7 @@ typedef union target_epoll_data {
 
 struct target_epoll_event {
     uint32_t events;
-#ifdef TARGET_ARM
+#if defined(TARGET_ARM) || defined(TARGET_MIPS) || defined(TARGET_MIPS64)
     uint32_t __pad;
 #endif
     target_epoll_data_t data;
@@ -2527,3 +2563,48 @@ struct target_ucred {
 };
 
 #endif
+
+
+struct target_timer_t {
+    abi_ulong ptr;
+};
+
+#define TARGET_SIGEV_MAX_SIZE 64
+
+/* This is architecture-specific but most architectures use the default */
+#ifdef TARGET_MIPS
+#define TARGET_SIGEV_PREAMBLE_SIZE (sizeof(int32_t) * 2 + sizeof(abi_long))
+#else
+#define TARGET_SIGEV_PREAMBLE_SIZE (sizeof(int32_t) * 2 \
+                                    + sizeof(target_sigval_t))
+#endif
+
+#define TARGET_SIGEV_PAD_SIZE ((TARGET_SIGEV_MAX_SIZE \
+                                - TARGET_SIGEV_PREAMBLE_SIZE) \
+                               / sizeof(int32_t))
+
+struct target_sigevent {
+    target_sigval_t sigev_value;
+    int32_t sigev_signo;
+    int32_t sigev_notify;
+    union {
+        int32_t _pad[TARGET_SIGEV_PAD_SIZE];
+        int32_t _tid;
+
+        struct {
+            void (*_function)(sigval_t);
+            void *_attribute;
+        } _sigev_thread;
+    } _sigev_un;
+};
+
+struct target_user_cap_header {
+    uint32_t version;
+    int pid;
+};
+
+struct target_user_cap_data {
+    uint32_t effective;
+    uint32_t permitted;
+    uint32_t inheritable;
+};

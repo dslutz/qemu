@@ -23,12 +23,12 @@ static void e500plat_fixup_devtree(PPCE500Params *params, void *fdt)
     const char model[] = "QEMU ppce500";
     const char compatible[] = "fsl,qemu-e500";
 
-    qemu_devtree_setprop(fdt, "/", "model", model, sizeof(model));
-    qemu_devtree_setprop(fdt, "/", "compatible", compatible,
-                         sizeof(compatible));
+    qemu_fdt_setprop(fdt, "/", "model", model, sizeof(model));
+    qemu_fdt_setprop(fdt, "/", "compatible", compatible,
+                     sizeof(compatible));
 }
 
-static void e500plat_init(QEMUMachineInitArgs *args)
+static void e500plat_init(MachineState *machine)
 {
     PPCE500Params params = {
         .pci_first_slot = 0x1,
@@ -43,7 +43,7 @@ static void e500plat_init(QEMUMachineInitArgs *args)
         params.mpic_version = OPENPIC_MODEL_FSL_MPIC_20;
     }
 
-    ppce500_init(args, &params);
+    ppce500_init(machine, &params);
 }
 
 static QEMUMachine e500plat_machine = {

@@ -13,13 +13,14 @@
 #include "exec/address-spaces.h"
 #include "s390-virtio.h"
 #include "hw/s390x/sclp.h"
+#include "hw/s390x/s390_flic.h"
 #include "ioinst.h"
 #include "css.h"
 #include "virtio-ccw.h"
 
 void io_subsystem_reset(void)
 {
-    DeviceState *css, *sclp;
+    DeviceState *css, *sclp, *flic;
 
     css = DEVICE(object_resolve_path_type("", "virtual-css-bridge", NULL));
     if (css) {
@@ -29,6 +30,10 @@ void io_subsystem_reset(void)
                   "s390-sclp-event-facility", NULL));
     if (sclp) {
         qdev_reset_all(sclp);
+    }
+    flic = DEVICE(object_resolve_path_type("", "s390-flic", NULL));
+    if (flic) {
+        qdev_reset_all(flic);
     }
 }
 
@@ -74,9 +79,9 @@ static void virtio_ccw_register_hcalls(void)
                                    virtio_ccw_hcall_early_printk);
 }
 
-static void ccw_init(QEMUMachineInitArgs *args)
+static void ccw_init(MachineState *machine)
 {
-    ram_addr_t my_ram_size = args->ram_size;
+    ram_addr_t my_ram_size = machine->ram_size;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     int shift = 0;
@@ -97,8 +102,9 @@ static void ccw_init(QEMUMachineInitArgs *args)
     /* get a BUS */
     css_bus = virtual_css_bus_init();
     s390_sclp_init();
-    s390_init_ipl_dev(args->kernel_filename, args->kernel_cmdline,
-                      args->initrd_filename, "s390-ccw.img");
+    s390_init_ipl_dev(machine->kernel_filename, machine->kernel_cmdline,
+                      machine->initrd_filename, "s390-ccw.img");
+    s390_flic_init();
 
     /* register hypercalls */
     virtio_ccw_register_hcalls();
@@ -112,7 +118,7 @@ static void ccw_init(QEMUMachineInitArgs *args)
     storage_keys = g_malloc0(my_ram_size / TARGET_PAGE_SIZE);
 
     /* init CPUs */
-    s390_init_cpus(args->cpu_model, storage_keys);
+    s390_init_cpus(machine->cpu_model, storage_keys);
 
     if (kvm_enabled()) {
         kvm_s390_enable_css_support(s390_cpu_addr2state(0));

@@ -61,8 +61,8 @@ struct M48t59State {
     time_t   stop_time;
     /* Alarm & watchdog */
     struct tm alarm;
-    struct QEMUTimer *alrm_timer;
-    struct QEMUTimer *wd_timer;
+    QEMUTimer *alrm_timer;
+    QEMUTimer *wd_timer;
     /* NVRAM storage */
     uint8_t *buffer;
     /* Model parameters */
@@ -595,8 +595,7 @@ static const VMStateDescription vmstate_m48t59 = {
     .name = "m48t59",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT8(lock, M48t59State),
         VMSTATE_UINT16(addr, M48t59State),
         VMSTATE_VBUFFER_UINT32(buffer, M48t59State, 0, NULL, 0, size),
@@ -741,7 +740,7 @@ static int m48t59_init1(SysBusDevice *dev)
 static Property m48t59_isa_properties[] = {
     DEFINE_PROP_UINT32("size",    M48t59ISAState, state.size,    -1),
     DEFINE_PROP_UINT32("model",   M48t59ISAState, state.model,   -1),
-    DEFINE_PROP_HEX32( "io_base", M48t59ISAState, state.io_base,  0),
+    DEFINE_PROP_UINT32("io_base", M48t59ISAState, state.io_base,  0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -750,9 +749,10 @@ static void m48t59_isa_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = m48t59_isa_realize;
-    dc->no_user = 1;
     dc->reset = m48t59_reset_isa;
     dc->props = m48t59_isa_properties;
+    /* Reason: needs to be wired up by m48t59_init_isa() */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo m48t59_isa_info = {
@@ -765,7 +765,7 @@ static const TypeInfo m48t59_isa_info = {
 static Property m48t59_properties[] = {
     DEFINE_PROP_UINT32("size",    M48t59SysBusState, state.size,    -1),
     DEFINE_PROP_UINT32("model",   M48t59SysBusState, state.model,   -1),
-    DEFINE_PROP_HEX32( "io_base", M48t59SysBusState, state.io_base,  0),
+    DEFINE_PROP_UINT32("io_base", M48t59SysBusState, state.io_base,  0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

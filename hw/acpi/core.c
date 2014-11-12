@@ -22,11 +22,11 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/acpi/acpi.h"
-#include "monitor/monitor.h"
 #include "qemu/config-file.h"
 #include "qapi/opts-visitor.h"
 #include "qapi/dealloc-visitor.h"
 #include "qapi-visit.h"
+#include "qapi-event.h"
 
 struct acpi_table_header {
     uint16_t _length;         /* our length, not actual part of the hdr */
@@ -550,7 +550,7 @@ static void acpi_pm1_cnt_write(ACPIREGS *ar, uint16_t val)
             break;
         default:
             if (sus_typ == ar->pm1.cnt.s4_val) { /* S4 request */
-                monitor_protocol_event(QEVENT_SUSPEND_DISK, NULL);
+                qapi_event_send_suspend_disk(&error_abort);
                 qemu_system_shutdown_request();
             }
             break;
@@ -661,4 +661,22 @@ uint32_t acpi_gpe_ioport_readb(ACPIREGS *ar, uint32_t addr)
     }
 
     return val;
+}
+
+void acpi_update_sci(ACPIREGS *regs, qemu_irq irq)
+{
+    int sci_level, pm1a_sts;
+
+    pm1a_sts = acpi_pm1_evt_get_sts(regs);
+
+    sci_level = ((pm1a_sts &
+                  regs->pm1.evt.en & ACPI_BITMASK_PM1_COMMON_ENABLED) != 0) ||
+                ((regs->gpe.sts[0] & regs->gpe.en[0]) != 0);
+
+    qemu_set_irq(irq, sci_level);
+
+    /* schedule a timer interruption if needed */
+    acpi_pm_tmr_update(regs,
+                       (regs->pm1.evt.en & ACPI_BITMASK_TIMER_ENABLE) &&
+                       !(pm1a_sts & ACPI_BITMASK_TIMER_STATUS));
 }

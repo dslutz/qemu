@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 #include "hw/sysbus.h"
+#include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "hw/sparc/sun4m.h"
 #include "hw/timer/m48t59.h"
@@ -542,14 +543,14 @@ static void tcx_init(hwaddr addr, int vram_size, int width,
     s = SYS_BUS_DEVICE(dev);
     /* FCode ROM */
     sysbus_mmio_map(s, 0, addr);
-    /* 8-bit plane */
-    sysbus_mmio_map(s, 1, addr + 0x00800000ULL);
     /* DAC */
-    sysbus_mmio_map(s, 2, addr + 0x00200000ULL);
+    sysbus_mmio_map(s, 1, addr + 0x00200000ULL);
     /* TEC (dummy) */
-    sysbus_mmio_map(s, 3, addr + 0x00700000ULL);
+    sysbus_mmio_map(s, 2, addr + 0x00700000ULL);
     /* THC 24 bit: NetBSD writes here even with 8-bit display: dummy */
-    sysbus_mmio_map(s, 4, addr + 0x00301000ULL);
+    sysbus_mmio_map(s, 3, addr + 0x00301000ULL);
+    /* 8-bit plane */
+    sysbus_mmio_map(s, 4, addr + 0x00800000ULL);
     if (depth == 24) {
         /* 24-bit plane */
         sysbus_mmio_map(s, 5, addr + 0x02000000ULL);
@@ -559,6 +560,31 @@ static void tcx_init(hwaddr addr, int vram_size, int width,
         /* THC 8 bit (dummy) */
         sysbus_mmio_map(s, 5, addr + 0x00300000ULL);
     }
+}
+
+static void cg3_init(hwaddr addr, qemu_irq irq, int vram_size, int width,
+                     int height, int depth)
+{
+    DeviceState *dev;
+    SysBusDevice *s;
+
+    dev = qdev_create(NULL, "cgthree");
+    qdev_prop_set_uint32(dev, "vram-size", vram_size);
+    qdev_prop_set_uint16(dev, "width", width);
+    qdev_prop_set_uint16(dev, "height", height);
+    qdev_prop_set_uint16(dev, "depth", depth);
+    qdev_prop_set_uint64(dev, "prom-addr", addr);
+    qdev_init_nofail(dev);
+    s = SYS_BUS_DEVICE(dev);
+
+    /* FCode ROM */
+    sysbus_mmio_map(s, 0, addr);
+    /* DAC */
+    sysbus_mmio_map(s, 1, addr + 0x400000ULL);
+    /* 8-bit plane */
+    sysbus_mmio_map(s, 2, addr + 0x800000ULL);
+
+    sysbus_connect_irq(s, 0, irq);
 }
 
 /* NCR89C100/MACIO Internal ID register */
@@ -577,7 +603,8 @@ static void idreg_init(hwaddr addr)
     s = SYS_BUS_DEVICE(dev);
 
     sysbus_mmio_map(s, 0, addr);
-    cpu_physical_memory_write_rom(addr, idreg_data, sizeof(idreg_data));
+    cpu_physical_memory_write_rom(&address_space_memory,
+                                  addr, idreg_data, sizeof(idreg_data));
 }
 
 #define MACIO_ID_REGISTER(obj) \
@@ -840,9 +867,9 @@ static void dummy_fdc_tc(void *opaque, int irq, int level)
 }
 
 static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
-                          QEMUMachineInitArgs *args)
+                          MachineState *machine)
 {
-    const char *cpu_model = args->cpu_model;
+    const char *cpu_model = machine->cpu_model;
     unsigned int i;
     void *iommu, *espdma, *ledma, *nvram;
     qemu_irq *cpu_irqs[MAX_CPUS], slavio_irq[32], slavio_cpu_irq[MAX_CPUS],
@@ -868,10 +895,10 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
 
 
     /* set up devices */
-    ram_init(0, args->ram_size, hwdef->max_mem);
+    ram_init(0, machine->ram_size, hwdef->max_mem);
     /* models without ECC don't trap when missing ram is accessed */
     if (!hwdef->ecc_base) {
-        empty_slot_init(args->ram_size, hwdef->max_mem - args->ram_size);
+        empty_slot_init(machine->ram_size, hwdef->max_mem - machine->ram_size);
     }
 
     prom_init(hwdef->slavio_base, bios_name);
@@ -913,13 +940,43 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
                              slavio_irq[16], iommu, &ledma_irq, 1);
 
     if (graphic_depth != 8 && graphic_depth != 24) {
-        fprintf(stderr, "qemu: Unsupported depth: %d\n", graphic_depth);
+        error_report("Unsupported depth: %d", graphic_depth);
         exit (1);
     }
     num_vsimms = 0;
     if (num_vsimms == 0) {
-        tcx_init(hwdef->tcx_base, 0x00100000, graphic_width, graphic_height,
-                 graphic_depth);
+        if (vga_interface_type == VGA_CG3) {
+            if (graphic_depth != 8) {
+                error_report("Unsupported depth: %d", graphic_depth);
+                exit(1);
+            }
+
+            if (!(graphic_width == 1024 && graphic_height == 768) &&
+                !(graphic_width == 1152 && graphic_height == 900)) {
+                error_report("Unsupported resolution: %d x %d", graphic_width,
+                             graphic_height);
+                exit(1);
+            }
+
+            /* sbus irq 5 */
+            cg3_init(hwdef->tcx_base, slavio_irq[11], 0x00100000,
+                     graphic_width, graphic_height, graphic_depth);
+        } else {
+            /* If no display specified, default to TCX */
+            if (graphic_depth != 8 && graphic_depth != 24) {
+                error_report("Unsupported depth: %d", graphic_depth);
+                exit(1);
+            }
+
+            if (!(graphic_width == 1024 && graphic_height == 768)) {
+                error_report("Unsupported resolution: %d x %d",
+                             graphic_width, graphic_height);
+                exit(1);
+            }
+
+            tcx_init(hwdef->tcx_base, 0x00100000, graphic_width, graphic_height,
+                     graphic_depth);
+        }
     }
 
     for (i = num_vsimms; i < MAX_VSIMMS; i++) {
@@ -994,14 +1051,14 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
         empty_slot_init(hwdef->bpp_base, 0x20);
     }
 
-    kernel_size = sun4m_load_kernel(args->kernel_filename,
-                                    args->initrd_filename,
-                                    args->ram_size);
+    kernel_size = sun4m_load_kernel(machine->kernel_filename,
+                                    machine->initrd_filename,
+                                    machine->ram_size);
 
-    nvram_init(nvram, (uint8_t *)&nd_table[0].macaddr, args->kernel_cmdline,
-               args->boot_order, args->ram_size, kernel_size, graphic_width,
-               graphic_height, graphic_depth, hwdef->nvram_machine_id,
-               "Sun4m");
+    nvram_init(nvram, (uint8_t *)&nd_table[0].macaddr, machine->kernel_cmdline,
+               machine->boot_order, machine->ram_size, kernel_size,
+               graphic_width, graphic_height, graphic_depth,
+               hwdef->nvram_machine_id, "Sun4m");
 
     if (hwdef->ecc_base)
         ecc_init(hwdef->ecc_base, slavio_irq[28],
@@ -1017,20 +1074,20 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     fw_cfg_add_i16(fw_cfg, FW_CFG_SUN4M_HEIGHT, graphic_height);
     fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_ADDR, KERNEL_LOAD_ADDR);
     fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_SIZE, kernel_size);
-    if (args->kernel_cmdline) {
+    if (machine->kernel_cmdline) {
         fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_CMDLINE, CMDLINE_ADDR);
         pstrcpy_targphys("cmdline", CMDLINE_ADDR, TARGET_PAGE_SIZE,
-                         args->kernel_cmdline);
-        fw_cfg_add_string(fw_cfg, FW_CFG_CMDLINE_DATA, args->kernel_cmdline);
+                         machine->kernel_cmdline);
+        fw_cfg_add_string(fw_cfg, FW_CFG_CMDLINE_DATA, machine->kernel_cmdline);
         fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE,
-                       strlen(args->kernel_cmdline) + 1);
+                       strlen(machine->kernel_cmdline) + 1);
     } else {
         fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_CMDLINE, 0);
         fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE, 0);
     }
     fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_ADDR, INITRD_LOAD_ADDR);
     fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_SIZE, 0); // not used
-    fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, args->boot_order[0]);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, machine->boot_order[0]);
     qemu_register_boot_set(fw_cfg_boot_set, fw_cfg);
 }
 
@@ -1292,57 +1349,57 @@ static const struct sun4m_hwdef sun4m_hwdefs[] = {
 };
 
 /* SPARCstation 5 hardware initialisation */
-static void ss5_init(QEMUMachineInitArgs *args)
+static void ss5_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[0], args);
+    sun4m_hw_init(&sun4m_hwdefs[0], machine);
 }
 
 /* SPARCstation 10 hardware initialisation */
-static void ss10_init(QEMUMachineInitArgs *args)
+static void ss10_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[1], args);
+    sun4m_hw_init(&sun4m_hwdefs[1], machine);
 }
 
 /* SPARCserver 600MP hardware initialisation */
-static void ss600mp_init(QEMUMachineInitArgs *args)
+static void ss600mp_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[2], args);
+    sun4m_hw_init(&sun4m_hwdefs[2], machine);
 }
 
 /* SPARCstation 20 hardware initialisation */
-static void ss20_init(QEMUMachineInitArgs *args)
+static void ss20_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[3], args);
+    sun4m_hw_init(&sun4m_hwdefs[3], machine);
 }
 
 /* SPARCstation Voyager hardware initialisation */
-static void vger_init(QEMUMachineInitArgs *args)
+static void vger_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[4], args);
+    sun4m_hw_init(&sun4m_hwdefs[4], machine);
 }
 
 /* SPARCstation LX hardware initialisation */
-static void ss_lx_init(QEMUMachineInitArgs *args)
+static void ss_lx_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[5], args);
+    sun4m_hw_init(&sun4m_hwdefs[5], machine);
 }
 
 /* SPARCstation 4 hardware initialisation */
-static void ss4_init(QEMUMachineInitArgs *args)
+static void ss4_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[6], args);
+    sun4m_hw_init(&sun4m_hwdefs[6], machine);
 }
 
 /* SPARCClassic hardware initialisation */
-static void scls_init(QEMUMachineInitArgs *args)
+static void scls_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[7], args);
+    sun4m_hw_init(&sun4m_hwdefs[7], machine);
 }
 
 /* SPARCbook hardware initialisation */
-static void sbook_init(QEMUMachineInitArgs *args)
+static void sbook_init(MachineState *machine)
 {
-    sun4m_hw_init(&sun4m_hwdefs[8], args);
+    sun4m_hw_init(&sun4m_hwdefs[8], machine);
 }
 
 static QEMUMachine ss5_machine = {

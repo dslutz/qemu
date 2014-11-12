@@ -23,6 +23,7 @@
  */
 #include "hw/hw.h"
 #include "ui/console.h"
+#include "ui/input.h"
 #include "hw/input/ps2.h"
 #include "hw/i386/pc.h"
 #include "hw/qdev.h"
@@ -39,14 +40,14 @@
 #define VMMOUSE_STATUS          40
 #define VMMOUSE_COMMAND         41
 
-#define VMMOUSE_READ_ID			0x45414552
-#define VMMOUSE_DISABLE			0x000000f5
-#define VMMOUSE_REQUEST_RELATIVE	0x4c455252
-#define VMMOUSE_REQUEST_ABSOLUTE	0x53424152
+#define VMMOUSE_READ_ID                 0x45414552
+#define VMMOUSE_DISABLE                 0x000000f5
+#define VMMOUSE_REQUEST_RELATIVE        0x4c455252
+#define VMMOUSE_REQUEST_ABSOLUTE        0x53424152
 
-#define VMMOUSE_QUEUE_SIZE	1024
+#define VMMOUSE_QUEUE_SIZE      1024
 
-#define VMMOUSE_VERSION		0x3442554a
+#define VMMOUSE_VERSION         0x3442554a
 
 #ifdef DEBUG_VMMOUSE
 #define DPRINTF(fmt, ...) printf(fmt, ## __VA_ARGS__)
@@ -136,27 +137,6 @@ static void vmmouse_mouse_event(void *opaque, int x, int y, int dz, int buttons_
     i8042_isa_mouse_fake_event(s->ps2_mouse);
 }
 
-static void vmmouse_mouse_abs_pos(void *opaque, int x, int y, int z, int buttons_state)
-{
-    VMMouseState *s = opaque;
-
-    trace_vmmouse_mouse_abs_pos(opaque, x, y, z, buttons_state);
-    DPRINTF("vmmouse_mouse_abs_pos(%d, %d, %d, %d)\n",
-            x, y, z, buttons_state);
-
-    s->set_x = x;
-    s->set_y = y;
-    s->set_buttons_state = buttons_state;
-    s->div_x = 0;
-    s->div_y = 0;
-    s->div_x_down = 0;
-    s->div_y_down = 0;
-    s->gpl_lx = x;
-    s->gpl_ly = y;
-    s->gpl_dx = 0;
-    s->gpl_dy = 0;
-}
-
 static void vmmouse_remove_handler(VMMouseState *s)
 {
     if (s->entry) {
@@ -199,6 +179,7 @@ static void vmmouse_read_id(VMMouseState *s)
 
     trace_vmmouse_read_id(s, s->nb_queue);
     s->queue[s->in_queue++] = VMMOUSE_VERSION;
+    s->in_queue = s->in_queue % VMMOUSE_QUEUE_SIZE;
     s->nb_queue++;
     s->status = 0;
 }
@@ -241,7 +222,7 @@ static void vmmouse_data(VMMouseState *s, uint32_t *data, uint32_t size)
 
     for (i = 0; i < size; i++) {
         data[i] = s->queue[s->out_queue++];
-	s->out_queue = s->out_queue % VMMOUSE_QUEUE_SIZE;
+        s->out_queue = s->out_queue % VMMOUSE_QUEUE_SIZE;
     }
 
     s->nb_queue -= size;
@@ -266,8 +247,8 @@ static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
     case VMMOUSE_SETPTRLOCATION:
         trace_vmmouse_setptrlocation(opaque, s->set_x, s->set_y, data[1],
                                      (data[1] >> 16) & 0xFFFF, data[1] & 0xFFFF,
-                                     kbd_mouse_is_absolute());
-        if (kbd_mouse_is_absolute()) {
+                                     qemu_input_is_absolute());
+        if (qemu_input_is_absolute()) {
             trace_vmmouse_setptrlocation_4(opaque, s->status, s->nb_queue);
         } else {
             int dx, dy;
@@ -323,7 +304,11 @@ static uint32_t vmmouse_ioport_read(void *opaque, uint32_t addr)
             if (dx || dy) {
                 s->div_x_down = 0;
                 s->div_y_down = 0;
-                kbd_mouse_event(dx, dy, 0, s->set_buttons_state);
+                //kbd_mouse_event(dx, dy, 0, s->set_buttons_state);
+                //qemu_input_update_buttons(
+                qemu_input_queue_rel(NULL, INPUT_AXIS_X, dx);
+                qemu_input_queue_rel(NULL, INPUT_AXIS_Y, dy);
+                qemu_input_event_sync();
             } else {
                 trace_vmmouse_setptrlocation_3(opaque, s->div_x, s->div_y,
                                                s->div_x_down, s->div_y_down);
@@ -415,9 +400,8 @@ static const VMStateDescription vmstate_vmmouse = {
     .name = "vmmouse",
     .version_id = 1,
     .minimum_version_id = 0,
-    .minimum_version_id_old = 0,
     .post_load = vmmouse_post_load,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_INT32_EQUAL(queue_size, VMMouseState),
         VMSTATE_UINT32_ARRAY(queue, VMMouseState, VMMOUSE_QUEUE_SIZE),
         VMSTATE_UINT16(nb_queue, VMMouseState),
@@ -458,9 +442,6 @@ static void vmmouse_realizefn(DeviceState *dev, Error **errp)
     trace_vmmouse_initfn(s, dev);
     DPRINTF("vmmouse_init\n");
 
-    qemu_add_mouse_abs_pos_handler(vmmouse_mouse_abs_pos,
-                                   s, "vmmouse");
-
     vmport_register(VMMOUSE_GETPTRLOCATION, vmmouse_ioport_read, s);
     vmport_register(VMMOUSE_SETPTRLOCATION, vmmouse_ioport_read, s);
     vmport_register(VMMOUSE_STATUS, vmmouse_ioport_read, s);
@@ -478,10 +459,11 @@ static void vmmouse_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = vmmouse_realizefn;
-    dc->no_user = 1;
     dc->reset = vmmouse_reset;
     dc->vmsd = &vmstate_vmmouse;
     dc->props = vmmouse_properties;
+    /* Reason: pointer property "ps2_mouse" */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo vmmouse_info = {

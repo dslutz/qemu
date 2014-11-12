@@ -737,7 +737,6 @@ static void pcnet_s_reset(PCNetState *s)
     s->csr[94]  = 0x0000;
     s->csr[100] = 0x0200;
     s->csr[103] = 0x0105;
-    s->csr[103] = 0x0105;
     s->csr[112] = 0x0000;
     s->csr[114] = 0x0000;
     s->csr[122] = 0x0000;
@@ -2442,8 +2441,7 @@ const VMStateDescription vmstate_pcnet = {
     .name = "pcnet",
     .version_id = 3,
     .minimum_version_id = 2,
-    .minimum_version_id_old = 2,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_INT32(rap, PCNetState),
         VMSTATE_INT32(isr, PCNetState),
         VMSTATE_INT32(lnkst, PCNetState),

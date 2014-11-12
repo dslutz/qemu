@@ -1289,9 +1289,8 @@ static const VMStateDescription vmstate_sb16 = {
     .name = "sb16",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .post_load = sb16_post_load,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT32 (irq, SB16State),
         VMSTATE_UINT32 (dma, SB16State),
         VMSTATE_UINT32 (hdma, SB16State),
@@ -1399,8 +1398,8 @@ static int SB16_init (ISABus *bus)
 }
 
 static Property sb16_properties[] = {
-    DEFINE_PROP_HEX32  ("version", SB16State, ver,  0x0405), /* 4.5 */
-    DEFINE_PROP_HEX32  ("iobase",  SB16State, port, 0x220),
+    DEFINE_PROP_UINT32 ("version", SB16State, ver,  0x0405), /* 4.5 */
+    DEFINE_PROP_UINT32 ("iobase",  SB16State, port, 0x220),
     DEFINE_PROP_UINT32 ("irq",     SB16State, irq,  5),
     DEFINE_PROP_UINT32 ("dma",     SB16State, dma,  1),
     DEFINE_PROP_UINT32 ("dma16",   SB16State, hdma, 5),
