@@ -218,6 +218,7 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
     unsigned long nr_pfn;
     xen_pfn_t *pfn_list;
     int i;
+    xc_dominfo_t info;
 
     if (runstate_check(RUN_STATE_INMIGRATE)) {
         /* RAM already populated in Xen */
@@ -245,6 +246,13 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
         pfn_list[i] = (ram_addr >> TARGET_PAGE_BITS) + i;
     }
 
+    if (xc_domain_getinfo(xen_xc, xen_domid, 1, &info) < 0) {
+        hw_error("xc_domain_getinfo failed");
+    }
+    if (xc_domain_setmaxmem(xen_xc, xen_domid, info.max_memkb +
+                            (nr_pfn * XC_PAGE_SIZE / 1024)) < 0) {
+        hw_error("xc_domain_setmaxmem failed");
+    }
     if (xc_domain_populate_physmap_exact(xen_xc, xen_domid, nr_pfn, 0, 0, pfn_list)) {
         hw_error("xen: failed to populate ram at " RAM_ADDR_FMT, ram_addr);
     }
