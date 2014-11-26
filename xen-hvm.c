@@ -219,6 +219,10 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
     xen_pfn_t *pfn_list;
     int i;
     xc_dominfo_t info;
+    unsigned long max_pages, free_pages;
+    long need_pages;
+
+    trace_xen_ram_alloc(ram_addr, size, mr->name);
 
     if (runstate_check(RUN_STATE_INMIGRATE)) {
         /* RAM already populated in Xen */
@@ -232,13 +236,6 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
         return;
     }
 
-    fprintf(stderr, "%s: alloc "RAM_ADDR_FMT
-            " bytes (%ld Kib) of ram at "RAM_ADDR_FMT
-            " mr.name=%s\n",
-            __func__, size, (long)(size>>10), ram_addr, mr->name); 
-
-    trace_xen_ram_alloc(ram_addr, size);
-
     nr_pfn = size >> TARGET_PAGE_BITS;
     pfn_list = g_malloc(sizeof (*pfn_list) * nr_pfn);
 
@@ -246,11 +243,22 @@ void xen_ram_alloc(ram_addr_t ram_addr, ram_addr_t size, MemoryRegion *mr)
         pfn_list[i] = (ram_addr >> TARGET_PAGE_BITS) + i;
     }
 
-    if (xc_domain_getinfo(xen_xc, xen_domid, 1, &info) < 0) {
+    if ((xc_domain_getinfo(xen_xc, xen_domid, 1, &info) != 1) ||
+	(info.domid != xen_domid)) {
         hw_error("xc_domain_getinfo failed");
     }
-    if (xc_domain_setmaxmem(xen_xc, xen_domid, info.max_memkb +
-                            (nr_pfn * XC_PAGE_SIZE / 1024)) < 0) {
+    max_pages = info.max_memkb * 1024 / XC_PAGE_SIZE;
+    free_pages = max_pages - info.nr_pages;
+    need_pages = nr_pfn - free_pages;
+    fprintf(stderr, "%s: alloc "RAM_ADDR_FMT
+            " bytes (%ld KiB) of ram at "RAM_ADDR_FMT
+            " mp=%ld fp=%ld nr=%ld need=%ld mr.name=%s\n",
+            __func__, size, (long)(size>>10), ram_addr,
+	    max_pages, free_pages, nr_pfn, need_pages,
+            mr->name); 
+    if ((free_pages < nr_pfn) &&
+	(xc_domain_setmaxmem(xen_xc, xen_domid, info.max_memkb +
+			     (need_pages * XC_PAGE_SIZE / 1024)) < 0)) {
         hw_error("xc_domain_setmaxmem failed");
     }
     if (xc_domain_populate_physmap_exact(xen_xc, xen_domid, nr_pfn, 0, 0, pfn_list)) {
