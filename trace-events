@@ -908,7 +908,7 @@ pvscsi_tx_rings_ppn(const char* label, uint64_t ppn) "%s page: %"PRIx64""
 pvscsi_tx_rings_num_pages(const char* label, uint32_t num) "Number of %s pages: %u"
 
 # xen-all.c
-xen_ram_alloc(unsigned long ram_addr, unsigned long size) "requested: %#lx, size %#lx"
+xen_ram_alloc(unsigned long ram_addr, unsigned long size, const char* mr_name) "requested: %#lx size %#lx mr->name=%s"
 xen_client_set_memory(uint64_t start_addr, unsigned long size, bool log_dirty) "%#"PRIx64" size %#lx, log_dirty %i"
 handle_ioreq(void *req, uint32_t type, uint32_t dir, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p type=%d dir=%d df=%d ptr=%d port=%#"PRIx64" data=%#"PRIx64" count=%d size=%d"
 handle_ioreq_read(void *req, uint32_t type, uint32_t df, uint32_t data_is_ptr, uint64_t addr, uint64_t data, uint32_t count, uint32_t size) "I/O=%p read type=%d df=%d ptr=%d port=%#"PRIx64" data=%#"PRIx64" count=%d size=%d"
