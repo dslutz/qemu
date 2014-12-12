@@ -24,11 +24,21 @@
 #include "trace.h"
 
 
-#if defined(__i386__)
+//#define MAPCACHE_DEBUG
+
+#ifdef MAPCACHE_DEBUG
+#  define DPRINTF(fmt, ...) do { \
+    fprintf(stderr, "xen_mapcache: " fmt, ## __VA_ARGS__); \
+} while (0)
+#else
+#  define DPRINTF(fmt, ...) do { } while (0)
+#endif
+
+#if HOST_LONG_BITS == 32
 #  define MCACHE_BUCKET_SHIFT 16
 #  define MCACHE_MAX_SIZE     (1UL<<31) /* 2GB Cap */
 #  define DO_XEN_MAPCACHE_MUNMAP
-#elif defined(__x86_64__)
+#else
 #  define MCACHE_BUCKET_SHIFT 16
 #  define MCACHE_MAX_SIZE     (1UL<<20) /* 1MB Cap */
 #  define BIG_SHIFT           30        /* 1GB */

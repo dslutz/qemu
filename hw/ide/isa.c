@@ -57,8 +57,7 @@ static const VMStateDescription vmstate_ide_isa = {
     .name = "isa-ide",
     .version_id = 3,
     .minimum_version_id = 0,
-    .minimum_version_id_old = 0,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_IDE_BUS(bus, ISAIDEState),
         VMSTATE_IDE_DRIVES(bus.ifs, ISAIDEState),
         VMSTATE_END_OF_LIST()
@@ -104,8 +103,8 @@ ISADevice *isa_ide_init(ISABus *bus, int iobase, int iobase2, int isairq,
 }
 
 static Property isa_ide_properties[] = {
-    DEFINE_PROP_HEX32("iobase",  ISAIDEState, iobase,  0x1f0),
-    DEFINE_PROP_HEX32("iobase2", ISAIDEState, iobase2, 0x3f6),
+    DEFINE_PROP_UINT32("iobase",  ISAIDEState, iobase,  0x1f0),
+    DEFINE_PROP_UINT32("iobase2", ISAIDEState, iobase2, 0x3f6),
     DEFINE_PROP_UINT32("irq",    ISAIDEState, isairq,  14),
     DEFINE_PROP_END_OF_LIST(),
 };

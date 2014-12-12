@@ -29,13 +29,17 @@
 #include "block/block_int.h"
 #include "qemu/option.h"
 
-static QEMUOptionParameter raw_create_options[] = {
-    {
-        .name = BLOCK_OPT_SIZE,
-        .type = OPT_SIZE,
-        .help = "Virtual disk size"
-    },
-    { 0 }
+static QemuOptsList raw_create_opts = {
+    .name = "raw-create-opts",
+    .head = QTAILQ_HEAD_INITIALIZER(raw_create_opts.head),
+    .desc = {
+        {
+            .name = BLOCK_OPT_SIZE,
+            .type = QEMU_OPT_SIZE,
+            .help = "Virtual disk size"
+        },
+        { /* end of list */ }
+    }
 };
 
 static int raw_reopen_prepare(BDRVReopenState *reopen_state,
@@ -68,9 +72,10 @@ static int64_t coroutine_fn raw_co_get_block_status(BlockDriverState *bs,
 }
 
 static int coroutine_fn raw_co_write_zeroes(BlockDriverState *bs,
-                                            int64_t sector_num, int nb_sectors)
+                                            int64_t sector_num, int nb_sectors,
+                                            BdrvRequestFlags flags)
 {
-    return bdrv_co_write_zeroes(bs->file, sector_num, nb_sectors);
+    return bdrv_co_write_zeroes(bs->file, sector_num, nb_sectors, flags);
 }
 
 static int coroutine_fn raw_co_discard(BlockDriverState *bs,
@@ -87,6 +92,11 @@ static int64_t raw_getlength(BlockDriverState *bs)
 static int raw_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
 {
     return bdrv_get_info(bs->file, bdi);
+}
+
+static void raw_refresh_limits(BlockDriverState *bs, Error **errp)
+{
+    bs->bl = bs->file->bl;
 }
 
 static int raw_truncate(BlockDriverState *bs, int64_t offset)
@@ -132,14 +142,13 @@ static int raw_has_zero_init(BlockDriverState *bs)
     return bdrv_has_zero_init(bs->file);
 }
 
-static int raw_create(const char *filename, QEMUOptionParameter *options,
-                      Error **errp)
+static int raw_create(const char *filename, QemuOpts *opts, Error **errp)
 {
     Error *local_err = NULL;
     int ret;
 
-    ret = bdrv_create_file(filename, options, &local_err);
-    if (error_is_set(&local_err)) {
+    ret = bdrv_create_file(filename, opts, &local_err);
+    if (local_err) {
         error_propagate(errp, local_err);
     }
     return ret;
@@ -180,13 +189,14 @@ static BlockDriver bdrv_raw = {
     .bdrv_getlength       = &raw_getlength,
     .has_variable_length  = true,
     .bdrv_get_info        = &raw_get_info,
+    .bdrv_refresh_limits  = &raw_refresh_limits,
     .bdrv_is_inserted     = &raw_is_inserted,
     .bdrv_media_changed   = &raw_media_changed,
     .bdrv_eject           = &raw_eject,
     .bdrv_lock_medium     = &raw_lock_medium,
     .bdrv_ioctl           = &raw_ioctl,
     .bdrv_aio_ioctl       = &raw_aio_ioctl,
-    .create_options       = &raw_create_options[0],
+    .create_opts          = &raw_create_opts,
     .bdrv_has_zero_init   = &raw_has_zero_init
 };
 

@@ -83,7 +83,7 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
 
     trace_vmport_ioport_read(opaque, addr, size);
     if (!cs)
-	env = vmmouse_env;
+        env = vmmouse_env;
 
     cpu_synchronize_state(cs);
 
@@ -116,7 +116,7 @@ static void vmport_ioport_write(void *opaque, hwaddr addr,
     CPUX86State *env = &cpu->env;
 
     if (!cpu)
-	env = vmmouse_env;
+        env = vmmouse_env;
     trace_vmport_ioport_write(opaque, addr, val, size);
     env->regs[R_EAX] = vmport_ioport_read(opaque, addr, 4);
 }
@@ -127,7 +127,7 @@ static void vmport_ioport_1004_write(void *opaque, hwaddr addr,
     VMPortState *s = opaque;
 
     if (val == VM1004_SUSPEND_OFF)
-	s->p1004 = val;
+        s->p1004 = val;
 }
 
 static void vmport_ioport_1005_write(void *opaque, hwaddr addr,
@@ -136,9 +136,9 @@ static void vmport_ioport_1005_write(void *opaque, hwaddr addr,
     VMPortState *s = opaque;
 
     if (val == VM1004_SUSPEND_OFF && s->p1004 == VM1004_SUSPEND_OFF)
-	qemu_system_shutdown_request();
+        qemu_system_shutdown_request();
     else
-	s->p1004 = 0;
+        s->p1004 = 0;
 }
 
 static uint32_t vmport_cmd_get_version(void *opaque, uint32_t addr)
@@ -147,7 +147,7 @@ static uint32_t vmport_cmd_get_version(void *opaque, uint32_t addr)
     CPUX86State *env = &cpu->env;
 
     if (!current_cpu)
-	env = vmmouse_env;
+        env = vmmouse_env;
     env->regs[R_EBX] = VMPORT_MAGIC;
     return 6;
 }
@@ -158,7 +158,7 @@ static uint32_t vmport_cmd_ram_size(void *opaque, uint32_t addr)
     CPUX86State *env = &cpu->env;
 
     if (!current_cpu)
-	env = vmmouse_env;
+        env = vmmouse_env;
 
     env->regs[R_EBX] = 0x1177;
     return ram_size;
@@ -171,7 +171,7 @@ void vmmouse_get_data(uint32_t *data)
     CPUX86State *env = &cpu->env;
 
     if (!current_cpu)
-	env = vmmouse_env;
+        env = vmmouse_env;
 
     data[0] = env->regs[R_EAX]; data[1] = env->regs[R_EBX];
     data[2] = env->regs[R_ECX]; data[3] = env->regs[R_EDX];
@@ -184,7 +184,7 @@ void vmmouse_set_data(const uint32_t *data)
     CPUX86State *env = &cpu->env;
 
     if (!current_cpu)
-	env = vmmouse_env;
+        env = vmmouse_env;
 
     env->regs[R_EAX] = data[0]; env->regs[R_EBX] = data[1];
     env->regs[R_ECX] = data[2]; env->regs[R_EDX] = data[3];
@@ -230,12 +230,12 @@ static void vmport_realizefn(DeviceState *dev, Error **errp)
     isa_register_ioport(isadev, &s->io, 0x5658);
 
     if (vmware_hw >= 7) {
-	memory_region_init_io(&s->io1004, OBJECT(s), &vmport_ops_4, s, "vmport-1004", 1);
-	isa_register_ioport(isadev, &s->io1004, 0x1004);
+        memory_region_init_io(&s->io1004, OBJECT(s), &vmport_ops_4, s, "vmport-1004", 1);
+        isa_register_ioport(isadev, &s->io1004, 0x1004);
 
-	memory_region_init_io(&s->io1005, OBJECT(s), &vmport_ops_5, s, "vmport-1005", 1);
-	isa_register_ioport(isadev, &s->io1005, 0x1005);
-	s->p1004 = 0;
+        memory_region_init_io(&s->io1005, OBJECT(s), &vmport_ops_5, s, "vmport-1005", 1);
+        isa_register_ioport(isadev, &s->io1005, 0x1005);
+        s->p1004 = 0;
     }
 
     port_state = s;
@@ -249,7 +249,8 @@ static void vmport_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = vmport_realizefn;
-    dc->no_user = 1;
+    /* Reason: realize sets global port_state */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo vmport_info = {

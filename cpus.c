@@ -26,6 +26,7 @@
 #include "config-host.h"
 
 #include "monitor/monitor.h"
+#include "qapi/qmp/qerror.h"
 #include "sysemu/sysemu.h"
 #include "exec/gdbstub.h"
 #include "sysemu/dma.h"
@@ -38,6 +39,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/bitmap.h"
 #include "qemu/seqlock.h"
+#include "qapi-event.h"
 
 #ifndef _WIN32
 #include "qemu/compatfd.h"
@@ -76,7 +78,7 @@ static bool cpu_thread_is_idle(CPUState *cpu)
     if (cpu_is_stopped(cpu)) {
         return true;
     }
-    if (!cpu->halted || qemu_cpu_has_work(cpu) ||
+    if (!cpu->halted || cpu_has_work(cpu) ||
         kvm_halt_in_kernel()) {
         return false;
     }
@@ -139,11 +141,10 @@ static int64_t cpu_get_icount_locked(void)
 
     icount = qemu_icount;
     if (cpu) {
-        CPUArchState *env = cpu->env_ptr;
-        if (!can_do_io(env)) {
+        if (!cpu_can_do_io(cpu)) {
             fprintf(stderr, "Bad clock read\n");
         }
-        icount -= (env->icount_decr.u16.low + env->icount_extra);
+        icount -= (cpu->icount_decr.u16.low + cpu->icount_extra);
     }
     return qemu_icount_bias + (icount << icount_time_shift);
 }
@@ -348,7 +349,7 @@ void qtest_clock_warp(int64_t dest)
     assert(qtest_enabled());
     while (clock < dest) {
         int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
-        int64_t warp = MIN(dest - clock, deadline);
+        int64_t warp = qemu_soonest_timeout(dest - clock, deadline);
         seqlock_write_lock(&timers_state.vm_clock_seqlock);
         qemu_icount_bias += warp;
         seqlock_write_unlock(&timers_state.vm_clock_seqlock);
@@ -431,8 +432,7 @@ static const VMStateDescription vmstate_timers = {
     .name = "timer",
     .version_id = 2,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_INT64(cpu_ticks_offset, TimersState),
         VMSTATE_INT64(dummy, TimersState),
         VMSTATE_INT64_V(cpu_clock_offset, TimersState, 2),
@@ -532,7 +532,7 @@ static int do_vm_stop(RunState state)
         pause_all_vcpus();
         runstate_set(state);
         vm_state_notify(0, state);
-        monitor_protocol_event(QEVENT_STOP, NULL);
+        qapi_event_send_stop(&error_abort);
     }
 
     bdrv_drain_all();
@@ -1117,16 +1117,25 @@ void resume_all_vcpus(void)
     }
 }
 
+/* For temporary buffers for forming a name */
+#define VCPU_THREAD_NAME_SIZE 16
+
 static void qemu_tcg_init_vcpu(CPUState *cpu)
 {
+    char thread_name[VCPU_THREAD_NAME_SIZE];
+
+    tcg_cpu_address_space_init(cpu, cpu->as);
+
     /* share a single thread for all cpus with TCG */
     if (!tcg_cpu_thread) {
         cpu->thread = g_malloc0(sizeof(QemuThread));
         cpu->halt_cond = g_malloc0(sizeof(QemuCond));
         qemu_cond_init(cpu->halt_cond);
         tcg_halt_cond = cpu->halt_cond;
-        qemu_thread_create(cpu->thread, qemu_tcg_cpu_thread_fn, cpu,
-                           QEMU_THREAD_JOINABLE);
+        snprintf(thread_name, VCPU_THREAD_NAME_SIZE, "CPU %d/TCG",
+                 cpu->cpu_index);
+        qemu_thread_create(cpu->thread, thread_name, qemu_tcg_cpu_thread_fn,
+                           cpu, QEMU_THREAD_JOINABLE);
 #ifdef _WIN32
         cpu->hThread = qemu_thread_get_handle(cpu->thread);
 #endif
@@ -1142,11 +1151,15 @@ static void qemu_tcg_init_vcpu(CPUState *cpu)
 
 static void qemu_kvm_start_vcpu(CPUState *cpu)
 {
+    char thread_name[VCPU_THREAD_NAME_SIZE];
+
     cpu->thread = g_malloc0(sizeof(QemuThread));
     cpu->halt_cond = g_malloc0(sizeof(QemuCond));
     qemu_cond_init(cpu->halt_cond);
-    qemu_thread_create(cpu->thread, qemu_kvm_cpu_thread_fn, cpu,
-                       QEMU_THREAD_JOINABLE);
+    snprintf(thread_name, VCPU_THREAD_NAME_SIZE, "CPU %d/KVM",
+             cpu->cpu_index);
+    qemu_thread_create(cpu->thread, thread_name, qemu_kvm_cpu_thread_fn,
+                       cpu, QEMU_THREAD_JOINABLE);
     while (!cpu->created) {
         qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
     }
@@ -1154,10 +1167,14 @@ static void qemu_kvm_start_vcpu(CPUState *cpu)
 
 static void qemu_dummy_start_vcpu(CPUState *cpu)
 {
+    char thread_name[VCPU_THREAD_NAME_SIZE];
+
     cpu->thread = g_malloc0(sizeof(QemuThread));
     cpu->halt_cond = g_malloc0(sizeof(QemuCond));
     qemu_cond_init(cpu->halt_cond);
-    qemu_thread_create(cpu->thread, qemu_dummy_cpu_thread_fn, cpu,
+    snprintf(thread_name, VCPU_THREAD_NAME_SIZE, "CPU %d/DUMMY",
+             cpu->cpu_index);
+    qemu_thread_create(cpu->thread, thread_name, qemu_dummy_cpu_thread_fn, cpu,
                        QEMU_THREAD_JOINABLE);
     while (!cpu->created) {
         qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
@@ -1191,6 +1208,7 @@ void cpu_stop_current(void)
 int vm_stop(RunState state)
 {
     if (qemu_in_vcpu_thread()) {
+        qemu_system_vmstop_request_prepare();
         qemu_system_vmstop_request(state);
         /*
          * FIXME: should not return to device code in case
@@ -1219,6 +1237,7 @@ int vm_stop_force_state(RunState state)
 
 static int tcg_cpu_exec(CPUArchState *env)
 {
+    CPUState *cpu = ENV_GET_CPU(env);
     int ret;
 #ifdef CONFIG_PROFILER
     int64_t ti;
@@ -1231,9 +1250,9 @@ static int tcg_cpu_exec(CPUArchState *env)
         int64_t count;
         int64_t deadline;
         int decr;
-        qemu_icount -= (env->icount_decr.u16.low + env->icount_extra);
-        env->icount_decr.u16.low = 0;
-        env->icount_extra = 0;
+        qemu_icount -= (cpu->icount_decr.u16.low + cpu->icount_extra);
+        cpu->icount_decr.u16.low = 0;
+        cpu->icount_extra = 0;
         deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
 
         /* Maintain prior (possibly buggy) behaviour where if no deadline
@@ -1249,8 +1268,8 @@ static int tcg_cpu_exec(CPUArchState *env)
         qemu_icount += count;
         decr = (count > 0xffff) ? 0xffff : count;
         count -= decr;
-        env->icount_decr.u16.low = decr;
-        env->icount_extra = count;
+        cpu->icount_decr.u16.low = decr;
+        cpu->icount_extra = count;
     }
     ret = cpu_exec(env);
 #ifdef CONFIG_PROFILER
@@ -1259,10 +1278,9 @@ static int tcg_cpu_exec(CPUArchState *env)
     if (use_icount) {
         /* Fold pending instructions back into the
            instruction counter, and clear the interrupt flag.  */
-        qemu_icount -= (env->icount_decr.u16.low
-                        + env->icount_extra);
-        env->icount_decr.u32 = 0;
-        env->icount_extra = 0;
+        qemu_icount -= (cpu->icount_decr.u16.low + cpu->icount_extra);
+        cpu->icount_decr.u32 = 0;
+        cpu->icount_extra = 0;
     }
     return ret;
 }
@@ -1295,20 +1313,6 @@ static void tcg_exec_all(void)
         }
     }
     exit_request = 0;
-}
-
-void set_numa_modes(void)
-{
-    CPUState *cpu;
-    int i;
-
-    CPU_FOREACH(cpu) {
-        for (i = 0; i < nb_numa_nodes; i++) {
-            if (test_bit(cpu->cpu_index, node_cpumask[i])) {
-                cpu->numa_node = i;
-            }
-        }
-    }
 }
 
 void list_cpus(FILE *f, fprintf_function cpu_fprintf, const char *optarg)
@@ -1438,7 +1442,7 @@ void qmp_pmemsave(int64_t addr, int64_t size, const char *filename,
         l = sizeof(buf);
         if (l > size)
             l = size;
-        cpu_physical_memory_rw(addr, buf, l, 0);
+        cpu_physical_memory_read(addr, buf, l);
         if (fwrite(buf, 1, l, f) != l) {
             error_set(errp, QERR_IO_ERROR);
             goto exit;
@@ -1458,12 +1462,11 @@ void qmp_inject_nmi(Error **errp)
 
     CPU_FOREACH(cs) {
         X86CPU *cpu = X86_CPU(cs);
-        CPUX86State *env = &cpu->env;
 
-        if (!env->apic_state) {
+        if (!cpu->apic_state) {
             cpu_interrupt(cs, CPU_INTERRUPT_NMI);
         } else {
-            apic_deliver_nmi(env->apic_state);
+            apic_deliver_nmi(cpu->apic_state);
         }
     }
 #elif defined(TARGET_S390X)

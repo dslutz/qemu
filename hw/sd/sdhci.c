@@ -26,7 +26,6 @@
 #include "sysemu/blockdev.h"
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
-#include "block/block_int.h"
 #include "qemu/bitops.h"
 
 #include "sdhci.h"
@@ -1169,8 +1168,8 @@ static void sdhci_initfn(Object *obj)
     if (s->card == NULL) {
         exit(1);
     }
-    s->eject_cb = qemu_allocate_irqs(sdhci_insert_eject_cb, s, 1)[0];
-    s->ro_cb = qemu_allocate_irqs(sdhci_card_readonly_cb, s, 1)[0];
+    s->eject_cb = qemu_allocate_irq(sdhci_insert_eject_cb, s, 0);
+    s->ro_cb = qemu_allocate_irq(sdhci_card_readonly_cb, s, 0);
     sd_set_cb(s->card, s->ro_cb, s->eject_cb);
 
     s->insert_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sdhci_raise_insertion_irq, s);
@@ -1185,8 +1184,8 @@ static void sdhci_uninitfn(Object *obj)
     timer_free(s->insert_timer);
     timer_del(s->transfer_timer);
     timer_free(s->transfer_timer);
-    qemu_free_irqs(&s->eject_cb);
-    qemu_free_irqs(&s->ro_cb);
+    qemu_free_irq(s->eject_cb);
+    qemu_free_irq(s->ro_cb);
 
     if (s->fifo_buffer) {
         g_free(s->fifo_buffer);
@@ -1198,7 +1197,7 @@ const VMStateDescription sdhci_vmstate = {
     .name = "sdhci",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (VMStateField[]) {
         VMSTATE_UINT32(sdmasysad, SDHCIState),
         VMSTATE_UINT16(blksize, SDHCIState),
         VMSTATE_UINT16(blkcnt, SDHCIState),
@@ -1234,9 +1233,9 @@ const VMStateDescription sdhci_vmstate = {
 /* Capabilities registers provide information on supported features of this
  * specific host controller implementation */
 static Property sdhci_properties[] = {
-    DEFINE_PROP_HEX32("capareg", SDHCIState, capareg,
+    DEFINE_PROP_UINT32("capareg", SDHCIState, capareg,
             SDHC_CAPAB_REG_DEFAULT),
-    DEFINE_PROP_HEX32("maxcurr", SDHCIState, maxcurr, 0),
+    DEFINE_PROP_UINT32("maxcurr", SDHCIState, maxcurr, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

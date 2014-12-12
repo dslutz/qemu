@@ -52,6 +52,13 @@ General Project Administration
 ------------------------------
 M: Anthony Liguori <aliguori@amazon.com>
 
+Responsible Disclosure, Reporting Security Issues
+------------------------------
+W: http://wiki.qemu.org/SecurityProcess
+M: Michael S. Tsirkin <mst@redhat.com>
+M: Anthony Liguori <aliguori@amazon.com>
+L: secalert@redhat.com
+
 Guest CPU cores (TCG):
 ----------------------
 Alpha
@@ -158,7 +165,6 @@ Guest CPU Cores (KVM):
 ----------------------
 
 Overall
-M: Gleb Natapov <gleb@redhat.com>
 M: Paolo Bonzini <pbonzini@redhat.com>
 L: kvm@vger.kernel.org
 S: Supported
@@ -170,18 +176,25 @@ M: Peter Maydell <peter.maydell@linaro.org>
 S: Maintained
 F: target-arm/kvm.c
 
+MIPS
+M: James Hogan <james.hogan@imgtec.com>
+S: Maintained
+F: target-mips/kvm.c
+
 PPC
 M: Alexander Graf <agraf@suse.de>
 S: Maintained
 F: target-ppc/kvm.c
 
 S390
+M: Christian Borntraeger <borntraeger@de.ibm.com>
+M: Cornelia Huck <cornelia.huck@de.ibm.com>
 M: Alexander Graf <agraf@suse.de>
 S: Maintained
 F: target-s390x/kvm.c
+F: hw/intc/s390_flic.[hc]
 
 X86
-M: Gleb Natapov <gleb@redhat.com>
 M: Marcelo Tosatti <mtosatti@redhat.com>
 L: kvm@vger.kernel.org
 S: Supported
@@ -219,6 +232,13 @@ F: *win32*
 
 ARM Machines
 ------------
+Allwinner-a10
+M: Li Guang <lig.fnst@cn.fujitsu.com>
+S: Maintained
+F: hw/*/allwinner-a10*
+F: include/hw/*/allwinner-a10*
+F: hw/arm/cubieboard.c
+
 Exynos
 M: Evgeny Voevodin <e.voevodin@samsung.com>
 M: Maksim Kozlov <m.kozlov@samsung.com>
@@ -228,10 +248,16 @@ S: Maintained
 F: hw/*/exynos*
 
 Calxeda Highbank
-M: Mark Langsdorf <mark.langsdorf@calxeda.com>
-S: Supported
+M: Rob Herring <robh@kernel.org>
+S: Maintained
 F: hw/arm/highbank.c
 F: hw/net/xgmac.c
+
+Canon DIGIC
+M: Antony Pavlov <antonynpavlov@gmail.com>
+S: Maintained
+F: include/hw/arm/digic.h
+F: hw/*/digic*
 
 Gumstix
 M: qemu-devel@nongnu.org
@@ -290,7 +316,7 @@ S: Maintained
 F: hw/*/versatile*
 
 Xilinx Zynq
-M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
+M: Peter Crosthwaite <peter.crosthwaite@xilinx.com>
 S: Maintained
 F: hw/arm/xilinx_zynq.c
 F: hw/misc/zynq_slcr.c
@@ -339,7 +365,7 @@ S: Maintained
 F: hw/microblaze/petalogix_s3adsp1800_mmu.c
 
 petalogix_ml605
-M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
+M: Peter Crosthwaite <peter.crosthwaite@xilinx.com>
 S: Maintained
 F: hw/microblaze/petalogix_ml605_mmu.c
 
@@ -482,10 +508,13 @@ F: hw/s390x/s390-*.c
 
 S390 Virtio-ccw
 M: Cornelia Huck <cornelia.huck@de.ibm.com>
+M: Christian Borntraeger <borntraeger@de.ibm.com>
 M: Alexander Graf <agraf@suse.de>
 S: Supported
 F: hw/s390x/s390-virtio-ccw.c
 F: hw/s390x/css.[hc]
+F: hw/s390x/sclp*.[hc]
+F: hw/s390x/ipl*.[hc]
 T: git git://github.com/cohuck/qemu virtio-ccw-upstr
 
 UniCore32 Machines
@@ -500,9 +529,23 @@ X86 Machines
 ------------
 PC
 M: Anthony Liguori <aliguori@amazon.com>
+M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
-F: hw/i386/pc.[ch]
-F: hw/i386/pc_piix.c
+F: include/hw/i386/
+F: hw/i386/
+F: hw/pci-host/piix.c
+F: hw/pci-host/q35.c
+F: hw/pci-host/pam.c
+F: include/hw/pci-host/q35.h
+F: include/hw/pci-host/pam.h
+F: hw/isa/piix4.c
+F: hw/isa/lpc_ich9.c
+F: hw/i2c/smbus_ich9.c
+F: hw/acpi/piix4.c
+F: hw/acpi/ich9.c
+F: include/hw/acpi/ich9.h
+F: include/hw/acpi/piix.h
+
 
 Xtensa Machines
 ---------------
@@ -520,6 +563,7 @@ Devices
 -------
 IDE
 M: Kevin Wolf <kwolf@redhat.com>
+M: Stefan Hajnoczi <stefanha@redhat.com>
 S: Odd Fixes
 F: include/hw/ide.h
 F: hw/ide/
@@ -561,7 +605,7 @@ S: Orphan
 F: hw/scsi/lsi53c895a.c
 
 SSI
-M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
+M: Peter Crosthwaite <peter.crosthwaite@xilinx.com>
 S: Maintained
 F: hw/ssi/*
 F: hw/block/m25p80.c
@@ -575,6 +619,7 @@ USB
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
 F: hw/usb/*
+F: tests/usb-hcd-ehci-test.c
 
 VFIO
 M: Alex Williamson <alex.williamson@redhat.com>
@@ -588,6 +633,7 @@ F: hw/*/*vhost*
 
 virtio
 M: Anthony Liguori <aliguori@amazon.com>
+M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: hw/*/virtio*
 
@@ -596,6 +642,7 @@ M: Aneesh Kumar K.V <aneesh.kumar@linux.vnet.ibm.com>
 S: Supported
 F: hw/9pfs/
 F: fsdev/
+F: tests/virtio-9p-test.c
 T: git git://github.com/kvaneesh/QEMU.git
 
 virtio-blk
@@ -606,6 +653,7 @@ F: hw/block/virtio-blk.c
 
 virtio-ccw
 M: Cornelia Huck <cornelia.huck@de.ibm.com>
+M: Christian Borntraeger <borntraeger@de.ibm.com>
 S: Supported
 F: hw/s390x/virtio-ccw.[hc]
 T: git git://github.com/cohuck/qemu virtio-ccw-upstr
@@ -620,9 +668,16 @@ nvme
 M: Keith Busch <keith.busch@intel.com>
 S: Supported
 F: hw/block/nvme*
+F: tests/nvme-test.c
+
+megasas
+M: Hannes Reinecke <hare@suse.de>
+S: Supported
+F: hw/scsi/megasas.c
+F: hw/scsi/mfi.h
 
 Xilinx EDK
-M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
+M: Peter Crosthwaite <peter.crosthwaite@xilinx.com>
 M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
 S: Maintained
 F: hw/*/xilinx_*
@@ -636,6 +691,9 @@ M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
 F: audio/
 F: hw/audio/
+F: tests/ac97-test.c
+F: tests/es1370-test.c
+F: tests/intel-hda-test.c
 
 Block
 M: Kevin Wolf <kwolf@redhat.com>
@@ -644,6 +702,8 @@ S: Supported
 F: block*
 F: block/
 F: hw/block/
+F: qemu-img*
+F: qemu-io*
 T: git git://repo.or.cz/qemu/kevin.git block
 T: git git://github.com/stefanha/qemu.git block
 
@@ -666,7 +726,7 @@ F: include/hw/cpu/icc_bus.h
 F: hw/cpu/icc_bus.c
 
 Device Tree
-M: Peter Crosthwaite <peter.crosthwaite@petalogix.com>
+M: Peter Crosthwaite <peter.crosthwaite@xilinx.com>
 M: Alexander Graf <agraf@suse.de>
 S: Maintained
 F: device_tree.[ch]
@@ -676,6 +736,16 @@ M: qemu-devel@nongnu.org
 S: Odd Fixes
 F: gdbstub*
 F: gdb-xml/
+
+Memory API
+M: Paolo Bonzini <pbonzini@redhat.com>
+S: Supported
+F: include/exec/ioport.h
+F: ioport.c
+F: include/exec/memory.h
+F: memory.c
+F: include/exec/memory-internal.h
+F: exec.c
 
 SPICE
 M: Gerd Hoffmann <kraxel@redhat.com>
@@ -687,11 +757,13 @@ F: hw/display/qxl*
 
 Graphics
 M: Anthony Liguori <aliguori@amazon.com>
-S: Maintained
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Odd Fixes
 F: ui/
 
 Cocoa graphics
 M: Andreas Färber <andreas.faerber@web.de>
+M: Peter Maydell <peter.maydell@linaro.org>
 S: Odd Fixes
 F: ui/cocoa.m
 
@@ -702,7 +774,7 @@ F: vl.c
 
 Human Monitor (HMP)
 M: Luiz Capitulino <lcapitulino@redhat.com>
-S: Supported
+S: Maintained
 F: monitor.c
 F: hmp.c
 F: hmp-commands.hx
@@ -715,6 +787,14 @@ S: Maintained
 F: net/
 T: git git://github.com/stefanha/qemu.git net
 
+Netmap network backend
+M: Luigi Rizzo <rizzo@iet.unipi.it>
+M: Giuseppe Lettieri <g.lettieri@iet.unipi.it>
+M: Vincenzo Maffione <v.maffione@gmail.com>
+W: http://info.iet.unipi.it/~luigi/netmap/
+S: Maintained
+F: net/netmap.c
+
 Network Block Device (NBD)
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Odd Fixes
@@ -726,7 +806,7 @@ T: git git://github.com/bonzini/qemu.git nbd-next
 QAPI
 M: Luiz Capitulino <lcapitulino@redhat.com>
 M: Michael Roth <mdroth@linux.vnet.ibm.com>
-S: Supported
+S: Maintained
 F: qapi/
 T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
@@ -738,9 +818,20 @@ S: Supported
 F: qapi-schema.json
 T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
+QOM
+M: Anthony Liguori <aliguori@amazon.com>
+M: Andreas Färber <afaerber@suse.de>
+S: Supported
+T: git git://github.com/afaerber/qemu-cpu.git qom-next
+F: include/qom/
+X: include/qom/cpu.h
+F: qom/
+X: qom/cpu.c
+F: tests/qom-test.c
+
 QMP
 M: Luiz Capitulino <lcapitulino@redhat.com>
-S: Supported
+S: Maintained
 F: qmp.c
 F: monitor.c
 F: qmp-commands.hx
@@ -768,7 +859,7 @@ S: Odd Fixes
 F: scripts/checkpatch.pl
 
 Seccomp
-M: Eduardo Otubo <otubo@linux.vnet.ibm.com>
+M: Eduardo Otubo <eduardo.otubo@profitbricks.com>
 S: Supported
 F: qemu-seccomp.c
 F: include/sysemu/seccomp.h
@@ -884,6 +975,7 @@ F: block/rbd.c
 Sheepdog
 M: MORITA Kazutaka <morita.kazutaka@lab.ntt.co.jp>
 M: Liu Yuan <namei.unix@gmail.com>
+L: sheepdog@lists.wpkg.org
 S: Supported
 F: block/sheepdog.c
 
@@ -903,6 +995,11 @@ M: Paolo Bonzini <pbonzini@redhat.com>
 M: Peter Lieven <pl@kamp.de>
 S: Supported
 F: block/iscsi.c
+
+NFS
+M: Peter Lieven <pl@kamp.de>
+S: Maintained
+F: block/nfs.c
 
 SSH
 M: Richard W.M. Jones <rjones@redhat.com>

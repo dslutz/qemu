@@ -126,23 +126,6 @@ void qemu_spice_wakeup(SimpleSpiceDisplay *ssd)
     spice_qxl_wakeup(&ssd->qxl);
 }
 
-static int spice_display_is_running;
-
-void qemu_spice_display_start(void)
-{
-    spice_display_is_running = true;
-}
-
-void qemu_spice_display_stop(void)
-{
-    spice_display_is_running = false;
-}
-
-int qemu_spice_display_is_running(SimpleSpiceDisplay *ssd)
-{
-    return spice_display_is_running;
-}
-
 static void qemu_spice_create_one_update(SimpleSpiceDisplay *ssd,
                                          QXLRect *rect)
 {
@@ -170,7 +153,7 @@ static void qemu_spice_create_one_update(SimpleSpiceDisplay *ssd,
     drawable->bbox            = *rect;
     drawable->clip.type       = SPICE_CLIP_TYPE_NONE;
     drawable->effect          = QXL_EFFECT_OPAQUE;
-    drawable->release_info.id = (uintptr_t)update;
+    drawable->release_info.id = (uintptr_t)(&update->ext);
     drawable->type            = QXL_DRAW_COPY;
     drawable->surfaces_dest[0] = -1;
     drawable->surfaces_dest[1] = -1;
@@ -281,6 +264,49 @@ static void qemu_spice_create_update(SimpleSpiceDisplay *ssd)
     memset(&ssd->dirty, 0, sizeof(ssd->dirty));
 }
 
+static SimpleSpiceCursor*
+qemu_spice_create_cursor_update(SimpleSpiceDisplay *ssd,
+                                QEMUCursor *c)
+{
+    size_t size = c ? c->width * c->height * 4 : 0;
+    SimpleSpiceCursor *update;
+    QXLCursorCmd *ccmd;
+    QXLCursor *cursor;
+    QXLCommand *cmd;
+
+    update   = g_malloc0(sizeof(*update) + size);
+    ccmd     = &update->cmd;
+    cursor   = &update->cursor;
+    cmd      = &update->ext.cmd;
+
+    if (c) {
+        ccmd->type = QXL_CURSOR_SET;
+        ccmd->u.set.position.x = ssd->ptr_x;
+        ccmd->u.set.position.y = ssd->ptr_y;
+        ccmd->u.set.visible    = true;
+        ccmd->u.set.shape      = (uintptr_t)cursor;
+        cursor->header.unique     = ssd->unique++;
+        cursor->header.type       = SPICE_CURSOR_TYPE_ALPHA;
+        cursor->header.width      = c->width;
+        cursor->header.height     = c->height;
+        cursor->header.hot_spot_x = c->hot_x;
+        cursor->header.hot_spot_y = c->hot_y;
+        cursor->data_size         = size;
+        cursor->chunk.data_size   = size;
+        memcpy(cursor->chunk.data, c->data, size);
+    } else {
+        ccmd->type = QXL_CURSOR_MOVE;
+        ccmd->u.position.x = ssd->ptr_x;
+        ccmd->u.position.y = ssd->ptr_y;
+    }
+    ccmd->release_info.id = (uintptr_t)(&update->ext);
+
+    cmd->type = QXL_CMD_CURSOR;
+    cmd->data = (uintptr_t)ccmd;
+
+    return update;
+}
+
 /*
  * Called from spice server thread context (via interface_release_resource)
  * We do *not* hold the global qemu mutex here, so extra care is needed
@@ -371,6 +397,7 @@ void qemu_spice_display_switch(SimpleSpiceDisplay *ssd,
                                DisplaySurface *surface)
 {
     SimpleSpiceUpdate *update;
+    bool need_destroy;
 
     dprint(1, "%s/%d:\n", __func__, ssd->qxl.id);
 
@@ -383,14 +410,19 @@ void qemu_spice_display_switch(SimpleSpiceDisplay *ssd,
     }
 
     qemu_mutex_lock(&ssd->lock);
+    need_destroy = (ssd->ds != NULL);
     ssd->ds = surface;
     while ((update = QTAILQ_FIRST(&ssd->updates)) != NULL) {
         QTAILQ_REMOVE(&ssd->updates, update, next);
         qemu_spice_destroy_update(ssd, update);
     }
     qemu_mutex_unlock(&ssd->lock);
-    qemu_spice_destroy_host_primary(ssd);
-    qemu_spice_create_host_primary(ssd);
+    if (need_destroy) {
+        qemu_spice_destroy_host_primary(ssd);
+    }
+    if (ssd->ds) {
+        qemu_spice_create_host_primary(ssd);
+    }
 
     memset(&ssd->dirty, 0, sizeof(ssd->dirty));
     ssd->notify++;
@@ -494,20 +526,50 @@ static int interface_req_cmd_notification(QXLInstance *sin)
 }
 
 static void interface_release_resource(QXLInstance *sin,
-                                       struct QXLReleaseInfoExt ext)
+                                       struct QXLReleaseInfoExt rext)
 {
     SimpleSpiceDisplay *ssd = container_of(sin, SimpleSpiceDisplay, qxl);
-    uintptr_t id;
+    SimpleSpiceUpdate *update;
+    SimpleSpiceCursor *cursor;
+    QXLCommandExt *ext;
 
     dprint(2, "%s/%d:\n", __func__, ssd->qxl.id);
-    id = ext.info->id;
-    qemu_spice_destroy_update(ssd, (void*)id);
+    ext = (void *)(intptr_t)(rext.info->id);
+    switch (ext->cmd.type) {
+    case QXL_CMD_DRAW:
+        update = container_of(ext, SimpleSpiceUpdate, ext);
+        qemu_spice_destroy_update(ssd, update);
+        break;
+    case QXL_CMD_CURSOR:
+        cursor = container_of(ext, SimpleSpiceCursor, ext);
+        g_free(cursor);
+        break;
+    default:
+        g_assert_not_reached();
+    }
 }
 
 static int interface_get_cursor_command(QXLInstance *sin, struct QXLCommandExt *ext)
 {
-    dprint(3, "%s:\n", __FUNCTION__);
-    return false;
+    SimpleSpiceDisplay *ssd = container_of(sin, SimpleSpiceDisplay, qxl);
+    int ret;
+
+    dprint(3, "%s/%d:\n", __func__, ssd->qxl.id);
+
+    qemu_mutex_lock(&ssd->lock);
+    if (ssd->ptr_define) {
+        *ext = ssd->ptr_define->ext;
+        ssd->ptr_define = NULL;
+        ret = true;
+    } else if (ssd->ptr_move) {
+        *ext = ssd->ptr_move->ext;
+        ssd->ptr_move = NULL;
+        ret = true;
+    } else {
+        ret = false;
+    }
+    qemu_mutex_unlock(&ssd->lock);
+    return ret;
 }
 
 static int interface_req_cursor_notification(QXLInstance *sin)
@@ -554,10 +616,33 @@ static void interface_set_client_capabilities(QXLInstance *sin,
 }
 
 static int interface_client_monitors_config(QXLInstance *sin,
-                                        VDAgentMonitorsConfig *monitors_config)
+                                            VDAgentMonitorsConfig *mc)
 {
-    dprint(3, "%s:\n", __func__);
-    return 0; /* == not supported by guest */
+    SimpleSpiceDisplay *ssd = container_of(sin, SimpleSpiceDisplay, qxl);
+    QemuUIInfo info;
+    int rc;
+
+    if (!mc) {
+        return 1;
+    }
+
+    /*
+     * FIXME: multihead is tricky due to the way
+     * spice has multihead implemented.
+     */
+    memset(&info, 0, sizeof(info));
+    if (mc->num_of_monitors > 0) {
+        info.width  = mc->monitors[0].width;
+        info.height = mc->monitors[0].height;
+    }
+    rc = dpy_set_ui_info(ssd->dcl.con, &info);
+    dprint(1, "%s/%d: size %dx%d, rc %d   <---   ==========================\n",
+           __func__, ssd->qxl.id, info.width, info.height, rc);
+    if (rc != 0) {
+        return 0; /* == not supported by guest */
+    } else {
+        return 1;
+    }
 }
 
 static const QXLInterface dpy_interface = {
@@ -605,11 +690,45 @@ static void display_refresh(DisplayChangeListener *dcl)
     qemu_spice_display_refresh(ssd);
 }
 
+static void display_mouse_set(DisplayChangeListener *dcl,
+                              int x, int y, int on)
+{
+    SimpleSpiceDisplay *ssd = container_of(dcl, SimpleSpiceDisplay, dcl);
+
+    qemu_mutex_lock(&ssd->lock);
+    ssd->ptr_x = x;
+    ssd->ptr_y = x;
+    if (ssd->ptr_move) {
+        g_free(ssd->ptr_move);
+    }
+    ssd->ptr_move = qemu_spice_create_cursor_update(ssd, NULL);
+    qemu_mutex_unlock(&ssd->lock);
+}
+
+static void display_mouse_define(DisplayChangeListener *dcl,
+                                 QEMUCursor *c)
+{
+    SimpleSpiceDisplay *ssd = container_of(dcl, SimpleSpiceDisplay, dcl);
+
+    qemu_mutex_lock(&ssd->lock);
+    if (ssd->ptr_move) {
+        g_free(ssd->ptr_move);
+        ssd->ptr_move = NULL;
+    }
+    if (ssd->ptr_define) {
+        g_free(ssd->ptr_define);
+    }
+    ssd->ptr_define = qemu_spice_create_cursor_update(ssd, c);
+    qemu_mutex_unlock(&ssd->lock);
+}
+
 static const DisplayChangeListenerOps display_listener_ops = {
-    .dpy_name        = "spice",
-    .dpy_gfx_update  = display_update,
-    .dpy_gfx_switch  = display_switch,
-    .dpy_refresh     = display_refresh,
+    .dpy_name          = "spice",
+    .dpy_gfx_update    = display_update,
+    .dpy_gfx_switch    = display_switch,
+    .dpy_refresh       = display_refresh,
+    .dpy_mouse_set     = display_mouse_set,
+    .dpy_cursor_define = display_mouse_define,
 };
 
 static void qemu_spice_display_init_one(QemuConsole *con)
@@ -627,8 +746,6 @@ static void qemu_spice_display_init_one(QemuConsole *con)
     ssd->dcl.ops = &display_listener_ops;
     ssd->dcl.con = con;
     register_displaychangelistener(&ssd->dcl);
-
-    qemu_spice_create_host_primary(ssd);
 }
 
 void qemu_spice_display_init(void)
