@@ -289,7 +289,7 @@ static int usbredir_write(void *priv, uint8_t *data, int count)
 
     r = qemu_chr_fe_write(dev->cs, data, count);
     if (r < count) {
-        if (!dev->watch) {
+        if (dev->watch <= 0) {
             dev->watch = qemu_chr_fe_add_watch(dev->cs, G_IO_OUT|G_IO_HUP,
                                                usbredir_write_unblocked, dev);
         }
