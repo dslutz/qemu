@@ -2831,12 +2831,12 @@ int main(int argc, char **argv)
 
     /* Report pkgversion */
     if (!strcmp(cmdname, "--pkgversion")) {
+        argc--; argv++; /* Drop special arg. */
         printf("qemu-img version " QEMU_VERSION " pkgversion " QEMU_PKGVERSION "\n");
         if (argc < 2) {
             return 0;
         }
-        cmdname = argv[1];
-        argc--; argv++;
+        cmdname = argv[1]; /* Update */
     }
 
     /* find the command */
