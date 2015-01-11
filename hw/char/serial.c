@@ -238,7 +238,7 @@ static gboolean watch_serial_xmit(GIOChannel *chan, GIOCondition cond, void *opa
 static int add_watch_serial(SerialState *s)
 {
     s->watch_count++;
-    if (!s->watch) {
+    if (s->watch <= 0) {
         s->watch = qemu_chr_fe_add_watch(s->chr, G_IO_OUT|G_IO_HUP, watch_serial_xmit, s);
     }
     return s->watch;
