@@ -774,6 +774,13 @@ M: Jiri Pirko <jiri@resnulli.us>
 S: Maintained
 F: hw/net/rocker/
 
+VMware port
+M: Don Slutz <Don.Slutz@Gmail.com>
+S: Maintained
+F: hw/misc/vmport.c
+F: hw/input/vmmouse.c
+F: hw/misc/vmport_rpc.c
+
 Subsystems
 ----------
 Audio
