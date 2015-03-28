@@ -2976,8 +2976,8 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
          return -1;
      }
      /* setup VGA */
-     fprintf(stderr, "%s: vram_size_mb=%d\n",
-             __func__, s->vga.vram_size_mb);
+     fprintf(stderr, "%s: %p->vram_size_mb=%d\n",
+             __func__, s, s->vga.vram_size_mb);
      vga_common_init(&s->vga, OBJECT(dev), true);
      cirrus_init_common(s, OBJECT(dev), device_id, 1, pci_address_space(dev),
                         pci_address_space_io(dev));
