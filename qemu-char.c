@@ -4076,6 +4076,11 @@ ChardevReturn *qmp_chardev_add(const char *id, ChardevBackend *backend,
 #endif
     case CHARDEV_BACKEND_KIND_VC:
         chr = vc_init(backend->vc);
+	if (chr) {
+            fprintf(stderr,
+           "char device redirected to vc, CVE-2007-0998 enabled (label %s)\n",
+                    id);
+	}
         break;
     case CHARDEV_BACKEND_KIND_RINGBUF:
     case CHARDEV_BACKEND_KIND_MEMORY:
