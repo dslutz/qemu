@@ -314,6 +314,8 @@ static int xen_add_to_physmap(XenIOState *state,
     char path[80], value[17];
 
     if (get_physmapping(state, start_addr, size)) {
+	    fprintf(stderr, "Found vram mapping to %"HWADDR_PRIx" - %"
+		    HWADDR_PRIx"\n", start_addr, start_addr + size);
         return 0;
     }
     if (size <= 0) {
