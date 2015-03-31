@@ -43,7 +43,7 @@
 #  define MCACHE_MAX_SIZE     (1UL<<20) /* 1MB Cap */
 #  define BIG_SHIFT           30        /* 1GB */
 #  define BIG_SIZE            (1UL << BIG_SHIFT) /* 1GB */
-#  define DO_BIG_ENTRY        64        /* 64GB */
+#  define DO_BIG_ENTRY        256       /* 256GB */
 #endif
 #define MCACHE_BUCKET_SIZE (1UL << MCACHE_BUCKET_SHIFT)
 
