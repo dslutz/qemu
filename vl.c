@@ -214,7 +214,6 @@ static NotifierList machine_init_done_notifiers =
 static bool tcg_allowed = true;
 bool xen_allowed;
 int vmware_hw = 0;
-uint64_t pci_hole_min_size = 0;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 static int tcg_tb_size;
@@ -4262,12 +4261,6 @@ int main(int argc, char **argv, char **envp)
     bios_name = qemu_opt_get(machine_opts, "firmware");
     vmware_hw = qemu_opt_get_number(machine_opts, "vmware_hw",
                                     vmware_hw);
-    pci_hole_min_size = qemu_opt_get_size(machine_opts,
-					  "pci_hole_min_size",
-					  pci_hole_min_size);
-    fprintf(stderr, "%s: vmware_hw=%d pci_hole_min_size=%llu\n",
-            __func__, vmware_hw, (unsigned long long) pci_hole_min_size);
-
     boot_order = machine_class->default_boot_order;
     opts = qemu_opts_find(qemu_find_opts("boot-opts"), NULL);
     if (opts) {

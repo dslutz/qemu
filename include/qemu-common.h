@@ -43,7 +43,6 @@
 #include "glib-compat.h"
 
 extern int vmware_hw;
-extern uint64_t pci_hole_min_size;
 
 #ifdef _WIN32
 #include "sysemu/os-win32.h"
