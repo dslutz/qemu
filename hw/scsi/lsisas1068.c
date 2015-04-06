@@ -5271,7 +5271,7 @@ static void mpt_init_config_pages_sas(MptState *s)
 {
     PMptConfigurationPagesSas p_pages = &s->config_pages->u.sas_pages;
 
-    uint16_t *tmp_initiator_handles = g_malloc0(sizeof(tmp_initiator_handles[0]) * s->ports);
+    uint16_t *tmp_initiator_handles = g_new0(uint16_t, s->ports);
 
     /* Manufacturing Page 7 - Connector settings. */
     p_pages->cb_manufacturing_page_7 =
@@ -5351,7 +5351,7 @@ static void mpt_init_config_pages_sas(MptState *s)
      * aren't really an expander, and won't return it to the guest. */
 
     p_pages->c_phy_s = s->ports;
-    p_pages->pa_phy_s = (PMptPHY)g_malloc0(p_pages->c_phy_s * sizeof(MptPHY));
+    p_pages->pa_phy_s = g_new0(MptPHY, p_pages->c_phy_s);
 
     p_pages->spare_device_ext_hdr.page_type = 
             MPT_CONFIGURATION_PAGE_ATTRIBUTE_READONLY
@@ -5643,9 +5643,6 @@ static void mpt_init_config_pages(MptState *s)
         g_malloc0(sizeof(MptConfigurationPagesSupported));
 
     s->config_pages = p_pages;
-
-    /* Clear everything first. */
-    memset(p_pages, 0, sizeof(MptConfigurationPagesSupported));
 
     /* Manufacturing Page 0. */
     MPT_CONFIG_PAGE_HEADER_INIT_MANUFACTURING(
