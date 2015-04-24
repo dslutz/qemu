@@ -292,51 +292,63 @@ enum {
     SVGA_CURSOR_ON_RESTORE_TO_FB = 3,
 };
 
+static long vmsvga_max_stderr = 100;
+
 static inline bool vmsvga_verify_rect(DisplaySurface *surface,
                                       const char *name,
                                       int x, int y, int w, int h)
 {
     if (x < 0) {
-        fprintf(stderr, "%s: x was < 0 (%d)\n", name, x);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: x was < 0 (%d)\n", name, x);
         return false;
     }
     if (x > SVGA_MAX_WIDTH) {
-        fprintf(stderr, "%s: x was > %d (%d)\n", name, SVGA_MAX_WIDTH, x);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: x was > %d (%d)\n", name, SVGA_MAX_WIDTH, x);
         return false;
     }
     if (w < 0) {
-        fprintf(stderr, "%s: w was < 0 (%d)\n", name, w);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: w was < 0 (%d)\n", name, w);
         return false;
     }
     if (w > SVGA_MAX_WIDTH) {
-        fprintf(stderr, "%s: w was > %d (%d)\n", name, SVGA_MAX_WIDTH, w);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: w was > %d (%d)\n", name, SVGA_MAX_WIDTH, w);
         return false;
     }
     if (x + w > surface_width(surface)) {
-        fprintf(stderr, "%s: width was > %d (x: %d, w: %d)\n",
-                name, surface_width(surface), x, w);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: width was > %d (x: %d, w: %d)\n",
+                    name, surface_width(surface), x, w);
         return false;
     }
 
     if (y < 0) {
-        fprintf(stderr, "%s: y was < 0 (%d)\n", name, y);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: y was < 0 (%d)\n", name, y);
         return false;
     }
     if (y > SVGA_MAX_HEIGHT) {
-        fprintf(stderr, "%s: y was > %d (%d)\n", name, SVGA_MAX_HEIGHT, y);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: y was > %d (%d)\n", name, SVGA_MAX_HEIGHT, y);
         return false;
     }
     if (h < 0) {
-        fprintf(stderr, "%s: h was < 0 (%d)\n", name, h);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: h was < 0 (%d)\n", name, h);
         return false;
     }
     if (h > SVGA_MAX_HEIGHT) {
-        fprintf(stderr, "%s: h was > %d (%d)\n", name, SVGA_MAX_HEIGHT, h);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: h was > %d (%d)\n", name, SVGA_MAX_HEIGHT, h);
         return false;
     }
     if (y + h > surface_height(surface)) {
-        fprintf(stderr, "%s: update height > %d (y: %d, h: %d)\n",
-                name, surface_height(surface), y, h);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: update height > %d (y: %d, h: %d)\n",
+                    name, surface_height(surface), y, h);
         return false;
     }
 
@@ -533,8 +545,9 @@ static inline void vmsvga_cursor_define(struct vmsvga_state_s *s,
 #endif
         break;
     default:
-        fprintf(stderr, "%s: unhandled bpp %d, using fallback cursor\n",
-                __func__, c->bpp);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: unhandled bpp %d, using fallback cursor\n",
+                    __func__, c->bpp);
         cursor_put(qc);
         qc = cursor_builtin_left_ptr();
     }
@@ -738,8 +751,9 @@ static void vmsvga_fifo_run(struct vmsvga_state_s *s)
             while (args--) {
                 vmsvga_fifo_read(s);
             }
-            printf("%s: Unknown command 0x%02x in SVGA command FIFO\n",
-                   __func__, cmd);
+            if (vmsvga_max_stderr-- > 0)
+                fprintf(stderr, "%s: Unknown command 0x%02x in SVGA command FIFO\n",
+                        __func__, cmd);
             break;
 
         rewind:
@@ -927,7 +941,8 @@ static uint32_t vmsvga_value_read(void *opaque, uint32_t address)
             ret = s->scratch[s->index - SVGA_SCRATCH_BASE];
             break;
         }
-        printf("%s: Bad register %02x\n", __func__, s->index);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: Bad register %02x\n", __func__, s->index);
         ret = 0;
         break;
     }
@@ -976,7 +991,8 @@ static void vmsvga_value_write(void *opaque, uint32_t address, uint32_t value)
             s->new_width = value;
             s->invalidated = 1;
         } else {
-            printf("%s: Bad width: %i\n", __func__, value);
+            if (vmsvga_max_stderr-- > 0)
+                fprintf(stderr, "%s: Bad width: %i\n", __func__, value);
         }
         break;
 
@@ -985,13 +1001,15 @@ static void vmsvga_value_write(void *opaque, uint32_t address, uint32_t value)
             s->new_height = value;
             s->invalidated = 1;
         } else {
-            printf("%s: Bad height: %i\n", __func__, value);
+            if (vmsvga_max_stderr-- > 0)
+                fprintf(stderr, "%s: Bad height: %i\n", __func__, value);
         }
         break;
 
     case SVGA_REG_BITS_PER_PIXEL:
         if (value != 32) {
-            printf("%s: Bad bits per pixel: %i bits\n", __func__, value);
+            if (vmsvga_max_stderr-- > 0)
+                fprintf(stderr, "%s: Bad bits per pixel: %i bits\n", __func__, value);
             s->config = 0;
             s->invalidated = 1;
         }
@@ -1028,8 +1046,9 @@ static void vmsvga_value_write(void *opaque, uint32_t address, uint32_t value)
 #ifdef VERBOSE
         if (value >= GUEST_OS_BASE && value < GUEST_OS_BASE +
             ARRAY_SIZE(vmsvga_guest_id)) {
-            printf("%s: guest runs %s.\n", __func__,
-                   vmsvga_guest_id[value - GUEST_OS_BASE]);
+            if (vmsvga_max_stderr-- > 0)
+                fprintf(stderr, "%s: guest runs %s.\n", __func__,
+                        vmsvga_guest_id[value - GUEST_OS_BASE]);
         }
 #endif
         break;
@@ -1069,19 +1088,22 @@ static void vmsvga_value_write(void *opaque, uint32_t address, uint32_t value)
             s->scratch[s->index - SVGA_SCRATCH_BASE] = value;
             break;
         }
-        printf("%s: Bad register %02x\n", __func__, s->index);
+        if (vmsvga_max_stderr-- > 0)
+            fprintf(stderr, "%s: Bad register %02x\n", __func__, s->index);
     }
 }
 
 static uint32_t vmsvga_bios_read(void *opaque, uint32_t address)
 {
-    printf("%s: what are we supposed to return?\n", __func__);
+    if (vmsvga_max_stderr-- > 0)
+        fprintf(stderr, "%s: what are we supposed to return?\n", __func__);
     return 0xcafe;
 }
 
 static void vmsvga_bios_write(void *opaque, uint32_t address, uint32_t data)
 {
-    printf("%s: what are we supposed to do with (%08x)?\n", __func__, data);
+    if (vmsvga_max_stderr-- > 0)
+        fprintf(stderr, "%s: what are we supposed to do with (%08x)?\n", __func__, data);
 }
 
 static inline void vmsvga_check_size(struct vmsvga_state_s *s)
