@@ -1933,6 +1933,7 @@ static int pci_e1000_init(PCIDevice *pci_dev)
     d->co_cond_inited = false;
     d->co_thread = NULL;
     d->slice_end = 0;
+    d->bps_limit = 0;
     qemu_mutex_init(&d->co_mutex);
 
     if (conf->bytes_per_int || conf->int_usec) {
