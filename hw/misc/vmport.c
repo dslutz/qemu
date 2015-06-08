@@ -68,6 +68,10 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
     unsigned char command;
     uint32_t eax;
 
+    /* Only support 1 address */
+    if (addr) {
+        return ~0U;
+    }
     cpu_synchronize_state(cs);
 
     eax = env->regs[R_EAX];
@@ -148,7 +152,7 @@ static void vmport_realizefn(DeviceState *dev, Error **errp)
     ISADevice *isadev = ISA_DEVICE(dev);
     VMPortState *s = VMPORT(dev);
 
-    memory_region_init_io(&s->io, OBJECT(s), &vmport_ops, s, "vmport", 1);
+    memory_region_init_io(&s->io, OBJECT(s), &vmport_ops, s, "vmport", 4);
     isa_register_ioport(isadev, &s->io, 0x5658);
 
     port_state = s;
