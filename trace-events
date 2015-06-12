@@ -889,6 +889,10 @@ pc87312_info_ide(uint32_t base) "base 0x%x"
 pc87312_info_parallel(uint32_t base, uint32_t irq) "base 0x%x, irq %u"
 pc87312_info_serial(int n, uint32_t base, uint32_t irq) "id=%d, base 0x%x, irq %u"
 
+# hw/misc/vmport.c
+vmport_ioport_ignored(uint64_t addr, uint32_t size, void *cs) "addr=%#" PRIx64 " size=%u cs=%p"
+vmport_ioport_unknown_command(unsigned char command) "%x"
+
 # hw/scsi/vmw_pvscsi.c
 pvscsi_ring_init_data(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"
 pvscsi_ring_init_msg(uint32_t len_log2) "MSG ring logarithm set to %d"

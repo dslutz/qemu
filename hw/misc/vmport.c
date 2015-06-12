@@ -27,7 +27,7 @@
 #include "sysemu/kvm.h"
 #include "hw/qdev.h"
 
-//#define VMPORT_DEBUG
+#include "trace.h"
 
 #define VMPORT_CMD_GETVERSION 0x0a
 #define VMPORT_CMD_GETRAMSIZE 0x14
@@ -70,6 +70,7 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
 
     /* Only support 1 address */
     if (addr) {
+        trace_vmport_ioport_ignored(addr, size, cs);
         return ~0U;
     }
     cpu_synchronize_state(cs);
@@ -83,9 +84,7 @@ static uint64_t vmport_ioport_read(void *opaque, hwaddr addr,
         return eax;
     if (!s->func[command])
     {
-#ifdef VMPORT_DEBUG
-        fprintf(stderr, "vmport: unknown command %x\n", command);
-#endif
+        trace_vmport_ioport_unknown_command(command);
         return eax;
     }
 
